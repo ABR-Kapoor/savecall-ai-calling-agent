@@ -55,13 +55,22 @@ function TrainPage() {
     queryFn: async () => {
       const { data, error } = await supabase.database
         .from("knowledge_items")
-        .select("id, question, answer, category, created_at, knowledge_sources(kind, title, url)")
-        .eq("business_id", businessId!)
+        .select("id, question, answer, category, created_at, knowledge_sources(type, name, source_uri)")
+        .or(`tenant_id.eq.${businessId!},business_id.eq.${businessId!}`)
         .eq("approved", false)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
-      return data;
+      return (data || []).map((item: any) => ({
+        ...item,
+        knowledge_sources: item.knowledge_sources
+          ? {
+              kind: item.knowledge_sources.type,
+              title: item.knowledge_sources.name,
+              url: item.knowledge_sources.source_uri,
+            }
+          : null,
+      }));
     },
   });
 
@@ -72,7 +81,7 @@ function TrainPage() {
       const { count, error } = await supabase.database
         .from("knowledge_items")
         .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId!)
+        .or(`tenant_id.eq.${businessId!},business_id.eq.${businessId!}`)
         .eq("approved", true);
       if (error) throw error;
       return count ?? 0;
@@ -85,12 +94,20 @@ function TrainPage() {
     queryFn: async () => {
       const { data, error } = await supabase.database
         .from("knowledge_sources")
-        .select("id, kind, url, title, status, pages_found, facts_found, error, created_at")
-        .eq("business_id", businessId!)
+        .select("id, type, name, source_uri, status, metadata, created_at")
+        .or(`tenant_id.eq.${businessId!},business_id.eq.${businessId!}`)
         .order("created_at", { ascending: false })
         .limit(12);
       if (error) throw error;
-      return data;
+      return (data || []).map((s: any) => ({
+        ...s,
+        kind: s.type,
+        title: s.name,
+        url: s.source_uri,
+        pages_found: s.metadata?.pages_found ?? 0,
+        facts_found: s.metadata?.facts_found ?? 0,
+        error: s.metadata?.error ?? null,
+      }));
     },
   });
 

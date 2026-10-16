@@ -92,7 +92,7 @@ function ClaimsPage() {
                       </TableCell>
                       <TableCell className="text-xs font-mono">{claim.policies?.policy_number || "-"}</TableCell>
                       <TableCell className="text-xs font-medium">{claim.customers?.name || "Unassigned"}</TableCell>
-                      <TableCell className="text-xs font-medium">₹{Number(claim.amount || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-xs font-medium">₹{Number(claim.estimated_amount ?? claim.amount ?? 0).toLocaleString()}</TableCell>
                       <TableCell className="text-xs">
                         <Badge
                           variant="outline"

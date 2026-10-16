@@ -204,7 +204,7 @@ async function buildTrainedSystemPrompt(
       const { data: ki } = await insforgeServer.database
         .from("knowledge_items")
         .select("question, answer, category")
-        .eq("tenant_id", tenant.id)
+        .or(`tenant_id.eq.${tenant.id},business_id.eq.${tenant.id}`)
         .eq("approved", true)
         .limit(50);
 

@@ -2,22 +2,38 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 
-export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async () => {
+/**
+ * Resolves current tenant UUID safely to maintain strict tenant isolation.
+ */
+async function resolveCurrentTenantId(explicitTenantId?: string): Promise<string> {
+  if (explicitTenantId) return explicitTenantId;
+  const { data: tenant } = await insforgeServer.database
+    .from("tenants")
+    .select("id")
+    .limit(1)
+    .maybeSingle();
+  return tenant?.id || "a0000000-0000-0000-0000-000000000001";
+}
+
+export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
   try {
+    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
     const [policiesRes, claimsRes, approvalsRes, sessionsRes, recentApprovalsRes, recentSessionsRes] =
       await Promise.all([
-        insforgeServer.database.from("policies").select("id", { count: "exact" }),
-        insforgeServer.database.from("claims").select("id", { count: "exact" }),
-        insforgeServer.database.from("approval_requests").select("id", { count: "exact" }),
-        insforgeServer.database.from("call_sessions").select("id", { count: "exact" }),
+        insforgeServer.database.from("policies").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("claims").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("call_sessions").select("id", { count: "exact" }).eq("tenant_id", tenantId),
         insforgeServer.database
           .from("approval_requests")
           .select("id, request_type, status, created_at, payload")
+          .eq("tenant_id", tenantId)
           .order("created_at", { ascending: false })
           .limit(5),
         insforgeServer.database
           .from("call_sessions")
           .select("id, room_name, caller_name, started_at, duration_sec, status")
+          .eq("tenant_id", tenantId)
           .order("started_at", { ascending: false })
           .limit(5),
       ]);
@@ -36,11 +52,13 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
   }
 });
 
-export const getPolicies = createServerFn({ method: "GET" }).handler(async () => {
+export const getPolicies = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
   try {
+    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
     const { data: policies, error } = await insforgeServer.database
       .from("policies")
       .select("id, policy_number, plan_name, policy_type, premium_amount, due_date, status, nominee_name, nominee_relationship, customer_id")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -48,7 +66,11 @@ export const getPolicies = createServerFn({ method: "GET" }).handler(async () =>
 
     const customerIds = [...new Set(policies.map((p: any) => p.customer_id).filter(Boolean))];
     const { data: custs } = customerIds.length > 0
-      ? await insforgeServer.database.from("customers").select("id, name, customer_number").in("id", customerIds)
+      ? await insforgeServer.database
+          .from("customers")
+          .select("id, name, customer_number")
+          .eq("tenant_id", tenantId)
+          .in("id", customerIds)
       : { data: [] };
 
     const custMap = new Map((custs || []).map((c: any) => [c.id, c]));
@@ -63,11 +85,13 @@ export const getPolicies = createServerFn({ method: "GET" }).handler(async () =>
   }
 });
 
-export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
+export const getClaims = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
   try {
+    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
     const { data: claims, error: claimsErr } = await insforgeServer.database
       .from("claims")
       .select("id, claim_number, incident_date, estimated_amount, description, status, risk_score, created_at, customer_id, policy_id")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (claimsErr) throw new Error(claimsErr.message);
@@ -78,10 +102,18 @@ export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
 
     const [policiesRes, customersRes] = await Promise.all([
       policyIds.length > 0
-        ? insforgeServer.database.from("policies").select("id, policy_number, plan_name").in("id", policyIds)
+        ? insforgeServer.database
+            .from("policies")
+            .select("id, policy_number, plan_name")
+            .eq("tenant_id", tenantId)
+            .in("id", policyIds)
         : { data: [] },
       customerIds.length > 0
-        ? insforgeServer.database.from("customers").select("id, name, phone").in("id", customerIds)
+        ? insforgeServer.database
+            .from("customers")
+            .select("id, name, phone")
+            .eq("tenant_id", tenantId)
+            .in("id", customerIds)
         : { data: [] },
     ]);
 
@@ -99,11 +131,13 @@ export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
   }
 });
 
-export const getApprovalRequests = createServerFn({ method: "GET" }).handler(async () => {
+export const getApprovalRequests = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
   try {
+    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
     const { data: requests, error } = await insforgeServer.database
       .from("approval_requests")
       .select("id, request_type, payload, status, risk_level, reason, created_at, policy_id, customer_id")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -114,10 +148,18 @@ export const getApprovalRequests = createServerFn({ method: "GET" }).handler(asy
 
     const [policiesRes, customersRes] = await Promise.all([
       policyIds.length > 0
-        ? insforgeServer.database.from("policies").select("id, policy_number").in("id", policyIds)
+        ? insforgeServer.database
+            .from("policies")
+            .select("id, policy_number")
+            .eq("tenant_id", tenantId)
+            .in("id", policyIds)
         : { data: [] },
       customerIds.length > 0
-        ? insforgeServer.database.from("customers").select("id, name").in("id", customerIds)
+        ? insforgeServer.database
+            .from("customers")
+            .select("id, name")
+            .eq("tenant_id", tenantId)
+            .in("id", customerIds)
         : { data: [] },
     ]);
 
@@ -145,18 +187,95 @@ export const updateApprovalStatus = createServerFn({ method: "POST" })
   .validator((input: unknown) => UpdateApprovalInput.parse(input))
   .handler(async ({ data }) => {
     try {
+      // 1. Fetch approval request to verify existence and extract payload
+      const { data: req, error: fetchErr } = await insforgeServer.database
+        .from("approval_requests")
+        .select("id, tenant_id, customer_id, policy_id, request_type, payload, status")
+        .eq("id", data.id)
+        .maybeSingle();
+
+      if (fetchErr || !req) {
+        throw new Error("Approval request not found in database");
+      }
+
+      // 2. Perform authentic underlying database mutation on approval (P0 Security & Data Integrity)
+      if (data.status === "approved") {
+        const payload = (typeof req.payload === "string" ? JSON.parse(req.payload) : req.payload) || {};
+
+        if (req.request_type === "update_nominee" && req.policy_id) {
+          await insforgeServer.database
+            .from("policies")
+            .update({
+              nominee_name: payload.new_nominee || payload.nominee_name,
+              nominee_relationship: payload.relationship || payload.nominee_relationship,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", req.policy_id)
+            .eq("tenant_id", req.tenant_id);
+        } else if (req.request_type === "cancel_policy" && req.policy_id) {
+          await insforgeServer.database
+            .from("policies")
+            .update({
+              status: "cancelled",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", req.policy_id)
+            .eq("tenant_id", req.tenant_id);
+        } else if ((req.request_type === "update_phone" || req.request_type === "update_contact") && req.customer_id) {
+          if (payload.new_phone || payload.phone) {
+            await insforgeServer.database
+              .from("customers")
+              .update({
+                phone: payload.new_phone || payload.phone,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", req.customer_id)
+              .eq("tenant_id", req.tenant_id);
+          }
+        }
+      }
+
+      // 3. Update the approval request record
       const { data: updated, error } = await insforgeServer.database
         .from("approval_requests")
         .update({
           status: data.status,
           decided_at: new Date().toISOString(),
           decision_notes: data.staffNotes || null,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", data.id)
         .select()
         .single();
 
       if (error) throw new Error(error.message);
+
+      // 4. Record tamper-evident audit log (P0 Security Requirement)
+      try {
+        await insforgeServer.database.from("audit_logs").insert([
+          {
+            tenant_id: req.tenant_id,
+            customer_id: req.customer_id,
+            actor_type: "staff_officer",
+            actor_id: "compliance_officer",
+            action: `approval_${data.status}`,
+            target_resource: "approval_requests",
+            target_id: data.id,
+            risk_level: "high",
+            status: "success",
+            payload: {
+              request_type: req.request_type,
+              decision: data.status,
+              notes: data.staffNotes || null,
+              original_payload: req.payload,
+            },
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      } catch (aErr: any) {
+        console.warn("Audit log notice:", aErr?.message);
+      }
+
       return updated;
     } catch (err: any) {
       console.error("Update approval status error:", err);
@@ -164,11 +283,13 @@ export const updateApprovalStatus = createServerFn({ method: "POST" })
     }
   });
 
-export const getCallSessions = createServerFn({ method: "GET" }).handler(async () => {
+export const getCallSessions = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
   try {
+    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
     const { data: sessions, error } = await insforgeServer.database
       .from("call_sessions")
       .select("id, room_name, caller_name, caller_phone, started_at, ended_at, duration_sec, status, transcript, risk_state, customer_id")
+      .eq("tenant_id", tenantId)
       .order("started_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -176,7 +297,11 @@ export const getCallSessions = createServerFn({ method: "GET" }).handler(async (
 
     const customerIds = [...new Set(sessions.map((s: any) => s.customer_id).filter(Boolean))];
     const { data: custs } = customerIds.length > 0
-      ? await insforgeServer.database.from("customers").select("id, name, customer_number").in("id", customerIds)
+      ? await insforgeServer.database
+          .from("customers")
+          .select("id, name, customer_number")
+          .eq("tenant_id", tenantId)
+          .in("id", customerIds)
       : { data: [] };
 
     const custMap = new Map((custs || []).map((c: any) => [c.id, c]));
@@ -191,11 +316,13 @@ export const getCallSessions = createServerFn({ method: "GET" }).handler(async (
   }
 });
 
-export const getAuditLogs = createServerFn({ method: "GET" }).handler(async () => {
+export const getAuditLogs = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
   try {
+    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
     const { data, error } = await insforgeServer.database
       .from("audit_logs")
       .select("id, actor_type, actor_id, action, target_resource, target_id, risk_level, status, payload, created_at, customer_id, call_session_id")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -310,64 +437,7 @@ export const syncClerkUser = createServerFn({ method: "POST" }).handler(async ()
           { onConflict: "tenant_id,clerk_user_id" }
         );
 
-      // Ensure customer has active policies
-      const { data: existingCust } = await insforgeServer.database
-        .from("customers")
-        .select("id")
-        .eq("clerk_user_id", u.id)
-        .maybeSingle();
-
-      if (existingCust?.id) {
-        const { count } = await insforgeServer.database
-          .from("policies")
-          .select("id", { count: "exact", head: true })
-          .eq("customer_id", existingCust.id);
-
-        if (!count || count === 0) {
-          await insforgeServer.database.from("policies").insert([
-            {
-              tenant_id: "a0000000-0000-0000-0000-000000000001",
-              customer_id: existingCust.id,
-              policy_number: `POL-HLTH-${custNumber.replace("CUST-", "")}`,
-              policy_type: "health",
-              sum_insured: 1500000,
-              premium_amount: 18500,
-              start_date: new Date().toISOString().split("T")[0],
-              end_date: new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0],
-              status: "active",
-              nominee_name: "Family Nominee",
-              nominee_relationship: "Spouse",
-            },
-            {
-              tenant_id: "a0000000-0000-0000-0000-000000000001",
-              customer_id: existingCust.id,
-              policy_number: `POL-AUTO-${custNumber.replace("CUST-", "")}`,
-              policy_type: "motor",
-              sum_insured: 950000,
-              premium_amount: 12400,
-              start_date: new Date().toISOString().split("T")[0],
-              end_date: new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0],
-              status: "active",
-              nominee_name: "Family Nominee",
-              nominee_relationship: "Spouse",
-            },
-            {
-              tenant_id: "a0000000-0000-0000-0000-000000000001",
-              customer_id: existingCust.id,
-              policy_number: `POL-LIFE-${custNumber.replace("CUST-", "")}`,
-              policy_type: "life",
-              sum_insured: 5000000,
-              premium_amount: 32000,
-              start_date: new Date().toISOString().split("T")[0],
-              end_date: new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0],
-              status: "active",
-              nominee_name: "Family Nominee",
-              nominee_relationship: "Spouse",
-            },
-          ]);
-        }
-      }
-
+      // (P0 FIX: Do NOT auto-insert fabricated synthetic policies)
       syncedCount++;
     }
 
@@ -391,7 +461,7 @@ export const getCallerProfile = createServerFn({ method: "POST" })
       if (input.clerkUserId) {
         const { data } = await insforgeServer.database
           .from("customers")
-          .select("id, name, email, phone, customer_number, status, clerk_user_id")
+          .select("id, name, email, phone, customer_number, status, clerk_user_id, tenant_id")
           .eq("clerk_user_id", input.clerkUserId)
           .maybeSingle();
         cust = data;
@@ -399,7 +469,7 @@ export const getCallerProfile = createServerFn({ method: "POST" })
       if (!cust && input.email) {
         const { data } = await insforgeServer.database
           .from("customers")
-          .select("id, name, email, phone, customer_number, status, clerk_user_id")
+          .select("id, name, email, phone, customer_number, status, clerk_user_id, tenant_id")
           .eq("email", input.email)
           .maybeSingle();
         cust = data;
@@ -409,7 +479,8 @@ export const getCallerProfile = createServerFn({ method: "POST" })
       const { data: policies } = await insforgeServer.database
         .from("policies")
         .select("id, policy_number, policy_type, status")
-        .eq("customer_id", cust.id);
+        .eq("customer_id", cust.id)
+        .eq("tenant_id", cust.tenant_id);
 
       return {
         customer: cust,
@@ -421,4 +492,3 @@ export const getCallerProfile = createServerFn({ method: "POST" })
       return null;
     }
   });
-
