@@ -4,8 +4,6 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
-const useHttps = process.env["HTTPS"] === "true";
-
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
@@ -19,7 +17,7 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
         configure: (proxy) => {
-          proxy.on("error", (err, _req, res) => {
+          proxy.on("error", (_err, _req, res) => {
             if (res && "writeHead" in res && !(res as any).headersSent) {
               (res as any).writeHead(502, { "Content-Type": "text/plain" });
               (res as any).end("LiveKit WebRTC gateway offline. Falling back to browser audio synthesis.");
@@ -34,7 +32,7 @@ export default defineConfig({
     allowedHosts: [".e2b.app", ".localhost", "172.30.160.10"],
   },
   plugins: [
-    ...(useHttps ? [basicSsl()] : []),
+    basicSsl(),
     tanstackStart(),
     react(),
     tailwindcss(),
