@@ -8,24 +8,32 @@ import {
   PhoneCall,
   Settings,
   ShieldCheck,
-  Users,
   CheckSquare,
+  Bot,
+  BookOpen,
+  Briefcase,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useClerk, UserButton } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV_PLATFORM = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { to: "/agent", label: "AI Employees", icon: Bot },
+  { to: "/train", label: "Knowledge", icon: BookOpen },
+  { to: "/calls", label: "Voice Sessions", icon: PhoneCall },
+  { to: "/voice", label: "Test Call", icon: Mic },
+  { to: "/settings", label: "Settings", icon: Settings },
+] as const;
+
+const NAV_INSURANCE = [
   { to: "/policies", label: "Policies", icon: FileText },
   { to: "/claims", label: "Claims", icon: ShieldCheck },
   { to: "/change-requests", label: "Approvals", icon: CheckSquare },
-  { to: "/calls", label: "Voice Sessions", icon: PhoneCall },
   { to: "/audit", label: "Audit Logs", icon: ShieldAlert },
-  { to: "/voice", label: "Customer Voice UI", icon: Mic },
-  { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
 export function AppShell({
@@ -48,37 +56,75 @@ export function AppShell({
     window.location.href = "/";
   };
 
+  const allNav = [...NAV_PLATFORM, ...NAV_INSURANCE];
+
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4 md:flex">
         <Link to="/dashboard" className="mb-6 flex items-center gap-3 px-2">
           <span className="grid size-9 place-items-center rounded-lg bg-cyan-600 text-white font-bold shadow">
-            <ShieldCheck className="size-5" aria-hidden />
+            <Bot className="size-5" aria-hidden />
           </span>
           <div className="flex flex-col">
             <span className="font-display text-base font-bold leading-tight tracking-tight">
               SaveCall
             </span>
             <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-              Insurance AI
+              AI Voice Employee
             </span>
           </div>
         </Link>
-        <nav className="flex-1 space-y-1">
-          {NAV.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                path === item.to && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-              )}
-            >
-              <item.icon className="size-4 shrink-0" aria-hidden />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+
+        <div className="flex-1 space-y-6 overflow-y-auto">
+          {/* Platform Core */}
+          <div className="space-y-1">
+            <div className="px-3 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Platform Core
+            </div>
+            <nav className="space-y-0.5">
+              {NAV_PLATFORM.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    path === item.to && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                  )}
+                >
+                  <item.icon className="size-4 shrink-0" aria-hidden />
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          {/* Business Vertical Module: Insurance */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between px-3 pb-1">
+              <span className="text-[10px] font-semibold tracking-wider text-cyan-400 uppercase">
+                Insurance Template
+              </span>
+              <Badge variant="outline" className="text-[9px] border-cyan-500/30 text-cyan-400 py-0 px-1.5 h-4">
+                Vertical
+              </Badge>
+            </div>
+            <nav className="space-y-0.5">
+              {NAV_INSURANCE.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    path === item.to && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                  )}
+                >
+                  <item.icon className="size-3.5 shrink-0 text-cyan-400" aria-hidden />
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </div>
         <div className="mt-auto space-y-2 border-t border-sidebar-border pt-3">
           <div className="flex items-center gap-2 px-2 py-1">
             <UserButton afterSignOutUrl="/" />
@@ -96,7 +142,7 @@ export function AppShell({
           {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
         </header>
         <div className="flex gap-1 overflow-x-auto border-b border-border px-3 py-2 md:hidden">
-          {NAV.map((item) => (
+          {allNav.map((item) => (
             <Link
               key={item.to}
               to={item.to}

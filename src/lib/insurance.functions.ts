@@ -15,34 +15,61 @@ async function resolveCurrentTenantId(explicitTenantId?: string): Promise<string
   return tenant?.id || "a0000000-0000-0000-0000-000000000001";
 }
 
-export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
+export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
-    const [policiesRes, claimsRes, approvalsRes, sessionsRes, recentApprovalsRes, recentSessionsRes] =
-      await Promise.all([
-        insforgeServer.database.from("policies").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-        insforgeServer.database.from("claims").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-        insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-        insforgeServer.database.from("call_sessions").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-        insforgeServer.database
-          .from("approval_requests")
-          .select("id, request_type, status, created_at, payload")
-          .eq("tenant_id", tenantId)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        insforgeServer.database
-          .from("call_sessions")
-          .select("id, room_name, caller_name, started_at, duration_sec, status")
-          .eq("tenant_id", tenantId)
-          .order("started_at", { ascending: false })
-          .limit(5),
-      ]);
+    const tenantId = await resolveCurrentTenantId();
+    const [
+      policiesRes,
+      claimsRes,
+      approvalsRes,
+      sessionsRes,
+      resolvedSessionsRes,
+      transfersRes,
+      leadsRes,
+      recentApprovalsRes,
+      recentSessionsRes,
+    ] = await Promise.all([
+      insforgeServer.database.from("policies").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+      insforgeServer.database.from("claims").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+      insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+      insforgeServer.database.from("call_sessions").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+      insforgeServer.database
+        .from("call_sessions")
+        .select("id", { count: "exact" })
+        .eq("tenant_id", tenantId)
+        .eq("status", "completed"),
+      insforgeServer.database.from("human_transfers").select("id", { count: "exact" }),
+      insforgeServer.database.from("follow_ups").select("id", { count: "exact" }),
+      insforgeServer.database
+        .from("approval_requests")
+        .select("id, request_type, status, created_at, payload")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      insforgeServer.database
+        .from("call_sessions")
+        .select("id, room_name, caller_name, started_at, duration_sec, status")
+        .eq("tenant_id", tenantId)
+        .order("started_at", { ascending: false })
+        .limit(5),
+    ]);
+
+    const totalCalls = sessionsRes.count ?? (sessionsRes.data?.length || 0);
+    const resolvedCalls = resolvedSessionsRes.count ?? (resolvedSessionsRes.data?.length || 0);
+    const transfers = transfersRes.count ?? (transfersRes.data?.length || 0);
+    const leads = leadsRes.count ?? (leadsRes.data?.length || 0);
+    const automationRate = totalCalls > 0 ? Math.min(100, Math.round(((resolvedCalls - transfers) / totalCalls) * 100)) : 100;
 
     return {
+      totalCalls,
+      resolvedCalls,
+      transfers,
+      leads,
+      automationRate: Math.max(0, automationRate),
       policiesCount: policiesRes.count ?? (policiesRes.data?.length || 0),
       claimsCount: claimsRes.count ?? (claimsRes.data?.length || 0),
       approvalsCount: approvalsRes.count ?? (approvalsRes.data?.length || 0),
-      sessionsCount: sessionsRes.count ?? (sessionsRes.data?.length || 0),
+      sessionsCount: totalCalls,
       recentApprovals: recentApprovalsRes.data ?? [],
       recentSessions: recentSessionsRes.data ?? [],
     };
@@ -52,9 +79,9 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
   }
 });
 
-export const getPolicies = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
+export const getPolicies = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
+    const tenantId = await resolveCurrentTenantId();
     const { data: policies, error } = await insforgeServer.database
       .from("policies")
       .select("id, policy_number, plan_name, policy_type, premium_amount, due_date, status, nominee_name, nominee_relationship, customer_id")
@@ -85,9 +112,9 @@ export const getPolicies = createServerFn({ method: "GET" }).handler(async (ctx?
   }
 });
 
-export const getClaims = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
+export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
+    const tenantId = await resolveCurrentTenantId();
     const { data: claims, error: claimsErr } = await insforgeServer.database
       .from("claims")
       .select("id, claim_number, incident_date, estimated_amount, description, status, risk_score, created_at, customer_id, policy_id")
@@ -131,9 +158,9 @@ export const getClaims = createServerFn({ method: "GET" }).handler(async (ctx?: 
   }
 });
 
-export const getApprovalRequests = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
+export const getApprovalRequests = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
+    const tenantId = await resolveCurrentTenantId();
     const { data: requests, error } = await insforgeServer.database
       .from("approval_requests")
       .select("id, request_type, payload, status, risk_level, reason, created_at, policy_id, customer_id")
@@ -283,9 +310,9 @@ export const updateApprovalStatus = createServerFn({ method: "POST" })
     }
   });
 
-export const getCallSessions = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
+export const getCallSessions = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
+    const tenantId = await resolveCurrentTenantId();
     const { data: sessions, error } = await insforgeServer.database
       .from("call_sessions")
       .select("id, room_name, caller_name, caller_phone, started_at, ended_at, duration_sec, status, transcript, risk_state, customer_id")
@@ -316,9 +343,9 @@ export const getCallSessions = createServerFn({ method: "GET" }).handler(async (
   }
 });
 
-export const getAuditLogs = createServerFn({ method: "GET" }).handler(async (ctx?: any) => {
+export const getAuditLogs = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const tenantId = await resolveCurrentTenantId(ctx?.data?.tenantId);
+    const tenantId = await resolveCurrentTenantId();
     const { data, error } = await insforgeServer.database
       .from("audit_logs")
       .select("id, actor_type, actor_id, action, target_resource, target_id, risk_level, status, payload, created_at, customer_id, call_session_id")

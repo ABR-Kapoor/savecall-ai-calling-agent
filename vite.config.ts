@@ -19,8 +19,14 @@ export default defineConfig({
         configure: (proxy) => {
           proxy.on("error", (_err, _req, res) => {
             if (res && "writeHead" in res && !(res as any).headersSent) {
-              (res as any).writeHead(502, { "Content-Type": "text/plain" });
-              (res as any).end("LiveKit WebRTC gateway offline. Falling back to browser audio synthesis.");
+              try {
+                (res as any).writeHead(502, { "Content-Type": "text/plain" });
+                (res as any).end("LiveKit WebRTC gateway offline. Falling back to browser audio synthesis.");
+              } catch (_) {}
+            } else if (res && "destroy" in res && typeof (res as any).destroy === "function") {
+              try {
+                (res as any).destroy();
+              } catch (_) {}
             }
           });
         },

@@ -34,6 +34,7 @@ import {
   RotateCcw,
   CheckCircle2,
   FileText,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -540,6 +541,7 @@ function ActivePhoneCallScreen({
   const [showTranscript, setShowTranscript] = useState(true);
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
   const [duration, setDuration] = useState(0);
+  const [textInput, setTextInput] = useState("");
 
   // Live transcript state
   const [messages, setMessages] = useState<TranscriptMessage[]>([
@@ -734,6 +736,18 @@ function ActivePhoneCallScreen({
     [room, duration, customerName, tenantId, customerId, isSpeakerMuted, messages]
   );
 
+  // Send a typed text message (fallback when microphone is unavailable)
+  const handleSendText = useCallback(
+    (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      const trimmed = textInput.trim();
+      if (!trimmed || localAgentState === "thinking") return;
+      sendPrompt(trimmed);
+      setTextInput("");
+    },
+    [textInput, localAgentState, sendPrompt]
+  );
+
   // Native Speech Recognition for hands-free talking into microphone
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -908,7 +922,7 @@ function ActivePhoneCallScreen({
 
       {/* 3. THE SMALL TRANSCRIPT (LIVE CAPTIONS HUD) */}
       {showTranscript && (
-        <div className="my-2 rounded-2xl border border-slate-800/80 bg-slate-900/80 backdrop-blur-md p-2.5 shadow-inner flex flex-col justify-between h-28 shrink-0 relative transition-all">
+        <div className="my-2 rounded-2xl border border-slate-800/80 bg-slate-900/80 backdrop-blur-md p-2.5 shadow-inner flex flex-col justify-between h-36 shrink-0 relative transition-all">
           {/* Header */}
           <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 mb-1">
             <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-300">
@@ -938,7 +952,7 @@ function ActivePhoneCallScreen({
             </div>
           </div>
 
-          {/* Subtitle stream (shows latest 2 spoken bubbles) */}
+          {/* Subtitle stream (shows latest spoken bubbles) */}
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 text-[11px] leading-tight select-text scrollbar-thin">
             {messages.slice(-3).map((m) => (
               <div
@@ -961,6 +975,29 @@ function ActivePhoneCallScreen({
             ))}
             <div ref={transcriptEndRef} />
           </div>
+
+          {/* Text Message Input (when caller cannot use microphone) */}
+          <form
+            onSubmit={handleSendText}
+            className="mt-1 flex items-center gap-1.5 pt-1.5 border-t border-slate-800/80"
+          >
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Can't use mic? Type message..."
+              disabled={localAgentState === "thinking"}
+              className="flex-1 min-w-0 bg-slate-950/90 border border-slate-700/70 rounded-lg px-2.5 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={!textInput.trim() || localAgentState === "thinking"}
+              title="Send text message"
+              className="h-6 w-6 shrink-0 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 disabled:hover:bg-cyan-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm"
+            >
+              <Send className="h-3 w-3" />
+            </button>
+          </form>
         </div>
       )}
 
@@ -1151,6 +1188,30 @@ function ActivePhoneCallScreen({
             ))}
             <div ref={fullTranscriptEndRef} />
           </div>
+
+          {/* Send text in full transcript */}
+          <form
+            onSubmit={handleSendText}
+            className="flex items-center gap-2 mb-3 pt-2 border-t border-slate-800"
+          >
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Can't use microphone? Type here..."
+              disabled={localAgentState === "thinking"}
+              className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 transition-colors"
+            />
+            <Button
+              type="submit"
+              disabled={!textInput.trim() || localAgentState === "thinking"}
+              size="sm"
+              className="bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl px-3 h-8 shadow-sm"
+            >
+              <Send className="h-3.5 w-3.5 mr-1" />
+              Send
+            </Button>
+          </form>
 
           <Button
             onClick={() => setIsTranscriptExpanded(false)}
