@@ -2,16 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 
+// Security P0: Reject client-supplied 'system' roles to prevent prompt injection
 const ChatInput = z.object({
-  query: z.string().min(1),
+  query: z.string().min(1).max(1500),
+  callSessionId: z.string().uuid().optional().nullable(),
   tenantId: z.string().uuid().optional(),
-  customerId: z.string().optional(),
-  customerName: z.string().optional(),
+  customerId: z.string().uuid().optional().nullable(),
+  customerName: z.string().max(100).optional(),
   history: z
     .array(
       z.object({
-        role: z.enum(["user", "assistant", "system"]),
-        content: z.string(),
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(2000),
       })
     )
     .optional()
@@ -24,21 +26,6 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const GROQ_API_KEY =
-  process.env["GROQ_API_KEY"] ||
-  "";
-const GROQ_MODEL = process.env["GROQ_MODEL"] || "qwen/qwen3.8-27b";
-const GROQ_BASE_URL =
-  process.env["GROQ_BASE_URL"] || "https://api.groq.com/openai/v1";
-
-const LOCAL_LLM_BASE_URL =
-  process.env["LOCAL_LLM_BASE_URL"] ||
-  process.env["LLM_BASE_URL"] ||
-  "http://localhost:11434";
-const LOCAL_LLM_MODEL = process.env["LLM_MODEL"] || "qwen2.5:7b";
-
-const MODEL_MODE = (process.env["LLM_MODE"] || "hybrid").toLowerCase() as "groq" | "local" | "hybrid";
-
 function cleanSpokenText(text: string): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -49,6 +36,17 @@ function cleanSpokenText(text: string): string {
     .trim();
 }
 
+const GROQ_API_KEY = process.env["GROQ_API_KEY"] || "";
+const GROQ_MODEL = process.env["GROQ_MODEL"] || "qwen/qwen3.8-27b";
+const GROQ_BASE_URL = process.env["GROQ_BASE_URL"] || "https://api.groq.com/openai/v1";
+
+const LOCAL_LLM_BASE_URL =
+  process.env["LOCAL_LLM_BASE_URL"] ||
+  process.env["LLM_BASE_URL"] ||
+  "http://localhost:11434";
+const LOCAL_LLM_MODEL = process.env["LLM_MODEL"] || "qwen2.5:7b";
+
+const MODEL_MODE = (process.env["LLM_MODE"] || "hybrid").toLowerCase() as "groq" | "local" | "hybrid";
 
 async function executeInference(
   messages: Array<{ role: string; content: string }>,
@@ -57,7 +55,7 @@ async function executeInference(
   const tryGroq = async (): Promise<string | null> => {
     if (!GROQ_API_KEY) return null;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4500);
+    const timeout = setTimeout(() => controller.abort(), 4000);
     try {
       let res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
         method: "POST",
@@ -101,14 +99,14 @@ async function executeInference(
       return cleanSpokenText(raw) || null;
     } catch (e: any) {
       clearTimeout(timeout);
-      console.warn("Groq inference error/timeout:", e.message);
+      console.warn("Groq inference notice:", e?.message);
       return null;
     }
   };
 
   const tryLocal = async (): Promise<string | null> => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 4000);
     const url = `${LOCAL_LLM_BASE_URL.replace(/\/+$/, "")}/v1/chat/completions`;
     try {
       const res = await fetch(url, {
@@ -118,7 +116,7 @@ async function executeInference(
           model: LOCAL_LLM_MODEL,
           messages,
           temperature: 0.3,
-          max_tokens: 250,
+          max_tokens: 200,
         }),
         signal: controller.signal,
       });
@@ -128,19 +126,18 @@ async function executeInference(
       return cleanSpokenText(data.choices?.[0]?.message?.content || "") || null;
     } catch (e: any) {
       clearTimeout(timeout);
-      console.warn("Local Ollama inference unreachable:", e.message);
+      console.warn("Local Ollama notice:", e?.message);
       return null;
     }
   };
 
-  // Hybrid Routing: Routine privacy/OTP checks can prefer local; complex reasoning uses Groq
+  // Hybrid Routing: Routine privacy/OTP checks can prefer local; complex conversational turns use Groq
   if (MODEL_MODE === "local") {
     const localRes = await tryLocal();
     if (localRes) return { reply: localRes, provider: "local", model: LOCAL_LLM_MODEL };
     const groqRes = await tryGroq();
     if (groqRes) return { reply: groqRes, provider: "groq", model: GROQ_MODEL };
   } else if (MODEL_MODE === "hybrid") {
-    // If query has strict privacy/OTP context, try local first if available
     const isSensitive = /otp|nominee|change|password|secret/i.test(query);
     if (isSensitive) {
       const localRes = await tryLocal();
@@ -151,7 +148,6 @@ async function executeInference(
     const localFallback = await tryLocal();
     if (localFallback) return { reply: localFallback, provider: "local", model: LOCAL_LLM_MODEL };
   } else {
-    // Default: Groq primary with local fallback
     const groqRes = await tryGroq();
     if (groqRes) return { reply: groqRes, provider: "groq", model: GROQ_MODEL };
     const localRes = await tryLocal();
@@ -159,44 +155,36 @@ async function executeInference(
   }
 
   return {
-    reply: "I am having trouble reaching our AI servers right now. Let me connect you with an agent.",
+    reply: "I am having trouble reaching our AI servers right now. Please allow me a moment or let me connect you with an agent.",
     provider: "groq",
     model: "none",
   };
 }
 
 /**
- * Dynamically builds the system prompt trained on the user's settings and company knowledge base
+ * Dynamically builds the system prompt trained strictly within the authorized tenant's boundary
  */
 async function buildTrainedSystemPrompt(
   tenantId?: string,
-  customerId?: string,
+  customerId?: string | null,
   fallbackCustomerName?: string
 ): Promise<{ systemPrompt: string; agentName: string; voiceId: string }> {
-  // 1. Fetch Tenant and user's saved Agent Settings & Knowledge Base
+  // 1. Resolve Tenant branding and agent instructions
   let tenant: any = null;
-  try {
-    const query = insforgeServer.database
-      .from("tenants")
-      .select("id, name, slug, branding_config");
-
-    if (tenantId) {
-      const { data } = await query.eq("id", tenantId).maybeSingle();
-      tenant = data;
-    }
-    if (!tenant) {
+  if (tenantId) {
+    try {
       const { data } = await insforgeServer.database
         .from("tenants")
         .select("id, name, slug, branding_config")
-        .limit(1)
+        .eq("id", tenantId)
         .maybeSingle();
       tenant = data;
+    } catch (err: any) {
+      console.warn("Tenant load notice:", err?.message);
     }
-  } catch (err: any) {
-    console.warn("Notice loading tenant settings for prompt training:", err?.message);
   }
 
-  const companyName = tenant?.name || "SafeLife Insurance Co. Ltd.";
+  const companyName = tenant?.name || "SaveCall AI";
   const branding = (tenant?.branding_config as any) || {};
   const agentCfg = branding.agent_config || {};
 
@@ -205,58 +193,66 @@ async function buildTrainedSystemPrompt(
   const language = agentCfg.language || "English, Hindi, and Hinglish";
   const voiceId = agentCfg.voice_id || "en-IN-NeerjaNeural";
   const userInstructions = agentCfg.system_prompt || "You are SaveCall AI, a trusted voice assistant for policyholders.";
-  const knowledgeBase = agentCfg.knowledge_base || `COMPANY: ${companyName}\nPOLICY COVERAGES:\n1. Health Shield: Up to Rs 15,00,000 cashless cover at 8,500+ network hospitals.\n2. Motor Secure Drive: Comprehensive bumper-to-bumper with spot claim settlement.\n3. Term Life Protection: Financial security for designated nominee.\nVERIFICATION RULES:\n- Sensitive changes (phone/email/nominee) require OTP verification.`;
+  const knowledgeBase =
+    agentCfg.knowledge_base ||
+    `COMPANY: ${companyName}\nPOLICY COVERAGES:\n1. Comprehensive customer support and claims guidance.\n2. Sensitive changes (phone/email/nominee) require OTP verification.`;
 
-  // 1b. Fetch Approved Knowledge Items from Database
+  // 1b. Fetch Approved Knowledge Items (CRITICAL P0: Strictly scoped to tenant_id)
   let approvedKnowledgeText = "";
-  try {
-    const { data: ki } = await insforgeServer.database
-      .from("knowledge_items")
-      .select("question, answer, category")
-      .eq("approved", true)
-      .limit(60);
+  if (tenant?.id) {
+    try {
+      const { data: ki } = await insforgeServer.database
+        .from("knowledge_items")
+        .select("question, answer, category")
+        .eq("tenant_id", tenant.id)
+        .eq("approved", true)
+        .limit(50);
 
-    if (ki && ki.length > 0) {
-      approvedKnowledgeText = ki
-        .map((k: any) => `Topic: ${k.category || "General"}\nQ: ${k.question}\nA: ${k.answer}`)
-        .join("\n\n");
+      if (ki && ki.length > 0) {
+        approvedKnowledgeText = ki
+          .map((k: any) => `Topic: ${k.category || "General"}\nQ: ${k.question}\nA: ${k.answer}`)
+          .join("\n\n");
+      }
+    } catch (kErr: any) {
+      console.warn("Knowledge base load notice:", kErr?.message);
     }
-  } catch (kErr: any) {
-    console.warn("Notice loading approved knowledge items:", kErr?.message);
   }
 
-  // 2. Fetch Customer Context (Policies, Claims, Profile)
-  let customerInfo = `Caller Name: ${fallbackCustomerName || "Valued Customer"}`;
-  let policiesText = "No active policies found on record.";
+  // 2. Fetch Customer Context strictly within the authorized tenant
+  let customerInfo = `Caller Name: ${fallbackCustomerName || "Guest Caller"}`;
+  let policiesText = "No active policies found on record for this caller.";
   let claimsText = "No active claims on record.";
 
-  if (customerId) {
+  if (customerId && tenant?.id) {
     try {
       const [{ data: cust }, { data: policies }, { data: claims }] = await Promise.all([
         insforgeServer.database
           .from("customers")
           .select("name, customer_number, phone, email")
           .eq("id", customerId)
+          .eq("tenant_id", tenant.id)
           .maybeSingle(),
         insforgeServer.database
           .from("policies")
           .select("policy_number, policy_type, sum_insured, status, nominee_name, nominee_relationship")
-          .eq("customer_id", customerId),
+          .eq("customer_id", customerId)
+          .eq("tenant_id", tenant.id),
         insforgeServer.database
           .from("claims")
           .select("claim_number, claim_amount, status, incident_type, hospital_garage_name")
-          .eq("customer_id", customerId),
+          .eq("customer_id", customerId)
+          .eq("tenant_id", tenant.id),
       ]);
 
       if (cust) {
-        customerInfo = `Caller Name: ${cust.name}\nCustomer ID: ${cust.customer_number || "CUST-883921"}\nPhone: ${cust.phone || "On File"}\nEmail: ${cust.email || "On File"}`;
+        customerInfo = `Caller Name: ${cust.name}\nCustomer ID: ${cust.customer_number || "CUST-VERIFIED"}\nPhone: ${cust.phone || "On File"}\nEmail: ${cust.email || "On File"}`;
       }
 
       if (policies && policies.length > 0) {
         policiesText = policies
           .map(
             (p: any) =>
-              `- Policy #${p.policy_number} (${p.policy_type.toUpperCase()}): Sum Insured ₹${Number(p.sum_insured).toLocaleString("en-IN")}, Status: ${p.status}, Nominee: ${p.nominee_name || "Family Nominee"} (${p.nominee_relationship || "Spouse"})`
+              `- Policy #${p.policy_number} (${p.policy_type.toUpperCase()}): Sum Insured ₹${Number(p.sum_insured).toLocaleString("en-IN")}, Status: ${p.status}, Nominee: ${p.nominee_name || "Family Nominee"}`
           )
           .join("\n");
       }
@@ -270,7 +266,7 @@ async function buildTrainedSystemPrompt(
           .join("\n");
       }
     } catch (err: any) {
-      console.warn("Notice fetching customer policies for prompt training:", err?.message);
+      console.warn("Customer policy fetch notice:", err?.message);
     }
   }
 
@@ -285,14 +281,14 @@ YOUR PERSONA & SPEAKING STYLE:
   * If the caller speaks Hindi, reply naturally in clean Hindi.
   * If the caller speaks English, reply in English.
   * If the caller speaks Hinglish, reply in Hinglish.
-- Spoken Style: Keep answers concise, natural, and direct (1 to 3 short sentences per turn) because this is a live spoken phone call.
+- Spoken Style: Keep answers concise, natural, and direct (1 to 2 short sentences per turn) because this is a live spoken phone call.
 
 USER'S CUSTOM SYSTEM PROMPT INSTRUCTIONS:
 ${userInstructions}
 
-TRAINED TALKING KNOWLEDGE DATABASE (COMPANY POLICIES, FAQS & PROCEDURES):
+TRAINED TALKING KNOWLEDGE DATABASE:
 ${knowledgeBase}
-${approvedKnowledgeText ? `\n\nADDITIONAL VERIFIED KNOWLEDGE BASE (FROM WEBSITE & DOCUMENT TRAINING):\n${approvedKnowledgeText}` : ""}
+${approvedKnowledgeText ? `\n\nADDITIONAL VERIFIED KNOWLEDGE BASE:\n${approvedKnowledgeText}` : ""}
 
 AUTHENTICATED CALLER CONTEXT:
 ${customerInfo}
@@ -303,7 +299,8 @@ ${policiesText}
 RECENT CLAIMS:
 ${claimsText}
 
-SECURITY RULE:
+SECURITY RULES:
+- If caller is a Guest / Unverified and asks for policy or claim details, politely ask them to provide their registered policy number or phone number so you can verify their file.
 - If the customer requests to change sensitive information (e.g. nominee, registered phone, or address), inform them that a 6-digit OTP has been sent for security verification.
 `;
 
@@ -319,13 +316,14 @@ export const Route = createFileRoute("/api/voice/chat")({
             await request.json().catch(() => ({}))
           );
 
-          // Build dynamic trained system prompt from user's settings and knowledge base
+          // Build dynamic trained system prompt strictly within authorized tenant boundary
           const { systemPrompt, agentName } = await buildTrainedSystemPrompt(
             body.tenantId,
             body.customerId,
             body.customerName
           );
 
+          // Build conversation turns (guaranteed free of untrusted system messages)
           const messages = [
             { role: "system", content: systemPrompt },
             ...body.history.slice(-6).map((m) => ({
@@ -336,6 +334,23 @@ export const Route = createFileRoute("/api/voice/chat")({
           ];
 
           const result = await executeInference(messages, body.query);
+
+          // Asynchronously persist timeline messages for audit & retention
+          if (body.callSessionId) {
+            Promise.all([
+              insforgeServer.database.from("messages").insert({
+                call_session_id: body.callSessionId,
+                role: "user",
+                content: body.query,
+              }),
+              insforgeServer.database.from("messages").insert({
+                call_session_id: body.callSessionId,
+                role: "assistant",
+                content: result.reply,
+              }),
+            ]).catch((mErr) => console.warn("Notice persisting call messages:", mErr?.message));
+          }
+
           return json({
             reply: result.reply,
             agentName,

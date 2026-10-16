@@ -227,9 +227,10 @@ function VoiceCallPage() {
     token: string;
     livekitUrl: string;
     roomName: string;
+    callSessionId?: string | undefined;
     greeting?: string;
     agentConfig?: any;
-    customer: { id: string; name: string; customerNumber: string; tenantId?: string };
+    customer: { id: string | null; name: string; customerNumber: string | null; tenantId?: string; isVerified?: boolean };
   } | null>(null);
 
   const [connecting, setConnecting] = useState(false);
@@ -296,9 +297,20 @@ function VoiceCallPage() {
     PhoneAudioFX.playEndCall();
     if (stats) {
       setCallEndedStats(stats);
+      if (session?.callSessionId) {
+        fetch("/api/voice/end", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callSessionId: session.callSessionId,
+            durationSeconds: stats.duration,
+            turnsCount: stats.turns,
+          }),
+        }).catch((e) => console.warn("Call end sync notice:", e));
+      }
     }
     setSession(null);
-  }, []);
+  }, [session]);
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-slate-950 p-2 sm:p-4 text-slate-100 antialiased overflow-hidden selection:bg-cyan-500/30">
@@ -374,6 +386,7 @@ function VoiceCallPage() {
             className="w-full h-full flex flex-col"
           >
             <ActivePhoneCallScreen
+              callSessionId={session.callSessionId}
               customerName={session.customer.name}
               customerId={session.customer.id}
               tenantId={(session.customer as any).tenantId}
@@ -499,6 +512,7 @@ function PreCallDialerScreen({
    2. ACTIVE PHONE CALL SCREEN
    ========================================================================= */
 function ActivePhoneCallScreen({
+  callSessionId,
   customerName,
   customerId,
   tenantId,
@@ -506,10 +520,11 @@ function ActivePhoneCallScreen({
   initialGreeting,
   onEnd,
 }: {
+  callSessionId?: string | undefined;
   customerName: string;
-  customerId?: string;
+  customerId?: string | null;
   tenantId?: string;
-  customerNumber: string;
+  customerNumber?: string | null;
   initialGreeting?: string;
   onEnd: (stats?: { duration: number; turns: number }) => void;
 }) {
@@ -678,6 +693,7 @@ function ActivePhoneCallScreen({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             query: promptText,
+            callSessionId,
             tenantId,
             customerId,
             customerName,
@@ -826,7 +842,7 @@ function ActivePhoneCallScreen({
             SaveCall AI Assistant
           </h2>
           <p className="text-[11px] text-slate-400">
-            {customerName} • {customerNumber}
+            {customerName} • {customerNumber || "Guest Caller"}
           </p>
         </div>
 

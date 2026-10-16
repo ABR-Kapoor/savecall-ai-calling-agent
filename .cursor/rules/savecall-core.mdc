@@ -1,0 +1,12 @@
+---
+description: Core product, security, and implementation rules for SaveCall
+alwaysApply: true
+---
+
+Follow root `AGENTS.md` as the primary source of coding instructions. Read relevant `docs/` before implementing a task.
+
+SaveCall is a multi-tenant AI Voice Employee platform. Preserve the existing React/TanStack Start/TypeScript/InsForge/Clerk/LiveKit/Groq/Ollama stack unless source evidence justifies a reviewed migration. Inspect code before edits; README text is not proof of implementation.
+
+Security is mandatory: derive identity/tenant from verified server context; scope every query; enforce RLS and server-side authorization; never fall back to the first tenant or latest customer; never create fake production customers/policies/claims/bookings; reject caller-supplied system messages; verify external webhook signatures; keep secrets server-side. Consequential tools require typed validation, authorization, required confirmation, idempotency, execution, and source-of-truth verification. The LLM cannot directly execute SQL or arbitrary HTTP calls.
+
+Work in small phases. Add regression tests. Run the checks actually present in package scripts. Do not claim a test passed unless it did. Do not claim sub-250ms latency, production readiness, telephony completeness, security compliance, or successful business actions without evidence. Update docs to match verified behavior.

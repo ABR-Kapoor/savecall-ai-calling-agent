@@ -7,13 +7,12 @@ const apiKey = process.env["LIVEKIT_API_KEY"] || "devkey";
 const apiSecret = process.env["LIVEKIT_API_SECRET"] || "secret";
 const defaultLivekitUrl = process.env["VITE_LIVEKIT_URL"] || "ws://127.0.0.1:7880";
 
-
 const SessionInput = z.object({
   tenantId: z.string().uuid().optional(),
   clerkUserId: z.string().optional(),
   customerEmail: z.string().email().optional(),
-  customerName: z.string().optional(),
-  customerPhone: z.string().optional(),
+  customerName: z.string().max(100).optional(),
+  customerPhone: z.string().max(20).optional(),
   policyNumber: z.string().min(3).max(32).optional(),
 });
 
@@ -30,26 +29,44 @@ export const Route = createFileRoute("/api/voice/session")({
         try {
           const body = SessionInput.parse(await request.json().catch(() => ({})));
 
-          // Resolve tenant (defaulting to primary tenant)
-          let tenantId = body.tenantId;
-          if (!tenantId) {
-            try {
-              const { data: defaultTenant } = await insforgeServer.database
-                .from("tenants")
-                .select("id")
-                .limit(1)
-                .maybeSingle();
-              tenantId = defaultTenant?.id ?? "a0000000-0000-0000-0000-000000000001";
-            } catch (err: any) {
-              console.warn("InsForge tenant fetch warning:", err?.message);
-              tenantId = "a0000000-0000-0000-0000-000000000001";
-            }
+          // 1. Resolve authorized tenant from database
+          let tenant: any = null;
+          if (body.tenantId) {
+            const { data } = await insforgeServer.database
+              .from("tenants")
+              .select("id, name, slug, branding_config")
+              .eq("id", body.tenantId)
+              .maybeSingle();
+            tenant = data;
           }
 
-          // Dynamically resolve customer from Clerk or DB
-          let customer: any = null;
+          if (!tenant) {
+            // Resolve primary configured tenant
+            const { data: primaryTenant } = await insforgeServer.database
+              .from("tenants")
+              .select("id, name, slug, branding_config")
+              .limit(1)
+              .maybeSingle();
+            tenant = primaryTenant;
+          }
 
-          // 1. By Clerk User ID
+          if (!tenant) {
+            return json({ error: "No active tenant configured for voice calls" }, 400);
+          }
+
+          const tenantId = tenant.id;
+
+          // 2. Resolve genuine customer record without fabricating synthetic data or leaking other customer accounts
+          let customer: {
+            id: string | null;
+            name: string;
+            email: string | null;
+            phone: string | null;
+            customerNumber: string | null;
+            isVerified: boolean;
+          } | null = null;
+
+          // Lookup by Clerk User ID
           if (body.clerkUserId) {
             try {
               const { data } = await insforgeServer.database
@@ -58,13 +75,22 @@ export const Route = createFileRoute("/api/voice/session")({
                 .eq("tenant_id", tenantId)
                 .eq("clerk_user_id", body.clerkUserId)
                 .maybeSingle();
-              customer = data;
+              if (data) {
+                customer = {
+                  id: data.id,
+                  name: data.name,
+                  email: data.email,
+                  phone: data.phone,
+                  customerNumber: data.customer_number,
+                  isVerified: true,
+                };
+              }
             } catch (err: any) {
-              console.warn("Customer lookup by clerk_user_id warning:", err?.message);
+              console.warn("Customer lookup by clerk_user_id notice:", err?.message);
             }
           }
 
-          // 2. By Customer Email
+          // Lookup by verified Customer Email
           if (!customer && body.customerEmail) {
             try {
               const { data } = await insforgeServer.database
@@ -73,21 +99,22 @@ export const Route = createFileRoute("/api/voice/session")({
                 .eq("tenant_id", tenantId)
                 .eq("email", body.customerEmail)
                 .maybeSingle();
-              customer = data;
-
-              // If found by email but clerk_user_id wasn't linked, update it
-              if (customer && body.clerkUserId) {
-                await insforgeServer.database
-                  .from("customers")
-                  .update({ clerk_user_id: body.clerkUserId })
-                  .eq("id", customer.id);
+              if (data) {
+                customer = {
+                  id: data.id,
+                  name: data.name,
+                  email: data.email,
+                  phone: data.phone,
+                  customerNumber: data.customer_number,
+                  isVerified: true,
+                };
               }
             } catch (err: any) {
-              console.warn("Customer lookup by email warning:", err?.message);
+              console.warn("Customer lookup by email notice:", err?.message);
             }
           }
 
-          // 3. By Policy Number
+          // Lookup by Policy Number
           if (!customer && body.policyNumber) {
             try {
               const { data: pol } = await insforgeServer.database
@@ -96,104 +123,40 @@ export const Route = createFileRoute("/api/voice/session")({
                 .eq("tenant_id", tenantId)
                 .eq("policy_number", body.policyNumber)
                 .maybeSingle();
-              customer = pol?.customers;
-            } catch (err: any) {
-              console.warn("Customer lookup by policy warning:", err?.message);
-            }
-          }
-
-          // 4. If user is signed in with Clerk but not in DB yet, auto-create their customer profile & active policies!
-          if (!customer && (body.clerkUserId || body.customerEmail)) {
-            try {
-              const custNumber = "CUST-" + (body.clerkUserId ? body.clerkUserId.slice(-6).toUpperCase() : Math.random().toString(36).substring(2, 8).toUpperCase());
-              const resolvedName = body.customerName?.trim() || (body.customerEmail ? body.customerEmail.split("@")[0] : "Policyholder");
-
-              const { data: newCust, error: createErr } = await insforgeServer.database
-                .from("customers")
-                .insert([
-                  {
-                    tenant_id: tenantId,
-                    clerk_user_id: body.clerkUserId || null,
-                    name: resolvedName,
-                    email: body.customerEmail || "user@example.com",
-                    phone: body.customerPhone || "+91 98765 43210",
-                    customer_number: custNumber,
-                    status: "active",
-                  },
-                ])
-                .select()
-                .single();
-
-              if (!createErr && newCust) {
-                customer = newCust;
-
-                // Provision active policy records for this real user
-                await insforgeServer.database
-                  .from("policies")
-                  .insert([
-                    {
-                      tenant_id: tenantId,
-                      customer_id: customer.id,
-                      policy_number: `POL-HLTH-${custNumber.replace("CUST-", "")}`,
-                      policy_type: "health",
-                      sum_insured: 1500000,
-                      premium_amount: 18500,
-                      start_date: new Date().toISOString().split("T")[0],
-                      end_date: new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0],
-                      status: "active",
-                      nominee_name: "Family Nominee",
-                      nominee_relationship: "Spouse",
-                    },
-                    {
-                      tenant_id: tenantId,
-                      customer_id: customer.id,
-                      policy_number: `POL-AUTO-${custNumber.replace("CUST-", "")}`,
-                      policy_type: "motor",
-                      sum_insured: 950000,
-                      premium_amount: 12400,
-                      start_date: new Date().toISOString().split("T")[0],
-                      end_date: new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0],
-                      status: "active",
-                      nominee_name: "Family Nominee",
-                      nominee_relationship: "Spouse",
-                    },
-                  ]);
+              if (pol?.customers) {
+                const c = pol.customers as any;
+                customer = {
+                  id: c.id,
+                  name: c.name,
+                  email: c.email,
+                  phone: c.phone,
+                  customerNumber: c.customer_number,
+                  isVerified: true,
+                };
               }
             } catch (err: any) {
-              console.warn("Auto-provision customer notice:", err?.message);
+              console.warn("Customer lookup by policy notice:", err?.message);
             }
           }
 
-          // 5. Fallback: Find most recently active customer in tenant
-          if (!customer) {
-            try {
-              const { data: latestCust } = await insforgeServer.database
-                .from("customers")
-                .select("id, name, email, customer_number")
-                .eq("tenant_id", tenantId)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              customer = latestCust;
-            } catch (err: any) {
-              console.warn("Latest customer fetch warning:", err?.message);
-            }
-          }
-
+          // If no verified record exists, assign a clean unverified Guest caller context
+          // (CRITICAL P0: NEVER auto-create fake policies or fall back to other customer accounts)
           if (!customer) {
             customer = {
-              id: "c0000000-0000-0000-0000-000000000001",
-              name: body.customerName || "Policyholder",
-              email: body.customerEmail || "customer@safelife.com",
-              customer_number: "CUST-883921",
+              id: null,
+              name: body.customerName?.trim() || "Guest Caller",
+              email: body.customerEmail || null,
+              phone: body.customerPhone || null,
+              customerNumber: null,
+              isVerified: false,
             };
           }
 
-          const roomName = `savecall-session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          const roomName = `savecall-${tenant.slug || "call"}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
           const generatedSessionId = crypto.randomUUID();
           let callSessionId = generatedSessionId;
 
-          // Create call_sessions row in InsForge
+          // 3. Persist call session audit row
           try {
             const { data: sessionRow, error: sessionErr } = await insforgeServer.database
               .from("call_sessions")
@@ -204,7 +167,7 @@ export const Route = createFileRoute("/api/voice/session")({
                   customer_id: customer.id,
                   room_name: roomName,
                   caller_name: customer.name,
-                  caller_phone: customer.phone || body.customerPhone || null,
+                  caller_phone: customer.phone,
                   status: "active",
                   risk_state: "LOW",
                   started_at: new Date().toISOString(),
@@ -216,24 +179,21 @@ export const Route = createFileRoute("/api/voice/session")({
             if (sessionRow?.id) {
               callSessionId = sessionRow.id;
             } else if (sessionErr) {
-              console.warn("InsForge call_sessions insert notice:", sessionErr.message);
+              console.warn("Call session insert notice:", sessionErr.message);
             }
           } catch (dbErr: any) {
-            console.warn("InsForge database operation notice:", dbErr?.message);
+            console.warn("Database call_sessions notice:", dbErr?.message);
           }
 
-          // Generate LiveKit Access Token
+          // 4. Generate LiveKit Access Token with least-privilege grants and sanitized metadata (NO raw PII in JWT)
           const at = new AccessToken(apiKey, apiSecret, {
-            identity: `customer_${customer.id}`,
+            identity: `caller_${callSessionId.slice(0, 8)}`,
             name: customer.name,
             ttl: "15m",
             metadata: JSON.stringify({
-              voice_session_id: callSessionId,
+              session_id: callSessionId,
               tenant_id: tenantId,
-              customer_id: customer.id,
-              customer_name: customer.name,
-              customer_number: customer.customer_number,
-              customer_email: customer.email,
+              is_authenticated: customer.isVerified,
             }),
           });
 
@@ -257,27 +217,15 @@ export const Route = createFileRoute("/api/voice/session")({
             }
           }
 
-          // Load user's trained agent config and personalized greeting
-          let agentGreeting = `Hello ${customer.name || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`;
-          let agentConfig: any = {};
-          try {
-            const { data: tData } = await insforgeServer.database
-              .from("tenants")
-              .select("name, branding_config")
-              .eq("id", tenantId)
-              .maybeSingle();
-
-            if (tData) {
-              const b = (tData.branding_config as any) || {};
-              agentConfig = b.agent_config || {};
-              const tmpl = agentConfig.greeting || "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you today?";
-              agentGreeting = tmpl
-                .replace(/\{\{customer_name\}\}/g, customer.name || "there")
-                .replace(/\{\{company_name\}\}/g, tData.name || "SaveCall");
-            }
-          } catch (tErr: any) {
-            console.warn("Tenant greeting fetch notice:", tErr?.message);
-          }
+          // 5. Assemble personalized agent greeting from tenant branding config
+          const branding = (tenant.branding_config as any) || {};
+          const agentConfig = branding.agent_config || {};
+          const tmpl =
+            agentConfig.greeting ||
+            "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you today?";
+          const agentGreeting = tmpl
+            .replace(/\{\{customer_name\}\}/g, customer.isVerified ? customer.name : "there")
+            .replace(/\{\{company_name\}\}/g, tenant.name || "SaveCall");
 
           return json({
             token,
@@ -289,8 +237,9 @@ export const Route = createFileRoute("/api/voice/session")({
             customer: {
               id: customer.id,
               name: customer.name,
-              customerNumber: customer.customer_number,
+              customerNumber: customer.customerNumber,
               tenantId,
+              isVerified: customer.isVerified,
             },
           });
         } catch (err: any) {

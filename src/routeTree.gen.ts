@@ -24,6 +24,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedTrainRouteImport } from './routes/_authenticated/train'
 import { Route as ApiAgentToolsRouteImport } from './routes/api/agent/tools'
 import { Route as ApiVoiceChatRouteImport } from './routes/api/voice/chat'
+import { Route as ApiVoiceEndRouteImport } from './routes/api/voice/end'
 import { Route as ApiVoiceSessionRouteImport } from './routes/api/voice/session'
 
 const IndexRoute = IndexRouteImport.update({
@@ -101,6 +102,11 @@ const ApiVoiceChatRoute = ApiVoiceChatRouteImport.update({
   path: '/api/voice/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVoiceEndRoute = ApiVoiceEndRouteImport.update({
+  id: '/api/voice/end',
+  path: '/api/voice/end',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiVoiceSessionRoute = ApiVoiceSessionRouteImport.update({
   id: '/api/voice/session',
   path: '/api/voice/session',
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/train': typeof AuthenticatedTrainRoute
   '/api/agent/tools': typeof ApiAgentToolsRoute
   '/api/voice/chat': typeof ApiVoiceChatRoute
+  '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
 }
 export interface FileRoutesByTo {
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/train': typeof AuthenticatedTrainRoute
   '/api/agent/tools': typeof ApiAgentToolsRoute
   '/api/voice/chat': typeof ApiVoiceChatRoute
+  '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
 }
 export interface FileRoutesById {
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/_authenticated/train': typeof AuthenticatedTrainRoute
   '/api/agent/tools': typeof ApiAgentToolsRoute
   '/api/voice/chat': typeof ApiVoiceChatRoute
+  '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
 }
 export interface FileRouteTypes {
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/train'
     | '/api/agent/tools'
     | '/api/voice/chat'
+    | '/api/voice/end'
     | '/api/voice/session'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/train'
     | '/api/agent/tools'
     | '/api/voice/chat'
+    | '/api/voice/end'
     | '/api/voice/session'
   id:
     | '__root__'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/_authenticated/train'
     | '/api/agent/tools'
     | '/api/voice/chat'
+    | '/api/voice/end'
     | '/api/voice/session'
   fileRoutesById: FileRoutesById
 }
@@ -222,6 +234,7 @@ export interface RootRouteChildren {
   VoiceRoute: typeof VoiceRoute
   ApiAgentToolsRoute: typeof ApiAgentToolsRoute
   ApiVoiceChatRoute: typeof ApiVoiceChatRoute
+  ApiVoiceEndRoute: typeof ApiVoiceEndRoute
   ApiVoiceSessionRoute: typeof ApiVoiceSessionRoute
 }
 
@@ -332,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVoiceChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/voice/end': {
+      id: '/api/voice/end'
+      path: '/api/voice/end'
+      fullPath: '/api/voice/end'
+      preLoaderRoute: typeof ApiVoiceEndRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/voice/session': {
       id: '/api/voice/session'
       path: '/api/voice/session'
@@ -376,6 +396,7 @@ const rootRouteChildren: RootRouteChildren = {
   VoiceRoute: VoiceRoute,
   ApiAgentToolsRoute: ApiAgentToolsRoute,
   ApiVoiceChatRoute: ApiVoiceChatRoute,
+  ApiVoiceEndRoute: ApiVoiceEndRoute,
   ApiVoiceSessionRoute: ApiVoiceSessionRoute,
 }
 export const routeTree = rootRouteImport
