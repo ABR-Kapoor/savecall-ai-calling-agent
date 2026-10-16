@@ -1,0 +1,98 @@
+# ==============================================================================
+# Environment Variables & Secrets (CRITICAL: Never commit secrets)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+telephony/.env
+telephony/.env.*
+!telephony/.env.example
+agent/.env
+agent/.env.*
+!agent/.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# ==============================================================================
+# Dependencies & Package Managers
+# ==============================================================================
+node_modules/
+.pnp/
+.pnp.js
+.bun-cache/
+
+# ==============================================================================
+# Build Outputs & Framework Caches
+# ==============================================================================
+dist/
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/
+.nitro/
+.vercel/
+
+# ==============================================================================
+# Python Virtual Environments & Caches
+# ==============================================================================
+.venv/
+agent/.venv/
+venv/
+env/
+__pycache__/
+agent/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ==============================================================================
+# Cloudflare / Serverless
+# ==============================================================================
+.wrangler/
+.dev.vars
+
+# ==============================================================================
+# Logs & Scripts
+# ==============================================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+powershell.cmd
+
+# ==============================================================================
+# IDE & Operating System
+# ==============================================================================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+.insforge
+
+
+# Binaries & Executables (Prevents GitHub 50MB+ size limit warnings)
+bin/
+*.exe
+*.dll
+
+# Environment Secrets
+.env
+.env.*
+!.env.example
+telephony/.env
+telephony/.env.*
+agent/.env
+agent/.env.*
+*.pem
+*.key
+*.cert

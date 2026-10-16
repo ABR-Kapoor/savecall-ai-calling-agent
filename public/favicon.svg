@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="scGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#scGrad)" />
+  <path d="M10 8.5C9.17 8.5 8.5 9.17 8.5 10C8.5 16.35 13.65 21.5 20 21.5C20.83 21.5 21.5 20.83 21.5 20V17.89C21.5 17.39 21.19 16.94 20.73 16.77L17.73 15.65C17.22 15.46 16.64 15.65 16.35 16.1L15.39 17.28C13.29 16.17 11.83 14.71 10.72 12.61L11.9 11.65C12.35 11.36 12.54 10.78 12.35 10.27L11.23 7.27C11.06 6.81 10.61 6.5 10.11 6.5H10V8.5Z" fill="white" />
+  <path d="M18 9C19.66 9.5 21 10.84 21.5 12.5" stroke="white" stroke-width="1.8" stroke-linecap="round" />
+  <path d="M18 6C21.31 6.63 23.87 9.19 24.5 12.5" stroke="white" stroke-width="1.8" stroke-linecap="round" />
+</svg>
