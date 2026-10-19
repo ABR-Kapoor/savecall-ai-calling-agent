@@ -18,7 +18,7 @@ import { getClaimStatusPresentation } from "@/lib/insurance/status-presentation"
 
 export const Route = createFileRoute("/_authenticated/claims")({
   head: () => ({
-    meta: [{ title: "Claims Processing — SaveCall Insurance AI" }],
+    meta: [{ title: "Claims Processing: InsurCall Insurance AI" }],
   }),
   component: ClaimsPage,
 });
@@ -141,7 +141,7 @@ function ClaimsPage() {
                             <TableCell className="text-xs font-semibold font-mono text-foreground">
                               {claimAmount !== undefined && claimAmount !== null
                                 ? `₹${Number(claimAmount).toLocaleString()}`
-                                : "—"}
+                                : ": "}
                             </TableCell>
                             <TableCell className="text-xs">
                               <StatusBadge label={statusInfo.label} tone={statusInfo.tone} />

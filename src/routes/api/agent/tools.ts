@@ -4,7 +4,7 @@ import { insforgeServer } from "@/lib/insforge/client.server";
 import { evaluateToolSecurity, TOOL_POLICIES } from "@/lib/risk/risk-engine";
 import { createAndSendOtp, verifyOtpCode } from "@/lib/risk/otp.server";
 
-const internalSecret = process.env["AGENT_INTERNAL_SECRET"] || "savecall_agent_secret_2026_dev";
+const internalSecret = process.env["AGENT_INTERNAL_SECRET"] || "insurcall_agent_secret_2026_dev";
 
 const ExecuteInput = z.object({
   call_session_id: z.string().uuid(),
@@ -278,7 +278,7 @@ export const Route = createFileRoute("/api/agent/tools")({
               customer_id,
               call_session_id,
               actor_type: "ai_agent",
-              actor_id: "savecall_agent_worker",
+              actor_id: "insurcall_agent_worker",
               action: `tool:${tool_name}`,
               resource_type: "insurance_tool",
               risk_level: security.policy.riskLevel,

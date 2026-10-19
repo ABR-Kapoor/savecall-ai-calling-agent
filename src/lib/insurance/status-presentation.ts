@@ -1,5 +1,5 @@
 /**
- * Canonical status-to-tone and label mapping for SaveCall Insurance.
+ * Canonical status-to-tone and label mapping for InsurCall Insurance.
  * Maps persisted database states to accessible visual presentation.
  */
 

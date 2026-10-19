@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/change-requests")({
   head: () => ({
-    meta: [{ title: "Pending Approvals — SaveCall Insurance AI" }],
+    meta: [{ title: "Pending Approvals: InsurCall Insurance AI" }],
   }),
   component: ApprovalsPage,
 });

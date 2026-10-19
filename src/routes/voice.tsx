@@ -37,15 +37,13 @@ import { Badge } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/voice")({
   head: () => ({
-    meta: [{ title: "SaveCall: Phone Call UI" }],
+    meta: [{ title: "InsurCall: Phone Call UI" }],
   }),
   component: VoiceCallPage,
 });
 
 /* =========================================================================
    VOICE CONNECTION STATE MACHINE
-   idle -> requesting_microphone -> connecting -> connected -> listening -> processing -> speaking -> listening
-   Error / Recovery states: permission_denied, connection_failed, reconnecting, disconnected, ended
    ========================================================================= */
 export type VoiceConnectionState =
   | "idle"
@@ -164,7 +162,6 @@ interface TranscriptMessage {
   time: string;
 }
 
-// Realistic Web Audio API Sound Synthesizer for Phone Calls
 class PhoneAudioFX {
   private static ctx: AudioContext | null = null;
   private static ringInterval: ReturnType<typeof setInterval> | null = null;
@@ -387,14 +384,19 @@ function VoiceCallPage() {
         clearTimeout(sessionTimeout);
 
         if (!res.ok) {
-          throw new Error(`Failed to initialize session (${res.status}: ${res.statusText})`);
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to initialize session (${res.status})`);
         }
 
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
+        const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+        const wsProto = isHttps ? "wss:" : "ws:";
         const resolvedLivekitUrl =
-          typeof window !== "undefined" ? window.location.origin : data.livekitUrl;
+          typeof window !== "undefined"
+            ? `${wsProto}//${window.location.host}`
+            : data.livekitUrl;
 
         setSession({
           token: data.token,
@@ -464,8 +466,8 @@ function VoiceCallPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#FAF9F6] p-2 sm:p-4 text-slate-900 antialiased overflow-hidden selection:bg-[#087F8C]/20">
-      {/* Subtle Warm Theme Ambience */}
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#FAF9F6] p-2 sm:p-4 text-[#111827] antialiased overflow-hidden selection:bg-[#087F8C]/20">
+      {/* Subtle Warm Theme Background Lighting */}
       <div className="absolute top-1/4 -left-32 h-[420px] w-[420px] rounded-full bg-[#087F8C]/5 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-1/4 -right-32 h-[420px] w-[420px] rounded-full bg-[#10A6AE]/5 blur-[120px] pointer-events-none" />
 
@@ -474,21 +476,21 @@ function VoiceCallPage() {
         <button
           type="button"
           onClick={handleBack}
-          className="group flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-slate-950 transition-all py-2 px-3.5 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 shadow-sm backdrop-blur-md active:scale-95"
+          className="group flex items-center gap-1.5 text-xs font-medium text-[#344054] hover:text-[#111827] transition-all py-2 px-3.5 rounded-full bg-white/90 hover:bg-white border border-[#E4E7EC] shadow-xs backdrop-blur-md active:scale-95 cursor-pointer"
           aria-label="Go back"
         >
-          <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+          <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5 text-[#087F8C]" />
           <span>Back</span>
         </button>
       </div>
 
-      {/* SMARTPHONE DEVICE CONTAINER */}
-      <div className="w-full max-w-[390px] h-[780px] max-h-[92vh] relative z-20 flex flex-col rounded-[46px] border-[4px] border-[#1E293B]/80 bg-[#0A101D] shadow-[0_24px_50px_-12px_rgba(8,127,140,0.18)] ring-1 ring-slate-950/20 overflow-hidden text-slate-100">
-        {/* Phone Top Notch / Speaker Bar */}
+      {/* SMARTPHONE DEVICE CONTAINER (FOLLOWS CURRENT THEME) */}
+      <div className="w-full max-w-[390px] h-[780px] max-h-[92vh] relative z-20 flex flex-col rounded-[48px] border-[5px] border-[#CBD5E1] bg-white shadow-[0_28px_65px_-12px_rgba(8,127,140,0.18)] ring-1 ring-slate-200/90 overflow-hidden text-[#111827]">
+        {/* Phone Dynamic Island Top Notch */}
         <div className="absolute top-2.5 inset-x-0 flex items-center justify-center z-40 pointer-events-none">
-          <div className="flex items-center justify-between w-28 h-6 bg-black rounded-full px-2.5 border border-white/5 shadow-inner">
+          <div className="flex items-center justify-between w-28 h-6 bg-black rounded-full px-2.5 shadow-xs">
             <span className="h-2.5 w-2.5 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
-              <span className="h-1 w-1 rounded-full bg-[#10A6AE]/80" />
+              <span className="h-1 w-1 rounded-full bg-[#10A6AE]" />
             </span>
             {session ? (
               <span className="flex items-center gap-1">
@@ -567,7 +569,7 @@ function VoiceCallPage() {
 
         {/* Phone Bottom Home Indicator Bar */}
         <div className="absolute bottom-1.5 inset-x-0 flex justify-center pointer-events-none z-40">
-          <div className="w-32 h-1 bg-slate-700/60 rounded-full" />
+          <div className="w-32 h-1 bg-slate-300 rounded-full" />
         </div>
       </div>
     </div>
@@ -575,7 +577,7 @@ function VoiceCallPage() {
 }
 
 /* =========================================================================
-   1. PRE-CALL / DIALER SCREEN
+   1. PRE-CALL / DIALER SCREEN (THEME ALIGNED)
    ========================================================================= */
 function PreCallDialerScreen({
   connectionState,
@@ -591,60 +593,58 @@ function PreCallDialerScreen({
   onContinueWithoutMic: () => void;
 }) {
   return (
-    <div className="flex-1 flex flex-col justify-between p-6 pt-11 pb-7 text-center bg-gradient-to-b from-[#0F172A] via-[#0A101D] to-[#0A101D]">
-      {/* Status Bar */}
-      <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
-        <span className="font-semibold text-slate-300 tracking-tight">InsurCall</span>
-        <div className="flex items-center gap-1.5 text-slate-400">
+    <div className="flex-1 flex flex-col justify-between p-6 pt-11 pb-7 text-center bg-gradient-to-b from-[#F2F8F8] via-[#FAF9F6] to-[#FAF9F6] text-[#111827]">
+      {/* Top Status Bar */}
+      <div className="flex items-center justify-between text-[11px] text-[#344054] px-1 pt-1 font-medium">
+        <span className="font-bold text-[#111827] tracking-tight">InsurCall</span>
+        <div className="flex items-center gap-1.5 text-[#667085]">
           <Wifi className="h-3 w-3" />
-          <Battery className="h-3.5 w-3.5 text-emerald-400" />
+          <Battery className="h-3.5 w-3.5 text-emerald-600" />
         </div>
       </div>
 
-      {/* Main Calling Contact Info */}
-      <div className="flex flex-col items-center my-auto space-y-4">
-        {/* Assistant Avatar with Brand Teal Pulse */}
-        <div className="relative my-2 flex items-center justify-center">
-          <div className="absolute -inset-4 rounded-full bg-[#087F8C]/20 blur-xl animate-pulse" />
-          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-b from-[#087F8C]/20 to-[#0A101D] border-2 border-[#087F8C]/50 shadow-[0_0_30px_rgba(8,127,140,0.25)] p-4">
+      {/* Main Calling Contact Info: Single Official Logo / Emblem */}
+      <div className="flex flex-col items-center my-auto space-y-3.5">
+        {/* Assistant Avatar with Brand Pulse */}
+        <div className="relative my-1 flex items-center justify-center">
+          <div className="absolute -inset-3 rounded-full bg-[#087F8C]/15 blur-lg animate-pulse" />
+          <div className="relative flex h-22 w-22 items-center justify-center rounded-full bg-white border-2 border-[#087F8C]/30 shadow-md p-3.5">
             <img
               src="/01_logo_only_transparent.png"
-              alt="InsurCall Assistant"
-              className="h-full w-full object-contain drop-shadow-[0_0_12px_rgba(8,127,140,0.5)]"
+              alt="InsurCall Assistant Emblem"
+              className="h-full w-full object-contain"
             />
           </div>
         </div>
 
         <div className="space-y-1 flex flex-col items-center">
-          <img
-            src="/04_logo_with_InsurCall_dark_transparent.png"
-            alt="InsurCall"
-            className="h-8 w-auto object-contain"
-          />
-          <p className="text-xs font-semibold text-[#10A6AE] tracking-wide">
+          <h1 className="text-xl font-bold font-display text-[#111827] tracking-tight">
+            Insur<span className="text-[#087F8C]">Call</span>
+          </h1>
+          <p className="text-xs font-semibold text-[#087F8C] tracking-wide">
             SafeLife 24/7 AI Voice Line
           </p>
-          <p className="text-[11px] text-slate-400 max-w-[270px] mx-auto pt-0.5 leading-relaxed">
+          <p className="text-[11px] text-[#667085] max-w-[270px] mx-auto pt-0.5 leading-relaxed">
             Policyholder voice assistant for benefits, claim status, and nominee service.
           </p>
         </div>
 
         {/* Dynamic Diagnostics or Feature Highlights */}
         {connectionState === "permission_denied" ? (
-          <div className="w-full rounded-2xl border border-rose-500/40 bg-rose-950/25 p-3.5 text-left text-xs space-y-2">
-            <div className="flex items-center gap-2 text-rose-400 font-semibold text-[11px]">
-              <MicOff className="h-4 w-4 shrink-0 text-rose-400" />
+          <div className="w-full rounded-2xl border border-rose-200 bg-rose-50/90 p-4 text-left text-xs space-y-2 shadow-2xs">
+            <div className="flex items-center gap-2 text-rose-800 font-semibold text-[11px]">
+              <MicOff className="h-4 w-4 shrink-0 text-rose-600" />
               <span>Microphone Access Required</span>
             </div>
-            <p className="text-[11px] text-rose-200/90 leading-relaxed">
+            <p className="text-[11px] text-rose-700 leading-relaxed">
               {error ||
-                "SaveCall needs microphone access so the assistant can hear you. Enable microphone permissions or continue in text mode."}
+                "InsurCall needs microphone access so the assistant can hear you. Enable permissions in your browser or continue in text mode."}
             </p>
             <div className="pt-1 flex flex-col gap-1.5">
               <Button
                 onClick={onRetry}
                 size="sm"
-                className="w-full h-8 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl"
+                className="w-full h-8.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl"
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
                 Grant Microphone & Retry
@@ -652,26 +652,26 @@ function PreCallDialerScreen({
               <button
                 type="button"
                 onClick={onContinueWithoutMic}
-                className="w-full py-1 text-[11px] text-slate-300 hover:text-white font-medium underline-offset-2 hover:underline transition-colors text-center"
+                className="w-full py-1 text-[11px] text-[#344054] hover:text-[#111827] font-semibold underline-offset-2 hover:underline transition-colors text-center"
               >
                 Continue without Mic (Type & Listen)
               </button>
             </div>
           </div>
         ) : connectionState === "connection_failed" ? (
-          <div className="w-full rounded-2xl border border-amber-500/40 bg-amber-950/25 p-3.5 text-left text-xs space-y-2">
-            <div className="flex items-center gap-2 text-amber-400 font-semibold text-[11px]">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          <div className="w-full rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-left text-xs space-y-2 shadow-2xs">
+            <div className="flex items-center gap-2 text-amber-800 font-semibold text-[11px]">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
               <span>Connection Notice</span>
             </div>
-            <p className="text-[11px] text-amber-200/90 leading-relaxed">
+            <p className="text-[11px] text-amber-700 leading-relaxed">
               {error || "Unable to establish voice connection. Please check your network and try again."}
             </p>
             <div className="pt-1">
               <Button
                 onClick={onRetry}
                 size="sm"
-                className="w-full h-8 bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-semibold rounded-xl"
+                className="w-full h-8.5 bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-semibold rounded-xl"
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
                 Retry Connection
@@ -679,22 +679,22 @@ function PreCallDialerScreen({
             </div>
           </div>
         ) : (
-          <div className="w-full rounded-2xl border border-slate-800/80 bg-slate-900/50 p-3.5 text-left text-xs space-y-2">
-            <div className="flex items-center gap-2 text-[#10A6AE] font-semibold text-[11px]">
+          <div className="w-full rounded-2xl border border-[#E4E7EC] bg-white p-4 text-left text-xs space-y-2 shadow-xs">
+            <div className="flex items-center gap-2 text-[#087F8C] font-semibold text-[11px]">
               <ShieldCheck className="h-3.5 w-3.5" />
               Verified Policy Assistant
             </div>
-            <div className="space-y-1.5 text-[11px] text-slate-400">
+            <div className="space-y-1.5 text-[11px] text-[#344054]">
               <div className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span>Instant Policy Benefit & Expiry Lookup</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span>Real-Time Claim Status & Payout Updates</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#10A6AE]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[#087F8C]" />
                 <span>Nominee Updates with OTP Safeguards</span>
               </div>
             </div>
@@ -705,9 +705,9 @@ function PreCallDialerScreen({
       {/* Start Phone Call Action */}
       <div className="space-y-2.5 pt-2">
         <Button
-          onClick={onStartCall}
+          onClick={connectionState === "permission_denied" ? onContinueWithoutMic : onStartCall}
           disabled={connectionState === "requesting_microphone" || connectionState === "connecting"}
-          className="w-full h-13 rounded-2xl bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold text-sm shadow-lg shadow-[#087F8C]/25 transition-all active:scale-[0.98]"
+          className="w-full h-13 rounded-2xl bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold text-sm shadow-md shadow-[#087F8C]/20 transition-all active:scale-[0.98] cursor-pointer"
         >
           {connectionState === "requesting_microphone" ? (
             <span className="flex items-center gap-2">
@@ -719,6 +719,11 @@ function PreCallDialerScreen({
               <Loader2 className="h-4.5 w-4.5 animate-spin text-white" />
               Connecting to Assistant...
             </span>
+          ) : connectionState === "permission_denied" ? (
+            <span className="flex items-center gap-2">
+              <Volume2 className="h-4.5 w-4.5 text-white" />
+              Start in Listen & Type Mode
+            </span>
           ) : (
             <span className="flex items-center gap-2">
               <Phone className="h-4.5 w-4.5 fill-white" />
@@ -726,11 +731,13 @@ function PreCallDialerScreen({
             </span>
           )}
         </Button>
-        <p className="text-[10px] text-slate-400">
+        <p className="text-[10px] text-[#667085] font-medium">
           {connectionState === "requesting_microphone"
             ? "Click 'Allow' on the browser microphone prompt"
             : connectionState === "connecting"
             ? "Connecting to secure voice line..."
+            : connectionState === "permission_denied"
+            ? "No microphone required • Listen & Type enabled"
             : "Secure Voice Line • English & Hindi"}
         </p>
       </div>
@@ -739,7 +746,7 @@ function PreCallDialerScreen({
 }
 
 /* =========================================================================
-   2. ACTIVE PHONE CALL SCREEN
+   2. ACTIVE PHONE CALL SCREEN (THEME ALIGNED)
    ========================================================================= */
 function ActivePhoneCallScreen({
   connectionState,
@@ -784,7 +791,7 @@ function ActivePhoneCallScreen({
       role: "agent",
       text:
         initialGreeting ||
-        `Hello ${customerName || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`,
+        `Hello ${customerName || "there"}! Welcome to InsurCall insurance assistance. How may I help you today?`,
       time: "00:00",
     },
   ]);
@@ -926,12 +933,27 @@ function ActivePhoneCallScreen({
     });
   }, [isSpeakerMuted]);
 
+  // Watchdog fallback: auto-promote to connected state within 1.2s so greeting speaks immediately
+  useEffect(() => {
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    if (connectionState === "connecting") {
+      fallbackTimer = setTimeout(() => {
+        PhoneAudioFX.stopRinging();
+        PhoneAudioFX.playConnected();
+        setConnectionState("connected");
+      }, 1200);
+    }
+    return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+  }, [connectionState, setConnectionState]);
+
   useEffect(() => {
     if (connectionState !== "connected") return;
     PhoneAudioFX.stopRinging();
     const greeting =
       initialGreeting ||
-      `Hello ${customerName || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`;
+      `Hello ${customerName || "there"}! Welcome to InsurCall insurance assistance. How may I help you today?`;
 
     setConnectionState("speaking");
     const t = setTimeout(() => {
@@ -1110,21 +1132,21 @@ function ActivePhoneCallScreen({
   const isSpeaking = connectionState === "speaking";
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-4 pt-11 pb-5 relative overflow-hidden bg-gradient-to-b from-[#0F172A] via-[#0A101D] to-[#0A101D]">
+    <div className="flex-1 flex flex-col justify-between p-4 pt-11 pb-5 relative overflow-hidden bg-gradient-to-b from-[#F2F8F8] via-[#FAF9F6] to-[#FAF9F6] text-[#111827]">
       {/* 1. Top Status Bar */}
-      <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-0.5 border-b border-slate-800/60 pb-2">
-        <div className="flex items-center gap-1.5 font-mono text-[#10A6AE] font-semibold">
+      <div className="flex items-center justify-between text-[11px] text-[#344054] px-1 pt-0.5 border-b border-[#E4E7EC] pb-2 font-medium">
+        <div className="flex items-center gap-1.5 font-mono text-[#087F8C] font-semibold">
           <Clock className="h-3 w-3" />
           <span>{formatTimer(duration)}</span>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[10px] text-emerald-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-semibold">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             Clear Audio
           </span>
-          <Wifi className="h-3 w-3 text-slate-400" />
-          <Battery className="h-3.5 w-3.5 text-emerald-400" />
+          <Wifi className="h-3 w-3 text-[#667085]" />
+          <Battery className="h-3.5 w-3.5 text-emerald-600" />
         </div>
       </div>
 
@@ -1139,27 +1161,27 @@ function ActivePhoneCallScreen({
           )}
 
           <div
-            className={`relative flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 shadow-xl p-3.5 ${
+            className={`relative flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 shadow-md p-3.5 ${
               isSpeaking
-                ? "bg-gradient-to-b from-[#087F8C] to-[#0D9488] border-2 border-[#10A6AE] shadow-[0_0_35px_rgba(8,127,140,0.5)] scale-105"
-                : "bg-gradient-to-b from-[#087F8C]/20 to-[#0A101D] border-2 border-[#087F8C]/40 shadow-[0_0_20px_rgba(8,127,140,0.2)]"
+                ? "bg-white border-2 border-[#087F8C] shadow-[0_0_30px_rgba(8,127,140,0.35)] scale-105"
+                : "bg-white border-2 border-[#087F8C]/30 shadow-xs"
             }`}
           >
             <img
               src="/01_logo_only_transparent.png"
-              alt="InsurCall Assistant"
+              alt="InsurCall Assistant Emblem"
               className={`h-full w-full object-contain transition-transform ${
-                isSpeaking ? "scale-110 drop-shadow-[0_0_10px_rgba(255,255,255,0.9)]" : "opacity-90"
+                isSpeaking ? "scale-110" : "opacity-90"
               }`}
             />
           </div>
         </div>
 
         <div>
-          <h2 className="text-base font-bold text-white tracking-tight">
+          <h2 className="text-base font-bold text-[#111827] tracking-tight">
             InsurCall AI Assistant
           </h2>
-          <p className="text-[11px] text-slate-400 pt-0.5">
+          <p className="text-[11px] text-[#667085] pt-0.5">
             {customerName} {customerNumber ? `• ${customerNumber}` : ""}
           </p>
         </div>
@@ -1168,18 +1190,18 @@ function ActivePhoneCallScreen({
         <div className="flex items-center gap-2 pt-0.5">
           <Badge
             variant="outline"
-            className={`text-[10px] py-0.5 px-2.5 transition-all font-medium ${
+            className={`text-[10px] py-0.5 px-2.5 transition-all font-semibold ${
               connectionState === "speaking"
-                ? "border-[#10A6AE] text-[#10A6AE] bg-[#087F8C]/15"
+                ? "border-[#087F8C]/40 text-[#087F8C] bg-[#E6F6F7]"
                 : connectionState === "processing"
-                ? "border-amber-400 text-amber-300 bg-amber-500/10"
+                ? "border-amber-300 text-amber-800 bg-amber-50"
                 : connectionState === "listening"
-                ? "border-emerald-400 text-emerald-300 bg-emerald-500/15"
+                ? "border-emerald-300 text-emerald-800 bg-emerald-50"
                 : connectionState === "connected"
-                ? "border-[#087F8C]/50 text-[#10A6AE] bg-[#087F8C]/10"
+                ? "border-[#087F8C]/30 text-[#087F8C] bg-[#E6F6F7]"
                 : connectionState === "reconnecting"
-                ? "border-rose-400 text-rose-300 bg-rose-500/10"
-                : "border-slate-800 text-slate-400 bg-slate-900/60"
+                ? "border-rose-300 text-rose-800 bg-rose-50"
+                : "border-[#E4E7EC] text-[#667085] bg-white"
             }`}
           >
             {connectionState === "speaking"
@@ -1211,10 +1233,10 @@ function ActivePhoneCallScreen({
                   style={{ height }}
                   className={`w-0.5 rounded-full transition-all duration-100 ${
                     connectionState === "speaking"
-                      ? "bg-[#10A6AE] animate-pulse"
+                      ? "bg-[#087F8C] animate-pulse"
                       : micVolume > 10
-                      ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
-                      : "bg-slate-600"
+                      ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]"
+                      : "bg-slate-300"
                   }`}
                 />
               );
@@ -1223,11 +1245,11 @@ function ActivePhoneCallScreen({
         </div>
       </div>
 
-      {/* 3. Live Captions & Inline Text Chat */}
+      {/* 3. Live Captions & Inline Text Chat (Light Theme) */}
       {showTranscript && (
-        <div className="my-2 rounded-2xl border border-slate-800/80 bg-slate-900/85 backdrop-blur-md p-2.5 shadow-inner flex flex-col justify-between h-36 shrink-0 relative transition-all">
-          <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 mb-1">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-300">
+        <div className="my-2 rounded-2xl border border-[#E4E7EC] bg-white/95 shadow-xs p-2.5 flex flex-col justify-between h-36 shrink-0 relative transition-all">
+          <div className="flex items-center justify-between pb-1 border-b border-[#E4E7EC]/70 mb-1">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#344054]">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
@@ -1239,7 +1261,7 @@ function ActivePhoneCallScreen({
               <button
                 onClick={() => setIsTranscriptExpanded(true)}
                 title="Expand Transcript"
-                className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 text-[10px] flex items-center gap-0.5 transition-colors"
+                className="text-[#667085] hover:text-[#111827] p-1 rounded-md hover:bg-slate-100 text-[10px] flex items-center gap-0.5 transition-colors cursor-pointer"
               >
                 <Maximize2 className="h-3 w-3" />
                 <span className="text-[9px]">Full</span>
@@ -1247,7 +1269,7 @@ function ActivePhoneCallScreen({
               <button
                 onClick={() => setShowTranscript(false)}
                 title="Hide Captions"
-                className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 text-[10px] transition-colors"
+                className="text-[#667085] hover:text-[#111827] p-1 rounded-md hover:bg-slate-100 text-[10px] transition-colors cursor-pointer"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -1259,14 +1281,14 @@ function ActivePhoneCallScreen({
               <div
                 key={m.id}
                 className={`flex items-start gap-1.5 ${
-                  m.role === "user" ? "text-emerald-300" : "text-slate-200"
+                  m.role === "user" ? "text-emerald-900" : "text-[#111827]"
                 }`}
               >
                 <span
                   className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
                     m.role === "user"
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-[#087F8C]/20 text-[#10A6AE] border border-[#087F8C]/30"
+                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      : "bg-[#E6F6F7] text-[#087F8C] border border-[#087F8C]/30"
                   }`}
                 >
                   {m.role === "user" ? "You" : "AI"}
@@ -1279,7 +1301,7 @@ function ActivePhoneCallScreen({
 
           <form
             onSubmit={handleSendText}
-            className="mt-1 flex items-center gap-1.5 pt-1.5 border-t border-slate-800/80"
+            className="mt-1 flex items-center gap-1.5 pt-1.5 border-t border-[#E4E7EC]"
           >
             <input
               type="text"
@@ -1287,13 +1309,13 @@ function ActivePhoneCallScreen({
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Can't speak? Type message..."
               disabled={connectionState === "processing"}
-              className="flex-1 min-w-0 bg-[#0A101D] border border-slate-700/70 rounded-lg px-2.5 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-[#087F8C] transition-colors"
+              className="flex-1 min-w-0 bg-[#FAF9F6] border border-[#E4E7EC] rounded-lg px-2.5 py-1 text-[11px] text-[#111827] placeholder-[#98A2B3] focus:outline-none focus:border-[#087F8C] transition-colors"
             />
             <button
               type="submit"
               disabled={!textInput.trim() || connectionState === "processing"}
               title="Send message"
-              className="h-6 w-6 shrink-0 rounded-lg bg-[#087F8C] hover:bg-[#076C77] disabled:opacity-30 disabled:hover:bg-[#087F8C] text-white flex items-center justify-center transition-all active:scale-95 shadow-sm"
+              className="h-6 w-6 shrink-0 rounded-lg bg-[#087F8C] hover:bg-[#076C77] disabled:opacity-30 disabled:hover:bg-[#087F8C] text-white flex items-center justify-center transition-all active:scale-95 shadow-xs cursor-pointer"
             >
               <Send className="h-3 w-3" />
             </button>
@@ -1305,41 +1327,41 @@ function ActivePhoneCallScreen({
       <div className="py-1 flex items-center justify-between gap-1 overflow-x-auto no-scrollbar">
         <button
           onClick={() => sendPrompt("Check my policy details")}
-          className="text-[10px] whitespace-nowrap bg-slate-900/90 hover:bg-[#087F8C]/20 border border-slate-800 hover:border-[#087F8C]/40 text-slate-300 px-2 py-1 rounded-full transition-all active:scale-95"
+          className="text-[10px] whitespace-nowrap bg-white hover:bg-[#E6F6F7] border border-[#E4E7EC] hover:border-[#087F8C]/40 text-[#344054] hover:text-[#087F8C] px-2.5 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer"
         >
           📋 Policy Status
         </button>
         <button
           onClick={() => sendPrompt("What is the status of my claim?")}
-          className="text-[10px] whitespace-nowrap bg-slate-900/90 hover:bg-[#087F8C]/20 border border-slate-800 hover:border-[#087F8C]/40 text-slate-300 px-2 py-1 rounded-full transition-all active:scale-95"
+          className="text-[10px] whitespace-nowrap bg-white hover:bg-[#E6F6F7] border border-[#E4E7EC] hover:border-[#087F8C]/40 text-[#344054] hover:text-[#087F8C] px-2.5 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer"
         >
           🛡️ Claim Update
         </button>
         <button
           onClick={() => sendPrompt("I want to update my policy nominee")}
-          className="text-[10px] whitespace-nowrap bg-slate-900/90 hover:bg-[#087F8C]/20 border border-slate-800 hover:border-[#087F8C]/40 text-slate-300 px-2 py-1 rounded-full transition-all active:scale-95"
+          className="text-[10px] whitespace-nowrap bg-white hover:bg-[#E6F6F7] border border-[#E4E7EC] hover:border-[#087F8C]/40 text-[#344054] hover:text-[#087F8C] px-2.5 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer"
         >
           👤 Change Nominee
         </button>
       </div>
 
-      {/* 4. In-Call Keypad / Controls */}
+      {/* 4. In-Call Keypad / Controls (Light Theme) */}
       <div className="pt-2 pb-1 grid grid-cols-3 gap-y-3.5 gap-x-4 place-items-center">
         {/* Mute */}
         <button
           onClick={toggleMute}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform"
+          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
         >
           <div
             className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
               isMuted
                 ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/30 scale-105"
-                : "bg-slate-800/80 border border-slate-700/80 text-slate-200 hover:bg-slate-700/80"
+                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
             }`}
           >
             {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </div>
-          <span className="text-[10px] font-medium text-slate-300">
+          <span className="text-[10px] font-medium text-[#344054]">
             {isMuted ? "Unmute" : "Mute"}
           </span>
         </button>
@@ -1350,35 +1372,35 @@ function ActivePhoneCallScreen({
             PhoneAudioFX.playBeep(520);
             setShowKeypad(!showKeypad);
           }}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform"
+          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
         >
           <div
             className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
               showKeypad
                 ? "bg-[#087F8C] text-white shadow-md shadow-[#087F8C]/30"
-                : "bg-slate-800/80 border border-slate-700/80 text-slate-200 hover:bg-slate-700/80"
+                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
             }`}
           >
             <Grid className="h-5 w-5" />
           </div>
-          <span className="text-[10px] font-medium text-slate-300">Keypad</span>
+          <span className="text-[10px] font-medium text-[#344054]">Keypad</span>
         </button>
 
         {/* Speaker */}
         <button
           onClick={toggleSpeaker}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform"
+          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
         >
           <div
             className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
               isSpeakerMuted
-                ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
-                : "bg-slate-800/80 border border-slate-700/80 text-slate-200 hover:bg-slate-700/80"
+                ? "bg-rose-50 text-rose-700 border border-rose-200"
+                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
             }`}
           >
             {isSpeakerMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </div>
-          <span className="text-[10px] font-medium text-slate-300">
+          <span className="text-[10px] font-medium text-[#344054]">
             {isSpeakerMuted ? "Speaker Off" : "Speaker"}
           </span>
         </button>
@@ -1389,48 +1411,48 @@ function ActivePhoneCallScreen({
             PhoneAudioFX.playBeep(600);
             setShowTranscript(!showTranscript);
           }}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform"
+          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
         >
           <div
             className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
               showTranscript
-                ? "bg-slate-800/80 border border-[#087F8C]/60 text-[#10A6AE]"
-                : "bg-slate-900 border border-slate-800 text-slate-500"
+                ? "bg-[#E6F6F7] border border-[#087F8C]/50 text-[#087F8C]"
+                : "bg-white border border-[#E4E7EC] text-[#667085] hover:bg-[#FAF9F6] shadow-2xs"
             }`}
           >
             <MessageSquare className="h-5 w-5" />
           </div>
-          <span className="text-[10px] font-medium text-slate-300">
+          <span className="text-[10px] font-medium text-[#344054]">
             {showTranscript ? "Captions" : "Show Text"}
           </span>
         </button>
 
-        {/* Policyholder Details */}
+        {/* Details */}
         <button
           onClick={() => {
             PhoneAudioFX.playBeep(450);
             setShowDetails(!showDetails);
           }}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform"
+          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
         >
           <div
             className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
               showDetails
                 ? "bg-[#087F8C] text-white shadow-md shadow-[#087F8C]/30"
-                : "bg-slate-800/80 border border-slate-700/80 text-slate-200 hover:bg-slate-700/80"
+                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
             }`}
           >
             <UserCheck className="h-5 w-5" />
           </div>
-          <span className="text-[10px] font-medium text-slate-300">Details</span>
+          <span className="text-[10px] font-medium text-[#344054]">Details</span>
         </button>
 
-        {/* Security / Safe */}
+        {/* Verified Safe */}
         <div className="flex flex-col items-center gap-1">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800/80 border border-emerald-500/40 text-emerald-400">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 shadow-2xs">
             <ShieldCheck className="h-5 w-5" />
           </div>
-          <span className="text-[10px] font-medium text-emerald-400">Verified Safe</span>
+          <span className="text-[10px] font-semibold text-emerald-700">Verified Safe</span>
         </div>
       </div>
 
@@ -1443,24 +1465,24 @@ function ActivePhoneCallScreen({
               turns: messages.filter((m) => m.role === "user").length,
             });
           }}
-          className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/30 active:scale-95 transition-all"
+          className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30 active:scale-95 transition-all cursor-pointer"
         >
           <PhoneOff className="h-6 w-6 relative z-10 transition-transform group-hover:rotate-12" />
         </button>
-        <span className="text-[10px] font-medium text-slate-400 mt-1">End Call</span>
+        <span className="text-[10px] font-medium text-[#667085] mt-1">End Call</span>
       </div>
 
       {/* Full Transcript Modal */}
       {isTranscriptExpanded && (
-        <div className="absolute inset-x-2 inset-y-12 z-50 rounded-3xl border border-slate-700 bg-slate-950/95 backdrop-blur-2xl p-4 shadow-2xl flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="absolute inset-x-2 inset-y-12 z-50 rounded-3xl border border-[#E4E7EC] bg-white/98 backdrop-blur-2xl p-4 shadow-2xl flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between pb-3 border-b border-[#E4E7EC]">
             <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-[#10A6AE]" />
-              <span className="text-xs font-bold text-white">Full Call Transcript</span>
+              <MessageSquare className="h-4 w-4 text-[#087F8C]" />
+              <span className="text-xs font-bold text-[#111827]">Full Call Transcript</span>
             </div>
             <button
               onClick={() => setIsTranscriptExpanded(false)}
-              className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1 rounded-full text-[#667085] hover:text-[#111827] hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X className="h-4 w-4" />
             </button>
@@ -1475,18 +1497,18 @@ function ActivePhoneCallScreen({
                 }`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
+                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-2xs ${
                     m.role === "user"
-                      ? "bg-emerald-600/30 border border-emerald-500/40 text-emerald-100 rounded-br-none"
-                      : "bg-[#087F8C]/25 border border-[#087F8C]/40 text-cyan-100 rounded-bl-none"
+                      ? "bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-br-none"
+                      : "bg-[#E6F6F7] border border-[#087F8C]/30 text-[#111827] rounded-bl-none"
                   }`}
                 >
-                  <div className="text-[9px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider">
-                    {m.role === "user" ? "You" : "SaveCall AI"}
+                  <div className="text-[9px] font-bold text-[#667085] mb-0.5 uppercase tracking-wider">
+                    {m.role === "user" ? "You" : "InsurCall AI"}
                   </div>
                   {m.text}
                 </div>
-                <span className="text-[9px] text-slate-500 px-1 mt-0.5">{m.time}</span>
+                <span className="text-[9px] text-[#667085] px-1 mt-0.5">{m.time}</span>
               </div>
             ))}
             <div ref={fullTranscriptEndRef} />
@@ -1494,7 +1516,7 @@ function ActivePhoneCallScreen({
 
           <form
             onSubmit={handleSendText}
-            className="flex items-center gap-2 mb-3 pt-2 border-t border-slate-800"
+            className="flex items-center gap-2 mb-3 pt-2 border-t border-[#E4E7EC]"
           >
             <input
               type="text"
@@ -1502,13 +1524,13 @@ function ActivePhoneCallScreen({
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Can't use microphone? Type here..."
               disabled={connectionState === "processing"}
-              className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#087F8C] transition-colors"
+              className="flex-1 bg-[#FAF9F6] border border-[#E4E7EC] rounded-xl px-3 py-2 text-xs text-[#111827] placeholder-[#98A2B3] focus:outline-none focus:border-[#087F8C] transition-colors"
             />
             <Button
               type="submit"
               disabled={!textInput.trim() || connectionState === "processing"}
               size="sm"
-              className="bg-[#087F8C] hover:bg-[#076C77] text-white rounded-xl px-3 h-8 shadow-sm"
+              className="bg-[#087F8C] hover:bg-[#076C77] text-white rounded-xl px-3 h-8 shadow-xs cursor-pointer"
             >
               <Send className="h-3.5 w-3.5 mr-1" />
               Send
@@ -1518,7 +1540,7 @@ function ActivePhoneCallScreen({
           <Button
             onClick={() => setIsTranscriptExpanded(false)}
             variant="outline"
-            className="w-full rounded-xl border-slate-700 text-xs text-slate-300"
+            className="w-full rounded-xl border-[#E4E7EC] text-xs text-[#344054] cursor-pointer"
           >
             Close Transcript
           </Button>
@@ -1527,12 +1549,12 @@ function ActivePhoneCallScreen({
 
       {/* Keypad Drawer */}
       {showKeypad && (
-        <div className="absolute inset-x-3 bottom-24 z-40 rounded-3xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <span className="text-xs font-bold text-white">Tap to Ask Topic</span>
+        <div className="absolute inset-x-3 bottom-24 z-40 rounded-3xl border border-[#E4E7EC] bg-white/98 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E4E7EC]">
+            <span className="text-xs font-bold text-[#111827]">Tap to Ask Topic</span>
             <button
               onClick={() => setShowKeypad(false)}
-              className="text-xs text-slate-400 hover:text-white"
+              className="text-xs text-[#667085] hover:text-[#111827] cursor-pointer"
             >
               ✕
             </button>
@@ -1554,7 +1576,7 @@ function ActivePhoneCallScreen({
                   setShowKeypad(false);
                   sendPrompt(item.query);
                 }}
-                className="justify-start text-xs border-slate-800 bg-[#0A101D] hover:bg-[#087F8C]/20 hover:border-[#087F8C]/40 text-slate-200"
+                className="justify-start text-xs border-[#E4E7EC] bg-[#FAF9F6] hover:bg-[#E6F6F7] hover:border-[#087F8C]/40 text-[#344054] cursor-pointer"
               >
                 {item.label}
               </Button>
@@ -1565,34 +1587,34 @@ function ActivePhoneCallScreen({
 
       {/* Profile Details Drawer */}
       {showDetails && (
-        <div className="absolute inset-x-3 bottom-24 z-40 rounded-3xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <span className="text-xs font-bold text-white">Caller Details</span>
+        <div className="absolute inset-x-3 bottom-24 z-40 rounded-3xl border border-[#E4E7EC] bg-white/98 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E4E7EC]">
+            <span className="text-xs font-bold text-[#111827]">Caller Details</span>
             <button
               onClick={() => setShowDetails(false)}
-              className="text-xs text-slate-400 hover:text-white"
+              className="text-xs text-[#667085] hover:text-[#111827] cursor-pointer"
             >
               ✕
             </button>
           </div>
           <div className="space-y-2 pt-3 text-xs">
-            <div className="flex justify-between py-1 border-b border-slate-800/60">
-              <span className="text-slate-400">Caller Name</span>
-              <span className="text-white font-medium">{customerName}</span>
+            <div className="flex justify-between py-1 border-b border-[#E4E7EC]/70">
+              <span className="text-[#667085]">Caller Name</span>
+              <span className="text-[#111827] font-semibold">{customerName}</span>
             </div>
-            <div className="flex justify-between py-1 border-b border-slate-800/60">
-              <span className="text-slate-400">Policyholder ID</span>
-              <span className="text-[#10A6AE] font-mono">
+            <div className="flex justify-between py-1 border-b border-[#E4E7EC]/70">
+              <span className="text-[#667085]">Policyholder ID</span>
+              <span className="text-[#087F8C] font-mono font-semibold">
                 {customerNumber || "GUEST"}
               </span>
             </div>
-            <div className="flex justify-between py-1 border-b border-slate-800/60">
-              <span className="text-slate-400">Audio Line</span>
-              <span className="text-emerald-400 font-medium">Clear Audio</span>
+            <div className="flex justify-between py-1 border-b border-[#E4E7EC]/70">
+              <span className="text-[#667085]">Audio Line</span>
+              <span className="text-emerald-700 font-medium">Clear Audio</span>
             </div>
-            <div className="flex justify-between py-1 border-b border-slate-800/60">
-              <span className="text-slate-400">Security</span>
-              <span className="text-emerald-400 font-medium">Private & Encrypted</span>
+            <div className="flex justify-between py-1 border-b border-[#E4E7EC]/70">
+              <span className="text-[#667085]">Security</span>
+              <span className="text-emerald-700 font-medium">Private & Encrypted</span>
             </div>
           </div>
         </div>
@@ -1602,7 +1624,7 @@ function ActivePhoneCallScreen({
 }
 
 /* =========================================================================
-   3. CALL ENDED SUMMARY SCREEN
+   3. CALL ENDED SUMMARY SCREEN (THEME ALIGNED)
    ========================================================================= */
 function CallEndedScreen({
   stats,
@@ -1620,35 +1642,35 @@ function CallEndedScreen({
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-6 pt-12 pb-7 text-center bg-gradient-to-b from-[#0F172A] via-[#0A101D] to-[#0A101D]">
-      <div className="flex items-center justify-center text-xs text-slate-400">
+    <div className="flex-1 flex flex-col justify-between p-6 pt-12 pb-7 text-center bg-gradient-to-b from-[#F2F8F8] via-[#FAF9F6] to-[#FAF9F6] text-[#111827]">
+      <div className="flex items-center justify-center text-xs text-[#667085] font-medium">
         <span>Call Completed</span>
       </div>
 
       <div className="my-auto space-y-4">
-        <div className="mx-auto flex h-18 w-18 items-center justify-center rounded-full bg-slate-900 border border-slate-800 shadow-xl">
-          <CheckCircle2 className="h-9 w-9 text-emerald-400" />
+        <div className="mx-auto flex h-18 w-18 items-center justify-center rounded-full bg-white border border-[#E4E7EC] shadow-md">
+          <CheckCircle2 className="h-9 w-9 text-emerald-600" />
         </div>
 
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Call Summary</h2>
-          <p className="text-xs text-slate-400 pt-0.5">Thank you for speaking with SaveCall.</p>
+          <h2 className="text-lg font-bold text-[#111827] tracking-tight">Call Summary</h2>
+          <p className="text-xs text-[#667085] pt-0.5">Thank you for speaking with InsurCall.</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-2 text-xs">
-          <div className="flex justify-between py-1 border-b border-slate-800/60">
-            <span className="text-slate-400">Call Duration</span>
-            <span className="text-white font-mono font-bold">
+        <div className="rounded-2xl border border-[#E4E7EC] bg-white p-4 space-y-2 text-xs shadow-xs">
+          <div className="flex justify-between py-1 border-b border-[#E4E7EC]">
+            <span className="text-[#667085]">Call Duration</span>
+            <span className="text-[#111827] font-mono font-bold">
               {formatTimer(stats.duration)}
             </span>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-800/60">
-            <span className="text-slate-400">Turns Exchanged</span>
-            <span className="text-white font-medium">{stats.turns} conversational turns</span>
+          <div className="flex justify-between py-1 border-b border-[#E4E7EC]">
+            <span className="text-[#667085]">Turns Exchanged</span>
+            <span className="text-[#111827] font-medium">{stats.turns} conversational turns</span>
           </div>
           <div className="flex justify-between py-1">
-            <span className="text-slate-400">Call Log</span>
-            <span className="text-emerald-400 font-semibold">Saved to Call Records</span>
+            <span className="text-[#667085]">Call Log</span>
+            <span className="text-emerald-700 font-semibold">Saved to Call Records</span>
           </div>
         </div>
       </div>
@@ -1656,7 +1678,7 @@ function CallEndedScreen({
       <div className="space-y-2 pt-2">
         <Button
           onClick={onCallAgain}
-          className="w-full h-12 rounded-2xl bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold text-sm shadow-lg shadow-[#087F8C]/25"
+          className="w-full h-12 rounded-2xl bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold text-sm shadow-md shadow-[#087F8C]/20 cursor-pointer"
         >
           <RotateCcw className="h-4 w-4 mr-2" />
           Call Again
@@ -1664,7 +1686,7 @@ function CallEndedScreen({
         <Button
           onClick={onDismiss}
           variant="outline"
-          className="w-full h-12 rounded-2xl border-slate-800 text-slate-300 text-xs hover:bg-slate-900"
+          className="w-full h-12 rounded-2xl border-[#E4E7EC] bg-white text-[#344054] text-xs hover:bg-[#FAF9F6] cursor-pointer"
         >
           Return to Phone
         </Button>

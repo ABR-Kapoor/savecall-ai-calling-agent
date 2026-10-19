@@ -36,13 +36,13 @@ import { insforge as supabase } from "@/integrations/insforge/client";
 export const Route = createFileRoute("/_authenticated/agent")({
   head: () => ({
     meta: [
-      { title: "AI Employee Studio — SaveCall" },
+      { title: "AI Employee Studio: InsurCall" },
       {
         name: "description",
         content:
           "Configure your autonomous voice employee: role, voice, languages, personality, permitted skills, and deployment mode.",
       },
-      { property: "og:title", content: "AI Employee Studio — SaveCall" },
+      { property: "og:title", content: "AI Employee Studio: InsurCall" },
       {
         property: "og:description",
         content:

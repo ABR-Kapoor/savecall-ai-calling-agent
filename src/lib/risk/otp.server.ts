@@ -3,7 +3,7 @@ import { insforgeServer } from "@/lib/insforge/client.server";
 
 const resendApiKey = process.env["RESEND_API_KEY"];
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
-const senderEmail = process.env["OTP_SENDER_EMAIL"] || "verify@savecall.ai";
+const senderEmail = process.env["OTP_SENDER_EMAIL"] || "verify@insurcall.ai";
 
 function hashOtp(otp: string): string {
   // In Node/V8 environment, simple hash
@@ -57,8 +57,8 @@ export async function createAndSendOtp(params: {
       await resend.emails.send({
         from: senderEmail,
         to: customer.email,
-        subject: `Your SaveCall Verification Code: ${otp}`,
-        text: `Hello ${customer.name},\n\nYour one-time verification code for ${params.purpose.replace(/_/g, " ")} is: ${otp}\n\nThis code will expire in 5 minutes. If you did not request this, please hang up immediately.\n\nSaveCall Security Team`,
+        subject: `Your InsurCall Verification Code: ${otp}`,
+        text: `Hello ${customer.name},\n\nYour one-time verification code for ${params.purpose.replace(/_/g, " ")} is: ${otp}\n\nThis code will expire in 5 minutes. If you did not request this, please hang up immediately.\n\nInsurCall Security Team`,
       });
     } catch (mailErr) {
       console.error("Resend OTP delivery failed:", mailErr);

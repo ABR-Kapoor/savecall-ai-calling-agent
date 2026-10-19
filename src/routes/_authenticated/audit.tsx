@@ -12,7 +12,7 @@ import { getAuditLogs } from "@/lib/insurance.functions";
 
 export const Route = createFileRoute("/_authenticated/audit")({
   head: () => ({
-    meta: [{ title: "Audit Trail — SaveCall Insurance AI" }],
+    meta: [{ title: "Audit Trail: InsurCall Insurance AI" }],
   }),
   component: AuditLogsPage,
 });

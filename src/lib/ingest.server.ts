@@ -1,7 +1,7 @@
 /* eslint-disable no-misleading-character-class -- Devanagari ranges below intentionally
    include combining marks; matching them is the whole point of Hindi detection. */
 /**
- * In-house document ingestion for the training portal — no third-party
+ * In-house document ingestion for the training portal: no third-party
  * crawler, no external AI. What leaves this file is: polite HTTP fetches that
  * honour robots.txt, HTML/PDF text extraction, and small "fact" chunks ready
  * for the owner's human review. Nothing reaches the agent's prompt until an
@@ -90,7 +90,7 @@ function decodeEntities(text: string): string {
         quot: '"',
         apos: "'",
         ndash: "–",
-        mdash: "—",
+        mdash: ": ",
         hellip: "…",
         rsquo: "’",
         lsquo: "‘",
@@ -159,7 +159,7 @@ function scoreFact(sentence: string): number {
   let score = 0;
   if (VALUABLE.test(sentence)) score += 2;
   if (/\d/.test(sentence)) score += 1;
-  if (/[:：–—-]/.test(sentence)) score += 1;
+  if (/[:：–: -]/.test(sentence)) score += 1;
   if (sentence.length >= 40 && sentence.length <= 200) score += 1;
   return score;
 }
@@ -193,7 +193,7 @@ export function extractFacts(text: string, pageTitle: string | null, limit = 30)
     if (seen.has(key)) continue;
     seen.add(key);
     facts.push({
-      question: `${pageTitle ? `${pageTitle.slice(0, 40)} — ` : ""}"${sentence.length > 52 ? `${sentence.slice(0, 49)}...` : sentence}"`,
+      question: `${pageTitle ? `${pageTitle.slice(0, 40)}: ` : ""}"${sentence.length > 52 ? `${sentence.slice(0, 49)}...` : sentence}"`,
       answer: sentence,
       category: "website",
     });
@@ -289,7 +289,7 @@ export async function scrapeUrl(startUrl: string): Promise<ScrapeResult> {
 
 export type PdfResult = { pages: number; facts: ExtractedFact[] };
 
-/** Extract text with the bundled unpdf — fully offline. */
+/** Extract text with the bundled unpdf: fully offline. */
 export async function factsFromPdf(bytes: Uint8Array, fileName: string | null): Promise<PdfResult> {
   const { extractText, getDocumentProxy } = await import("unpdf");
   const doc = await getDocumentProxy(bytes);

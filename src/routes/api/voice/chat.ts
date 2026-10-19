@@ -184,15 +184,15 @@ async function buildTrainedSystemPrompt(
     }
   }
 
-  const companyName = tenant?.name || "SaveCall AI";
+  const companyName = tenant?.name || "InsurCall AI";
   const branding = (tenant?.branding_config as any) || {};
   const agentCfg = branding.agent_config || {};
 
-  const agentName = agentCfg.agent_name || "SaveCall AI Assistant";
+  const agentName = agentCfg.agent_name || "InsurCall AI Assistant";
   const tone = agentCfg.tone || "Professional, empathetic, and ultra-responsive";
   const language = agentCfg.language || "English, Hindi, and Hinglish";
   const voiceId = agentCfg.voice_id || "en-IN-NeerjaNeural";
-  const userInstructions = agentCfg.system_prompt || "You are SaveCall AI, a trusted voice assistant for policyholders.";
+  const userInstructions = agentCfg.system_prompt || "You are InsurCall AI, a trusted voice assistant for policyholders.";
   const knowledgeBase =
     agentCfg.knowledge_base ||
     `COMPANY: ${companyName}\nPOLICY COVERAGES:\n1. Comprehensive customer support and claims guidance.\n2. Sensitive changes (phone/email/nominee) require OTP verification.`;

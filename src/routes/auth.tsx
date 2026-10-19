@@ -5,9 +5,9 @@ import { ArrowLeft, Lock } from "lucide-react";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign In — SaveCall AI Receptionist" },
+      { title: "Sign In: InsurCall AI Receptionist" },
       { name: "description", content: "Access your AI receptionist dashboard." },
-      { property: "og:title", content: "Sign in — SaveCall" },
+      { property: "og:title", content: "Sign in: InsurCall" },
       { property: "og:description", content: "Access your AI receptionist dashboard." },
     ],
   }),

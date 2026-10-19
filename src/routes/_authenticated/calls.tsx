@@ -16,7 +16,7 @@ import { getCallStatusPresentation } from "@/lib/insurance/status-presentation";
 
 export const Route = createFileRoute("/_authenticated/calls")({
   head: () => ({
-    meta: [{ title: "Voice Sessions — SaveCall Insurance AI" }],
+    meta: [{ title: "Voice Sessions: InsurCall Insurance AI" }],
   }),
   component: VoiceSessionsPage,
 });

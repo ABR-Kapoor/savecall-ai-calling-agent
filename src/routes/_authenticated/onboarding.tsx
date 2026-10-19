@@ -28,7 +28,7 @@ import { getTenantSettings, updateTenantSettings } from "@/lib/insurance.functio
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   head: () => ({
-    meta: [{ title: "Guided Setup — SaveCall AI Voice Employee" }],
+    meta: [{ title: "Guided Setup: InsurCall AI Voice Employee" }],
   }),
   component: OnboardingPage,
 });
@@ -244,7 +244,7 @@ function OnboardingPage() {
                 <Sparkles className="size-8 animate-pulse" />
               </div>
               <CardTitle className="font-display text-2xl font-bold tracking-tight text-foreground">
-                Welcome to SaveCall
+                Welcome to InsurCall
               </CardTitle>
               <CardDescription className="text-sm text-muted-foreground max-w-md mx-auto mt-2">
                 Deploy an enterprise AI voice receptionist that answers customer calls, verifies policies, takes claims, and transfers when needed.
@@ -290,7 +290,7 @@ function OnboardingPage() {
                 Choose your workspace mode
               </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
-                SaveCall adapts its conversation workflows, schemas, and tools to your industry.
+                InsurCall adapts its conversation workflows, schemas, and tools to your industry.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -403,7 +403,7 @@ function OnboardingPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">How did you discover SaveCall?</label>
+                <label className="text-xs font-semibold text-foreground">How did you discover InsurCall?</label>
                 <select
                   value={data.referralSource}
                   onChange={(e) => updateField("referralSource", e.target.value)}
@@ -609,7 +609,7 @@ function OnboardingPage() {
                       I agree to the Terms of Service and Customer Privacy Policy (Required)
                     </span>
                     <p className="text-muted-foreground mt-0.5">
-                      I authorize SaveCall to process incoming voice audio sessions for reception and transcription in compliance with enterprise tenant isolation guidelines.
+                      I authorize InsurCall to process incoming voice audio sessions for reception and transcription in compliance with enterprise tenant isolation guidelines.
                     </p>
                   </div>
                 </label>
@@ -885,7 +885,7 @@ function OnboardingPage() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full pt-4 border-t border-border text-center text-xs text-muted-foreground">
-        SaveCall Enterprise AI Employee Platform • Strict Tenant Isolation & Encrypted Session Data
+        InsurCall Enterprise AI Employee Platform • Strict Tenant Isolation & Encrypted Session Data
       </footer>
     </div>
   );

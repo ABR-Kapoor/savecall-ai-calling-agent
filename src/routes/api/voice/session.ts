@@ -51,7 +51,30 @@ export const Route = createFileRoute("/api/voice/session")({
           }
 
           if (!tenant) {
-            return json({ error: "No active tenant configured for voice calls" }, 400);
+            // Auto-bootstrap default InsurCall tenant so calls always succeed on fresh clean-slate database
+            const defaultTenant = {
+              id: "a0000000-0000-0000-0000-000000000001",
+              name: "InsurCall",
+              slug: "insurcall",
+              branding_config: {
+                plan: "Starter",
+                onboarding_completed: true,
+                agent_config: {
+                  name: "Anya",
+                  greeting: "Hello! Welcome to InsurCall assistance. How may I help you today?",
+                },
+              },
+            };
+            try {
+              const { data: createdTenant } = await insforgeServer.database
+                .from("tenants")
+                .upsert(defaultTenant, { onConflict: "id" })
+                .select("id, name, slug, branding_config")
+                .single();
+              tenant = createdTenant || defaultTenant;
+            } catch {
+              tenant = defaultTenant;
+            }
           }
 
           const tenantId = tenant.id;
@@ -152,7 +175,7 @@ export const Route = createFileRoute("/api/voice/session")({
             };
           }
 
-          const roomName = `savecall-${tenant.slug || "call"}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+          const roomName = `insurcall-${tenant.slug || "call"}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
           const generatedSessionId = crypto.randomUUID();
           let callSessionId = generatedSessionId;
 
@@ -225,7 +248,7 @@ export const Route = createFileRoute("/api/voice/session")({
             "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you today?";
           const agentGreeting = tmpl
             .replace(/\{\{customer_name\}\}/g, customer.isVerified ? customer.name : "there")
-            .replace(/\{\{company_name\}\}/g, tenant.name || "SaveCall");
+            .replace(/\{\{company_name\}\}/g, tenant.name || "InsurCall");
 
           return json({
             token,

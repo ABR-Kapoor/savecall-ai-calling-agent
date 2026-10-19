@@ -36,7 +36,7 @@ export function ClaimProgressTimeline({
       description: "Claim submitted and registered in carrier database",
       timestamp: submittedAt ? new Date(submittedAt).toLocaleString() : undefined,
       status: "completed",
-      note: "Registered via SaveCall Voice Assistant",
+      note: "Registered via InsurCall Voice Assistant",
     },
     {
       id: "review",

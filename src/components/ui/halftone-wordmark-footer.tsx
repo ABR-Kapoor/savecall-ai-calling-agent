@@ -1,6 +1,6 @@
 "use client"
 
-// Halftone Wordmark Footer — a site footer whose wordmark is set enormous and
+// Halftone Wordmark Footer: a site footer whose wordmark is set enormous and
 // cropped by the bottom edge, printed as a field of halftone dots. Each dot is
 // sized by how much of the letter covers its cell, so the type keeps its edges
 // at any scale. Move across it and the dots part around the pointer on springs,

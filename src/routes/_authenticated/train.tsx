@@ -1,5 +1,5 @@
 /**
- * Train the AI on your own material — website URL or PDF — with a mandatory
+ * Train the AI on your own material: website URL or PDF: with a mandatory
  * human review desk. Nothing scraped here reaches the agent until an owner
  * approves the fact; rejected or ignored facts simply never enter the prompt.
  */
@@ -22,13 +22,13 @@ import { ingestPdf, ingestUrl } from "@/lib/train.functions";
 export const Route = createFileRoute("/_authenticated/train")({
   head: () => ({
     meta: [
-      { title: "Business Knowledge Base — SaveCall" },
+      { title: "Business Knowledge Base: InsurCall" },
       {
         name: "description",
         content:
           "Import your website or price-list PDF, review every extracted fact, and approve exactly what the AI receptionist may repeat.",
       },
-      { property: "og:title", content: "Business Knowledge Base — SaveCall" },
+      { property: "og:title", content: "Business Knowledge Base: InsurCall" },
       {
         property: "og:description",
         content:
@@ -223,7 +223,7 @@ function AddSourceTab({
     },
     onSuccess: (result) => {
       if (result.skippedByRobots) {
-        toast.warning("That site's robots.txt says no crawling — nothing was imported.");
+        toast.warning("That site's robots.txt says no crawling: nothing was imported.");
       } else {
         toast.success(
           `Read ${result.pagesFound} page(s), found ${result.factsFound} candidate fact(s) for review.`,
@@ -304,7 +304,7 @@ function AddSourceTab({
           <UploadCloud className="size-4 text-primary" /> Price list / brochure PDF
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Drag a PDF here, or pick one. Text is extracted locally with unpdf — scanned image-only
+          Drag a PDF here, or pick one. Text is extracted locally with unpdf: scanned image-only
           PDFs can't be read.
         </p>
         <input
@@ -396,7 +396,7 @@ function ReviewDesk({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(`Approved ${items.length} fact(s) — your agent can now say these.`);
+      toast.success(`Approved ${items.length} fact(s): your agent can now say these.`);
       onChanged();
     },
   });
@@ -405,7 +405,7 @@ function ReviewDesk({
   if (!items.length) {
     return (
       <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-        Nothing waiting for review. Import a source and candidate facts will land here — nothing
+        Nothing waiting for review. Import a source and candidate facts will land here: nothing
         reaches the AI until you tick it off.
       </div>
     );
@@ -467,7 +467,7 @@ function ReviewDesk({
                 <Button
                   size="sm"
                   onClick={() =>
-                    run(() => onApprove(item.id), "Approved — the agent can use this now.")
+                    run(() => onApprove(item.id), "Approved: the agent can use this now.")
                   }
                 >
                   <Check className="size-4" /> Approve
@@ -486,7 +486,7 @@ function ReviewDesk({
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => run(() => onReject(item.id), "Rejected — discarded.")}
+                  onClick={() => run(() => onReject(item.id), "Rejected: discarded.")}
                 >
                   <X className="size-4" /> Reject
                 </Button>

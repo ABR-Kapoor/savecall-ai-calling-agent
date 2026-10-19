@@ -42,7 +42,7 @@ import {
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
-    meta: [{ title: "Settings & Agent Studio — SaveCall Insurance AI" }],
+    meta: [{ title: "Settings & Agent Studio: InsurCall Insurance AI" }],
   }),
   component: SettingsPage,
 });
@@ -101,7 +101,7 @@ function SettingsPage() {
   const [supportPhone, setSupportPhone] = useState("");
 
   // ElevenLabs-style Agent Studio settings
-  const [agentName, setAgentName] = useState("SaveCall AI Assistant");
+  const [agentName, setAgentName] = useState("InsurCall AI Assistant");
   const [tone, setTone] = useState("Professional & Empathetic");
   const [language, setLanguage] = useState("English (US / Global)");
   const [voiceId, setVoiceId] = useState("en-US-JennyNeural");
@@ -109,7 +109,7 @@ function SettingsPage() {
     "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you with your insurance policies or claims today?"
   );
   const [systemPrompt, setSystemPrompt] = useState(
-    "You are SaveCall AI, a trusted, empathetic voice assistant for insurance policyholders. Always verify details carefully, provide concise answers, and enforce OTP for sensitive changes."
+    "You are InsurCall AI, a trusted, empathetic voice assistant for insurance policyholders. Always verify details carefully, provide concise answers, and enforce OTP for sensitive changes."
   );
   const [knowledgeBase, setKnowledgeBase] = useState(DEFAULT_KNOWLEDGE_BASE);
   const [isTraining, setIsTraining] = useState(false);
@@ -323,7 +323,7 @@ function SettingsPage() {
                     <Input
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
-                      placeholder="e.g. SaveCall AI Receptionist"
+                      placeholder="e.g. InsurCall AI Receptionist"
                     />
                   </div>
 
@@ -645,7 +645,7 @@ function SettingsPage() {
                   <div className="rounded-lg border border-border/50 bg-background/50 p-3 space-y-1">
                     <span className="text-muted-foreground font-medium">Active Policy Mapping</span>
                     <p className="text-emerald-400 font-semibold font-mono">
-                      {callerProfile?.customer?.customer_number || "CUST-VERIFIED"} —{" "}
+                      {callerProfile?.customer?.customer_number || "CUST-VERIFIED"}: {" "}
                       {callerProfile?.policiesCount ?? 3} Active Policies
                     </p>
                   </div>
@@ -715,7 +715,7 @@ function SettingsPage() {
                   <span className="text-xl font-bold font-mono text-primary">12 / 15 mins</span>
                 </div>
                 <CardDescription className="text-xs text-muted-foreground mt-1">
-                  SaveCall includes 15 free voice testing minutes in your browser. Real SIP trunking and dedicated business phone lines require an active concurrency plan.
+                  InsurCall includes 15 free voice testing minutes in your browser. Real SIP trunking and dedicated business phone lines require an active concurrency plan.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">

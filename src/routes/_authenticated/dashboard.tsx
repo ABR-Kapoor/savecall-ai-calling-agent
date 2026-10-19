@@ -29,7 +29,7 @@ import { getDashboardMetrics, getTenantSettings } from "@/lib/insurance.function
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
-    meta: [{ title: "Operations Overview — SaveCall AI" }],
+    meta: [{ title: "Operations Overview: InsurCall AI" }],
   }),
   component: DashboardPage,
 });

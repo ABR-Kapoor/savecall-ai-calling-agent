@@ -18,7 +18,7 @@ import { getPolicyStatusPresentation } from "@/lib/insurance/status-presentation
 
 export const Route = createFileRoute("/_authenticated/policies")({
   head: () => ({
-    meta: [{ title: "Policy Directory — SaveCall Insurance AI" }],
+    meta: [{ title: "Policy Directory: InsurCall Insurance AI" }],
   }),
   component: PoliciesPage,
 });

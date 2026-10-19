@@ -5,7 +5,6 @@ import {
   Languages,
   Mic,
   PhoneCall,
-  ShieldAlert,
   ShieldCheck,
   ArrowRight,
   Sparkles,
@@ -13,58 +12,146 @@ import {
   Headphones,
   CheckCircle2,
   LogIn,
+  Clock,
+  PhoneIncoming,
+  Building2,
+  Stethoscope,
+  Scissors,
+  Briefcase,
+  ChevronRight,
+  Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FloatingAuthModal } from "@/components/floating-auth-modal";
+import { FloatingNavbar } from "@/components/floating-navbar";
 import HalftoneWordmarkFooter from "@/components/ui/halftone-wordmark-footer";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "SaveCall — AI Insurance Voice Assistant" },
+      { title: "InsurCall: AI Voice Receptionist for Indian Businesses" },
       {
         name: "description",
         content:
-          "Enterprise AI voice agent for insurance operations. Real-time WebRTC conversational AI for policy queries, FNOL claims, and 2FA verification.",
+          "Give your business an AI receptionist that answers enquiries, captures customer intent, and helps your team stay on top of conversations in English, Hindi, and Hinglish.",
       },
     ],
   }),
   component: Landing,
 });
 
-const CAPABILITIES = [
+const USE_CASES = [
   {
-    icon: PhoneCall,
-    title: "Instant Voice Response",
-    body: "Sub-30ms Silero VAD barge-in. Natural, low-latency conversational full-duplex voice.",
+    icon: Stethoscope,
+    tag: "Healthcare & Clinics",
+    title: "Patient Appointments & Timings",
+    desc: "Answers patient inquiries about doctor consultation hours, schedules appointments, and confirms clinic location details.",
+    example: '"Namaste, Dr. Sharma clinic se baat kar raha hoon. Kal subah 10 baje appointment available hai."',
   },
   {
-    icon: Languages,
-    title: "Multilingual & Dialects",
-    body: "Seamlessly interacts in English, Hindi, and regional dialects with tone adaptation.",
-  },
-  {
-    icon: FileText,
-    title: "Live Policy Lookups",
-    body: "Ground-truth retrieval from InsForge PostgreSQL for active auto, health, and life coverage.",
-  },
-  {
-    icon: ShieldAlert,
-    title: "First Notice of Loss (FNOL)",
-    body: "Captures and files incident reports, damage summaries, and police DDRs automatically.",
-  },
-  {
-    icon: Lock,
-    title: "4-Tier Risk Engine",
-    body: "SMS OTP authentication for high-risk modifications and dual human approval workflows.",
+    icon: Scissors,
+    tag: "Salons & Wellness",
+    title: "Service Bookings & Rescheduling",
+    desc: "Handles inbound booking requests, provides transparent treatment pricing, and manages rescheduling without interrupting stylists.",
+    example: '"Welcome to Glow Studio! Hair spa and styling slots are open today at 4 PM. May I reserve your slot?"',
   },
   {
     icon: ShieldCheck,
-    title: "Full Compliance Trail",
-    body: "Every tool invocation and verification event is immutably recorded in audit logs.",
+    tag: "Insurance & Finance",
+    title: "Policy Status & Claim Assistance",
+    desc: "Retrieves active coverage details, guides policyholders through initial claims, and routes complex requests with staff verification.",
+    example: '"Your health policy covers cashless hospitalization across 8 network hospitals in your city."',
+  },
+  {
+    icon: Briefcase,
+    tag: "Local Service Providers",
+    title: "Customer Inquiries & Urgent Callbacks",
+    desc: "Captures customer requirement details, collects service addresses, and flags urgent service requests for immediate team callback.",
+    example: '"I have recorded your plumbing repair request. Our technician will reach out within 30 minutes."',
+  },
+];
+
+const WORKFLOW_STEPS = [
+  {
+    step: "01",
+    title: "Configure Your Receptionist",
+    desc: "Select your assistant name, choose from natural Indian voices, and set whether it speaks English, Hindi, or conversational Hinglish.",
+  },
+  {
+    step: "02",
+    title: "Add Business Knowledge",
+    desc: "Upload your services, price list, clinic hours, or policy FAQs. The agent strictly answers from your approved company data.",
+  },
+  {
+    step: "03",
+    title: "Test In Your Browser",
+    desc: "Try interactive voice calls directly in your browser. Verify voice tone, answer accuracy, and appointment capture in real time.",
+  },
+  {
+    step: "04",
+    title: "Connect Calling Channel",
+    desc: "Forward your existing business telephone number or link your dedicated calling line to handle incoming customer calls.",
+  },
+  {
+    step: "05",
+    title: "Review Call Insights",
+    desc: "Read complete transcripts, inspect captured customer intent, and review automated action logs in your operations console.",
+  },
+];
+
+const PRICING_TIERS = [
+  {
+    name: "Starter Trial",
+    price: "₹0",
+    period: "15 min trial",
+    desc: "Ideal for testing interactive voice conversations and verifying business FAQ accuracy.",
+    features: [
+      "15 minutes voice trial",
+      "Interactive browser test calls",
+      "English & Hindi support",
+      "Basic business FAQ ingestion",
+      "Call transcript view",
+    ],
+    cta: "Try Free Now",
+    primary: false,
+    link: "/voice",
+  },
+  {
+    name: "Growth",
+    price: "₹2,499",
+    period: "per month",
+    desc: "Perfect for single-location clinics, salons, and local professional practices.",
+    features: [
+      "300 minutes inbound calling",
+      "Custom business knowledge base",
+      "Hinglish conversation tuning",
+      "Appointment & lead capture",
+      "WhatsApp & SMS call summaries",
+      "Standard support",
+    ],
+    cta: "Start with Growth",
+    primary: true,
+    link: "/onboarding",
+  },
+  {
+    name: "Business",
+    price: "₹6,999",
+    period: "per month",
+    desc: "For growing organizations and insurance teams handling continuous daily call volume.",
+    features: [
+      "1,200 minutes inbound calling",
+      "Multi-agent configurations",
+      "Staff approval queues for high-risk actions",
+      "CRM & webhook integration",
+      "Priority latency routing",
+      "Dedicated account manager",
+    ],
+    cta: "Choose Business",
+    primary: false,
+    link: "/onboarding",
   },
 ];
 
@@ -79,12 +166,12 @@ const FOOTER_COLUMNS = [
     ],
   },
   {
-    title: "Insurance Ops",
+    title: "Workflows",
     links: [
       { label: "Policy Management", href: "/policies" },
-      { label: "Claims & FNOL", href: "/claims" },
-      { label: "Human Approvals", href: "/change-requests" },
-      { label: "Audit & Compliance", href: "/audit" },
+      { label: "Claims & Inquiries", href: "/claims" },
+      { label: "Staff Approvals", href: "/change-requests" },
+      { label: "Audit & Records", href: "/audit" },
     ],
   },
   {
@@ -92,8 +179,8 @@ const FOOTER_COLUMNS = [
     links: [
       { label: "Guided Onboarding", href: "/onboarding" },
       { label: "Workspace Settings", href: "/settings" },
-      { label: "Security & Tenancy", href: "#" },
-      { label: "Carrier Integrations", href: "#" },
+      { label: "Privacy Policy", href: "#" },
+      { label: "Terms of Service", href: "#" },
     ],
   },
 ];
@@ -108,132 +195,143 @@ function Landing() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
-      {/* Navigation Header */}
-      <header className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-md shadow-xs">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <img
-              src="/02_logo_with_InsurCall_light_transparent.png"
-              alt="InsurCall — AI Voice Employee Platform"
-              className="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-[1.02]"
-            />
-          </Link>
+    <div className="min-h-screen bg-[#FAF9F6] text-[#111827] flex flex-col justify-between selection:bg-[#087F8C]/20">
+      {/* 1. Interactive Floating Navbar (Scroll Responsive) */}
+      <FloatingNavbar onOpenAuth={() => setShowAuth(true)} />
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowAuth(true)}
-              className="text-muted-foreground hover:text-foreground text-xs font-medium cursor-pointer"
-            >
-              Sign In
-            </Button>
-            <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium shadow-xs">
-              <Link to="/voice">
-                <Mic className="size-3.5 mr-1.5" />
-                Interactive Test Call
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero Section */}
-      <section className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-16 lg:grid-cols-12 lg:items-center">
+      {/* 2. Hero Section */}
+      <section className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-28 sm:pt-36 lg:grid-cols-12 lg:items-center">
         <div className="lg:col-span-7">
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3.5 py-1 text-xs font-semibold text-primary">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#087F8C]/25 bg-[#E6F6F7] px-3.5 py-1 text-xs font-semibold text-[#087F8C]">
             <Sparkles className="size-3.5" />
-            Enterprise AI Voice Employee Platform • 15 Free Minutes
+            Built for the calls that keep India moving • Bilingual English & Hindi
           </div>
-          <h1 className="mt-6 font-display text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl text-foreground leading-[1.1]">
-            Your Autonomous AI Voice Employee for Inbound Calls.
+
+          <h1 className="mt-6 font-display text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl text-[#111827] leading-[1.12]">
+            Every missed call is a customer you may never get back.
           </h1>
-          <p className="mt-5 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            Eliminate missed calls and long hold queues. SaveCall answers incoming customer calls, verifies policies, schedules appointments, and intakes claims in fluent English, Hindi, and Hinglish.
+
+          <p className="mt-5 text-base sm:text-lg text-[#344054] leading-relaxed max-w-2xl">
+            Give your business an AI receptionist that can answer enquiries, capture customer intent, and help your team stay on top of conversations.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-4">
-            <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs">
-              <Link to="/dashboard">
-                Enter Workspace
-                <ArrowRight className="size-4 ml-2" />
+            <Button
+              asChild
+              size="lg"
+              className="bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold shadow-sm text-sm h-12 px-6 rounded-xl"
+            >
+              <Link to="/voice">
+                <PhoneCall className="size-4 mr-2" />
+                Try your AI receptionist free
               </Link>
             </Button>
-            <Button asChild size="lg" variant="outline" className="border-border hover:bg-muted text-foreground">
-              <Link to="/voice">
-                <Headphones className="size-4 mr-2 text-primary" />
-                Live Browser Test Call
-              </Link>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="border-[#E4E7EC] bg-white hover:bg-[#FAF9F6] text-[#111827] text-sm h-12 px-6 rounded-xl font-medium"
+            >
+              <a href="#how-it-works">
+                See how it works
+                <ArrowRight className="size-4 ml-2" />
+              </a>
             </Button>
           </div>
 
-          <dl className="mt-12 grid grid-cols-3 gap-6 border-t border-border pt-8">
+          {/* Real, Honest Metrics */}
+          <dl className="mt-12 grid grid-cols-3 gap-6 border-t border-[#E4E7EC] pt-8">
             <div>
-              <dt className="font-display text-2xl font-bold text-primary">&lt; 30ms</dt>
-              <dd className="text-xs text-muted-foreground mt-1">Silero VAD Barge-In</dd>
+              <dt className="font-display text-2xl font-bold text-[#087F8C]">24 / 7</dt>
+              <dd className="text-xs text-[#667085] mt-1 font-medium">Instant Call Response</dd>
             </div>
             <div>
-              <dt className="font-display text-2xl font-bold text-foreground">Zero</dt>
-              <dd className="text-xs text-muted-foreground mt-1">Hallucinations via RAG</dd>
+              <dt className="font-display text-2xl font-bold text-[#111827]">EN + HI</dt>
+              <dd className="text-xs text-[#667085] mt-1 font-medium">English, Hindi & Hinglish</dd>
             </div>
             <div>
-              <dt className="font-display text-2xl font-bold text-emerald-700">15 Mins</dt>
-              <dd className="text-xs text-muted-foreground mt-1">Free Trial Allowance</dd>
+              <dt className="font-display text-2xl font-bold text-emerald-700">100%</dt>
+              <dd className="text-xs text-[#667085] mt-1 font-medium">Approved Knowledge Facts</dd>
             </div>
           </dl>
         </div>
 
-        {/* Live Demo Action Card */}
+        {/* Hero Interactive Call Simulation Preview */}
         <div className="lg:col-span-5">
-          <Card className="overflow-hidden border border-border shadow-xs bg-card">
-            <CardHeader className="border-b border-border bg-muted/20 pb-4">
+          <Card className="overflow-hidden border border-[#E4E7EC] shadow-lg bg-white rounded-3xl">
+            <CardHeader className="border-b border-[#E4E7EC] bg-[#FAF9F6] pb-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <span className="relative flex size-2.5">
                     <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
                   </span>
-                  <CardTitle className="font-display text-sm font-semibold text-foreground">
-                    InsurCall WebRTC Engine
+                  <CardTitle className="text-sm font-semibold text-[#111827]">
+                    Live Incoming Call Simulation
                   </CardTitle>
                 </div>
                 <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-800">
-                  LiveKit Ready
+                  Active Line
                 </Badge>
               </div>
-              <CardDescription className="text-xs text-muted-foreground mt-1">
-                Sub-second audio pipeline connected to local Ollama & Groq Cloud LLM.
+              <CardDescription className="text-xs text-[#667085] mt-1">
+                Real-time preview of caller interaction and intent recognition.
               </CardDescription>
             </CardHeader>
+
             <CardContent className="space-y-4 pt-5">
-              <div className="space-y-2.5 rounded-xl border border-border bg-muted/30 p-3.5 text-xs">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Voice Agent Persona</span>
-                  <span className="font-semibold text-foreground">Anya (Claims Specialist)</span>
+              {/* Agent & Caller Details */}
+              <div className="rounded-2xl border border-[#E4E7EC] bg-[#FAF9F6] p-4 text-xs space-y-2.5">
+                <div className="flex items-center justify-between text-[#667085]">
+                  <span>AI Receptionist</span>
+                  <span className="font-semibold text-[#111827]">Anya (Bilingual Assistant)</span>
                 </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Telephony Protocols</span>
-                  <span className="font-mono text-foreground font-semibold">WebRTC Opus + SIP Trunk</span>
+                <div className="flex items-center justify-between text-[#667085]">
+                  <span>Caller Intent</span>
+                  <span className="font-semibold text-[#087F8C]">Appointment Scheduling</span>
                 </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Ground-Truth Source</span>
-                  <span className="font-semibold text-primary">InsForge PostgreSQL</span>
+                <div className="flex items-center justify-between text-[#667085]">
+                  <span>Call Duration</span>
+                  <span className="font-mono text-[#111827] font-semibold">01:24</span>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Link to="/voice" className="block">
-                  <Button className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium shadow-xs">
-                    <Mic className="size-4" /> Start Interactive Test Call
-                  </Button>
-                </Link>
+              {/* Sample Natural Conversation Stream */}
+              <div className="space-y-2 rounded-2xl border border-[#E4E7EC] bg-white p-3.5 text-xs">
+                <div className="flex items-start gap-2 text-[#344054]">
+                  <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider shrink-0 mt-0.5">
+                    Caller:
+                  </span>
+                  <p className="text-[11px] leading-snug">
+                    "Namaste! Mujhe kal shaam 5 baje Dr. Sharma ke paas appointment book karna hai."
+                  </p>
+                </div>
+                <div className="flex items-start gap-2 text-[#087F8C] pt-1 border-t border-[#E4E7EC]/60">
+                  <span className="text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5">
+                    Anya:
+                  </span>
+                  <p className="text-[11px] leading-snug text-[#111827]">
+                    "Namaste! Kal shaam 5 baje slot available hai. Please apna naam aur contact number share karein taaki main confirm kar sakoon."
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-1">
+                <Button
+                  asChild
+                  className="w-full gap-2 bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold text-xs h-11 rounded-xl shadow-xs"
+                >
+                  <Link to="/voice">
+                    <Mic className="size-4" /> Try Interactive Test Call Now
+                  </Link>
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => setShowAuth(true)}
-                  className="w-full gap-2 border-border text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                  className="w-full gap-2 border-[#E4E7EC] text-xs text-[#344054] hover:text-[#111827] hover:bg-[#FAF9F6] h-10 rounded-xl cursor-pointer"
                 >
-                  <LogIn className="size-3.5" /> Sign In to Workspace Console
+                  <LogIn className="size-3.5" /> Enter Workspace Console
                 </Button>
               </div>
             </CardContent>
@@ -241,38 +339,162 @@ function Landing() {
         </div>
       </section>
 
-      {/* Capabilities Grid */}
-      <section className="border-t border-border/50 bg-card/30 py-20">
+      {/* 3. Brand Story Banner: Technology Built for Indian Businesses */}
+      <section className="border-y border-[#E4E7EC] bg-white py-16">
+        <div className="mx-auto max-w-7xl px-6 text-center">
+          <Badge variant="outline" className="border-[#087F8C]/30 text-[#087F8C] bg-[#E6F6F7] text-xs mb-3 font-semibold">
+            Made with Indian Businesses in Mind
+          </Badge>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#111827] max-w-3xl mx-auto leading-snug">
+            Technology built around how Indian businesses actually work.
+          </h2>
+          <p className="mt-4 text-sm text-[#344054] max-w-2xl mx-auto leading-relaxed">
+            From neighborhood clinics and salons to insurance teams and local service providers, customer conversations move fast. InsurCall ensures every caller receives an immediate, respectful, and helpful response without long hold times.
+          </p>
+        </div>
+      </section>
+
+      {/* 4. Industry Use Cases */}
+      <section id="use-cases" className="py-20 bg-[#FAF9F6]">
         <div className="mx-auto max-w-7xl px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <h2 className="font-display text-3xl font-bold tracking-tight text-foreground">
-              Enterprise Insurance Engine
+            <h2 className="font-display text-3xl font-bold tracking-tight text-[#111827]">
+              Tailored for Real Business Conversations
             </h2>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Designed from the ground up to prevent hallucination, enforce strict caller authentication, and maintain complete audit compliance.
+            <p className="mt-3 text-sm text-[#344054]">
+              See how InsurCall handles everyday phone interactions across core service industries.
             </p>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {CAPABILITIES.map((item) => (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {USE_CASES.map((item) => (
               <div
                 key={item.title}
-                className="group rounded-2xl border border-border/60 bg-card/60 p-6 transition-all hover:border-primary/40 hover:bg-card hover:shadow-xs"
+                className="group rounded-2xl border border-[#E4E7EC] bg-white p-6 shadow-xs hover:border-[#087F8C]/40 hover:shadow-md transition-all flex flex-col justify-between"
               >
-                <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
-                  <item.icon className="size-5" aria-hidden />
-                </span>
-                <h3 className="mt-4 font-display text-base font-semibold text-foreground">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
+                <div>
+                  <span className="grid size-11 place-items-center rounded-xl bg-[#E6F6F7] text-[#087F8C] transition-colors group-hover:bg-[#087F8C] group-hover:text-white">
+                    <item.icon className="size-5" />
+                  </span>
+                  <span className="text-[10px] font-bold text-[#087F8C] uppercase tracking-wider block mt-4">
+                    {item.tag}
+                  </span>
+                  <h3 className="mt-1 font-display text-base font-bold text-[#111827]">
+                    {item.title}
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-[#667085]">{item.desc}</p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-[#E4E7EC]/70 bg-[#FAF9F6] p-2.5 rounded-xl text-[11px] italic text-[#344054]">
+                  {item.example}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Halftone Wordmark Interactive Footer */}
+      {/* 5. How It Works */}
+      <section id="how-it-works" className="py-20 bg-white border-t border-[#E4E7EC]">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <Badge variant="outline" className="border-[#087F8C]/30 text-[#087F8C] bg-[#E6F6F7] text-xs mb-2 font-semibold">
+              Simple 5-Step Workflow
+            </Badge>
+            <h2 className="font-display text-3xl font-bold tracking-tight text-[#111827]">
+              How InsurCall Works
+            </h2>
+            <p className="mt-3 text-sm text-[#344054]">
+              Get your autonomous voice receptionist up and running in minutes.
+            </p>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+            {WORKFLOW_STEPS.map((s) => (
+              <div
+                key={s.step}
+                className="rounded-2xl border border-[#E4E7EC] bg-[#FAF9F6] p-5 relative flex flex-col justify-between"
+              >
+                <div>
+                  <span className="font-display text-2xl font-black text-[#087F8C]/40">
+                    {s.step}
+                  </span>
+                  <h3 className="mt-2 font-display text-sm font-bold text-[#111827]">
+                    {s.title}
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-[#667085]">{s.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Honest Pricing Section */}
+      <section id="pricing" className="py-20 bg-[#FAF9F6] border-t border-[#E4E7EC]">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <h2 className="font-display text-3xl font-bold tracking-tight text-[#111827]">
+              Simple, Transparent Pricing
+            </h2>
+            <p className="mt-3 text-sm text-[#344054]">
+              Start free with included trial minutes. Choose a plan that matches your business call volume.
+            </p>
+          </div>
+
+          <div className="grid gap-8 lg:grid-cols-3 max-w-5xl mx-auto">
+            {PRICING_TIERS.map((tier) => (
+              <div
+                key={tier.name}
+                className={`rounded-3xl p-7 flex flex-col justify-between transition-all ${
+                  tier.primary
+                    ? "bg-white border-2 border-[#087F8C] shadow-xl relative"
+                    : "bg-white border border-[#E4E7EC] shadow-sm hover:border-[#087F8C]/40"
+                }`}
+              >
+                {tier.primary && (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-[#087F8C] text-white px-3.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-xs">
+                    Most Popular
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-display text-lg font-bold text-[#111827]">{tier.name}</h3>
+                  <p className="text-xs text-[#667085] mt-1">{tier.desc}</p>
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="text-3xl font-extrabold text-[#111827] font-display">
+                      {tier.price}
+                    </span>
+                    <span className="text-xs text-[#667085]">/ {tier.period}</span>
+                  </div>
+
+                  <ul className="mt-6 space-y-2.5 text-xs text-[#344054]">
+                    {tier.features.map((feat) => (
+                      <li key={feat} className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-[#087F8C] shrink-0" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-8 pt-4 border-t border-[#E4E7EC]">
+                  <Button
+                    asChild
+                    className={`w-full h-11 rounded-xl text-xs font-semibold ${
+                      tier.primary
+                        ? "bg-[#087F8C] hover:bg-[#076C77] text-white shadow-xs"
+                        : "bg-[#111827] hover:bg-[#1E293B] text-white"
+                    }`}
+                  >
+                    <Link to={tier.link}>{tier.cta}</Link>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 7. Halftone Wordmark Interactive Footer */}
       <HalftoneWordmarkFooter
         wordmark="insurcall"
         label="InsurCall Platform"
@@ -287,17 +509,14 @@ function Landing() {
         height="500px"
       />
 
-      {/* Floating Auth Modal */}
-      <FloatingAuthModal
-        isOpen={showAuth}
-        onClose={() => setShowAuth(false)}
-      />
+      {/* 8. Floating Auth Modal */}
+      <FloatingAuthModal isOpen={showAuth} onClose={() => setShowAuth(false)} />
 
       {/* Persistent Floating Auth Trigger in bottom-right corner */}
       <div className="fixed bottom-6 right-6 z-30">
         <Button
           onClick={() => setShowAuth(true)}
-          className="gap-2 rounded-full px-4 py-2.5 bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 transition-all text-xs font-semibold cursor-pointer border border-white/20"
+          className="gap-2 rounded-full px-4 py-2.5 bg-[#087F8C] hover:bg-[#076C77] text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all text-xs font-semibold cursor-pointer border border-white/20"
         >
           <Lock className="size-3.5" />
           <span>Floating Sign In</span>

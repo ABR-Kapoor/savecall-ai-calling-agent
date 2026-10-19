@@ -78,10 +78,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "InsurCall — Autonomous AI Voice Employee Platform" },
+      { title: "InsurCall: Autonomous AI Voice Employee Platform" },
       { name: "description", content: "AI voice receptionist for insurance operations. Answers customer calls in Hindi, English, and Hinglish. Handles policy checks, claims intake, and appointment booking." },
       { name: "author", content: "InsurCall" },
-      { property: "og:title", content: "InsurCall — Autonomous AI Voice Employee" },
+      { property: "og:title", content: "InsurCall: Autonomous AI Voice Employee" },
       { property: "og:description", content: "Never lose a policyholder or claimant to a missed call again." },
       { property: "og:image", content: "/05_app_icon_square_foreground_transparent.png" },
       { property: "og:type", content: "website" },
