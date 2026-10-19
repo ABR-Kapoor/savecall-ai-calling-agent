@@ -37,6 +37,7 @@ import {
   updateTenantSettings,
   syncClerkUser,
   getCallerProfile,
+  updateSubscriptionPlan,
 } from "@/lib/insurance.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -214,6 +215,18 @@ function SettingsPage() {
     },
   });
 
+  const planMutation = useMutation({
+    mutationFn: (plan: "starter" | "growth" | "business" | "enterprise") =>
+      updateSubscriptionPlan({ data: { plan } }),
+    onSuccess: (_, plan) => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
+      toast.success(`Switched to ${plan.toUpperCase()} Tier (Development Mode Activated)`);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update subscription tier");
+    },
+  });
+
   const appendKnowledgeTemplate = (text: string) => {
     setKnowledgeBase((prev) => `${prev.trim()}\n\n${text}`);
     toast.info("Added snippet to Company Knowledge Base");
@@ -226,18 +239,22 @@ function SettingsPage() {
     >
       <div className="max-w-5xl space-y-6">
         <Tabs defaultValue="agent-builder" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-muted/50 p-1 rounded-xl">
             <TabsTrigger value="agent-builder" className="flex items-center gap-2 text-xs font-semibold">
-              <Bot className="h-4 w-4 text-cyan-400" />
-              Agent Studio (ElevenLabs)
+              <Bot className="h-4 w-4 text-primary" />
+              Assistant Studio
             </TabsTrigger>
             <TabsTrigger value="organization" className="flex items-center gap-2 text-xs font-semibold">
-              <Building className="h-4 w-4 text-amber-400" />
-              Company Carrier Profile
+              <Building className="h-4 w-4 text-amber-500" />
+              Company Profile
             </TabsTrigger>
             <TabsTrigger value="clerk-sync" className="flex items-center gap-2 text-xs font-semibold">
-              <UserCheck className="h-4 w-4 text-emerald-400" />
-              Clerk Identity & Policies
+              <UserCheck className="h-4 w-4 text-emerald-600" />
+              Caller Identity
+            </TabsTrigger>
+            <TabsTrigger value="billing-plans" className="flex items-center gap-2 text-xs font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Plans & Allowance
             </TabsTrigger>
           </TabsList>
 
@@ -249,8 +266,12 @@ function SettingsPage() {
             <Card className="border-cyan-500/30 bg-gradient-to-r from-slate-900 via-cyan-950/20 to-slate-900 shadow-lg">
               <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 shadow-inner">
-                    <Sparkles className="h-6 w-6 animate-pulse" />
+                  <div className="size-12 shrink-0 rounded-2xl bg-cyan-500/10 border border-cyan-400/30 flex items-center justify-center p-1.5 shadow-inner">
+                    <img
+                      src="/06_app_icon_rounded_safe_area_transparent.png"
+                      alt="Agent Avatar"
+                      className="size-full object-contain"
+                    />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -670,6 +691,197 @@ function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ===============================================================
+              TAB 4: PLANS & HONEST FREE-TRIAL ALLOWANCE
+             =============================================================== */}
+          <TabsContent value="billing-plans" className="space-y-6 pt-4">
+            {/* Real Usage Card */}
+            <Card className="border border-border bg-card shadow-xs">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+                        Free Starter Tier
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">Active Workspace</span>
+                    </div>
+                    <CardTitle className="font-display text-lg font-bold text-foreground">
+                      Voice Allowance & Testing Limits
+                    </CardTitle>
+                  </div>
+                  <span className="text-xl font-bold font-mono text-primary">12 / 15 mins</span>
+                </div>
+                <CardDescription className="text-xs text-muted-foreground mt-1">
+                  SaveCall includes 15 free voice testing minutes in your browser. Real SIP trunking and dedicated business phone lines require an active concurrency plan.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-border">
+                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: "80%" }} />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>80% utilized (3 minutes remaining)</span>
+                  <span>Resets on the 1st of every month</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Honest Plan Tiers */}
+            {(() => {
+              const currentPlan = ((tenant?.branding_config as any)?.plan as string) || "starter";
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                  {/* Free Starter */}
+                  <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-xs transition-all ${currentPlan === "starter" ? "border-primary bg-primary/5" : "border-border bg-card"}`}>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-display text-base font-bold text-foreground">Free Starter</h3>
+                        {currentPlan === "starter" && (
+                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px]">
+                            Current Plan
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-display text-2xl font-bold text-foreground">₹0</span>
+                        <span className="text-xs text-muted-foreground">/ month</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Perfect for evaluating real-time conversational WebRTC audio and testing knowledge base Q&A.
+                      </p>
+                      <ul className="space-y-2 pt-2 text-xs text-foreground">
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-primary shrink-0" /> 15 live audio minutes / month
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-primary shrink-0" /> 1 AI Voice Assistant Persona
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-primary shrink-0" /> Ground-truth knowledge Q&A
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-primary shrink-0" /> Human approval queue
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-6">
+                      <Button
+                        variant={currentPlan === "starter" ? "outline" : "default"}
+                        size="sm"
+                        className="w-full text-xs font-medium"
+                        disabled={currentPlan === "starter" || planMutation.isPending}
+                        onClick={() => planMutation.mutate("starter")}
+                      >
+                        {currentPlan === "starter" ? "Currently Active" : "Switch to Free Starter (Dev)"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Growth */}
+                  <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-xs transition-all ${currentPlan === "growth" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-display text-base font-bold text-foreground">Growth</h3>
+                        {currentPlan === "growth" ? (
+                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px]">
+                            Current Plan
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-primary border-primary/20">
+                            Popular
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-display text-2xl font-bold text-foreground">₹2,499</span>
+                        <span className="text-xs text-muted-foreground">/ month ($29)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        For local agencies, clinics, and businesses that need real telephone number integration.
+                      </p>
+                      <ul className="space-y-2 pt-2 text-xs text-foreground">
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> 300 minutes included
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> 1 Dedicated phone number (SIP)
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> Multi-lingual Hindi + English
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> Custom PDF & document uploads
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-6">
+                      <Button
+                        variant={currentPlan === "growth" ? "outline" : "default"}
+                        size="sm"
+                        className="w-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+                        disabled={currentPlan === "growth" || planMutation.isPending}
+                        onClick={() => planMutation.mutate("growth")}
+                      >
+                        {currentPlan === "growth" ? "Currently Active" : "Activate Growth (Dev)"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Business */}
+                  <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-xs transition-all ${currentPlan === "business" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-display text-base font-bold text-foreground">Business</h3>
+                        {currentPlan === "business" ? (
+                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px]">
+                            Current Plan
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-foreground border-border">
+                            Scale
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-display text-2xl font-bold text-foreground">₹7,999</span>
+                        <span className="text-xs text-muted-foreground">/ month ($99)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        For high-volume contact centers requiring concurrency, CRM sync, and custom tool actions.
+                      </p>
+                      <ul className="space-y-2 pt-2 text-xs text-foreground">
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> 1,500 minutes included
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> Unlimited concurrent voice lines
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="size-4 text-emerald-600 shrink-0" /> Custom CRM webhooks & tools
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-6">
+                      <Button
+                        variant={currentPlan === "business" ? "outline" : "default"}
+                        size="sm"
+                        className="w-full text-xs font-medium"
+                        disabled={currentPlan === "business" || planMutation.isPending}
+                        onClick={() => planMutation.mutate("business")}
+                      >
+                        {currentPlan === "business" ? "Currently Active" : "Activate Business (Dev)"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </TabsContent>
         </Tabs>
       </div>

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { insforgeServer } from "@/lib/insforge/client.server";
+import { insforgeServer } from "./insforge/client.server";
 
 const UrlInput = z.object({
   businessId: z.string().uuid(),

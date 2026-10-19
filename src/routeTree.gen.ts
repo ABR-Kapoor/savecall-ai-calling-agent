@@ -19,6 +19,7 @@ import { Route as AuthenticatedCallsRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedChangeRequestsRouteImport } from './routes/_authenticated/change-requests'
 import { Route as AuthenticatedClaimsRouteImport } from './routes/_authenticated/claims'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedPoliciesRouteImport } from './routes/_authenticated/policies'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedTrainRouteImport } from './routes/_authenticated/train'
@@ -77,6 +78,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPoliciesRoute = AuthenticatedPoliciesRouteImport.update({
   id: '/policies',
   path: '/policies',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/change-requests': typeof AuthenticatedChangeRequestsRoute
   '/claims': typeof AuthenticatedClaimsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
   '/policies': typeof AuthenticatedPoliciesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/train': typeof AuthenticatedTrainRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/change-requests': typeof AuthenticatedChangeRequestsRoute
   '/claims': typeof AuthenticatedClaimsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
   '/policies': typeof AuthenticatedPoliciesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/train': typeof AuthenticatedTrainRoute
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/_authenticated/change-requests': typeof AuthenticatedChangeRequestsRoute
   '/_authenticated/claims': typeof AuthenticatedClaimsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/policies': typeof AuthenticatedPoliciesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/train': typeof AuthenticatedTrainRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/change-requests'
     | '/claims'
     | '/dashboard'
+    | '/onboarding'
     | '/policies'
     | '/settings'
     | '/train'
@@ -199,6 +209,7 @@ export interface FileRouteTypes {
     | '/change-requests'
     | '/claims'
     | '/dashboard'
+    | '/onboarding'
     | '/policies'
     | '/settings'
     | '/train'
@@ -218,6 +229,7 @@ export interface FileRouteTypes {
     | '/_authenticated/change-requests'
     | '/_authenticated/claims'
     | '/_authenticated/dashboard'
+    | '/_authenticated/onboarding'
     | '/_authenticated/policies'
     | '/_authenticated/settings'
     | '/_authenticated/train'
@@ -310,6 +322,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/onboarding': {
+      id: '/_authenticated/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/policies': {
       id: '/_authenticated/policies'
       path: '/policies'
@@ -369,6 +388,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChangeRequestsRoute: typeof AuthenticatedChangeRequestsRoute
   AuthenticatedClaimsRoute: typeof AuthenticatedClaimsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedPoliciesRoute: typeof AuthenticatedPoliciesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTrainRoute: typeof AuthenticatedTrainRoute
@@ -381,6 +401,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedChangeRequestsRoute: AuthenticatedChangeRequestsRoute,
   AuthenticatedClaimsRoute: AuthenticatedClaimsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedPoliciesRoute: AuthenticatedPoliciesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTrainRoute: AuthenticatedTrainRoute,
@@ -403,8 +424,8 @@ export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from '../../../missed-call-maven/src/router.tsx'
-import type { startInstance } from '../../../missed-call-maven/src/start.ts'
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true

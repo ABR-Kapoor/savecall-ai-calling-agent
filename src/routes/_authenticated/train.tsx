@@ -22,13 +22,13 @@ import { ingestPdf, ingestUrl } from "@/lib/train.functions";
 export const Route = createFileRoute("/_authenticated/train")({
   head: () => ({
     meta: [
-      { title: "Train your AI — website & PDF import" },
+      { title: "Business Knowledge Base — SaveCall" },
       {
         name: "description",
         content:
           "Import your website or price-list PDF, review every extracted fact, and approve exactly what the AI receptionist may repeat.",
       },
-      { property: "og:title", content: "Train your AI — website & PDF import" },
+      { property: "og:title", content: "Business Knowledge Base — SaveCall" },
       {
         property: "og:description",
         content:
@@ -113,8 +113,8 @@ function TrainPage() {
 
   return (
     <AppShell
-      title="Train your AI"
-      subtitle="Point it at your website or drop a PDF. Every extracted line is a proposal until you approve it."
+      title="Business Knowledge Base"
+      subtitle="Approved company facts, policy coverage rules, and verified FAQs. The AI strictly answers using approved knowledge."
     >
       <Tabs defaultValue="add" className="max-w-4xl">
         <TabsList>

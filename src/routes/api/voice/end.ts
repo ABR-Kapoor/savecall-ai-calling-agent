@@ -27,8 +27,7 @@ export const Route = createFileRoute("/api/voice/end")({
             .update({
               status: "completed",
               ended_at: new Date().toISOString(),
-              duration_seconds: body.durationSeconds,
-              turn_count: body.turnsCount,
+              duration_sec: body.durationSeconds,
             })
             .eq("id", body.callSessionId);
 

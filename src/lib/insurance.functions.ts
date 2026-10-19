@@ -1,23 +1,39 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { insforgeServer } from "@/lib/insforge/client.server";
+import { insforgeServer } from "./insforge/client.server";
 
 /**
  * Resolves current tenant UUID safely to maintain strict tenant isolation.
  */
-async function resolveCurrentTenantId(explicitTenantId?: string): Promise<string> {
+async function resolveCurrentTenantId(explicitTenantId?: string): Promise<string | null> {
   if (explicitTenantId) return explicitTenantId;
   const { data: tenant } = await insforgeServer.database
     .from("tenants")
     .select("id")
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return tenant?.id || "a0000000-0000-0000-0000-000000000001";
+  return tenant?.id || null;
 }
 
 export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const tenantId = await resolveCurrentTenantId();
+    if (!tenantId) {
+      return {
+        totalCalls: 0,
+        resolvedCalls: 0,
+        transfers: 0,
+        leads: 0,
+        automationRate: 100,
+        policiesCount: 0,
+        claimsCount: 0,
+        approvalsCount: 0,
+        sessionsCount: 0,
+        recentApprovals: [],
+        recentSessions: [],
+      };
+    }
     const [
       policiesRes,
       claimsRes,
@@ -82,6 +98,7 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
 export const getPolicies = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const tenantId = await resolveCurrentTenantId();
+    if (!tenantId) return [];
     const { data: policies, error } = await insforgeServer.database
       .from("policies")
       .select("id, policy_number, plan_name, policy_type, premium_amount, due_date, status, nominee_name, nominee_relationship, customer_id")
@@ -115,6 +132,7 @@ export const getPolicies = createServerFn({ method: "GET" }).handler(async () =>
 export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const tenantId = await resolveCurrentTenantId();
+    if (!tenantId) return [];
     const { data: claims, error: claimsErr } = await insforgeServer.database
       .from("claims")
       .select("id, claim_number, incident_date, estimated_amount, description, status, risk_score, created_at, customer_id, policy_id")
@@ -161,6 +179,7 @@ export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
 export const getApprovalRequests = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const tenantId = await resolveCurrentTenantId();
+    if (!tenantId) return [];
     const { data: requests, error } = await insforgeServer.database
       .from("approval_requests")
       .select("id, request_type, payload, status, risk_level, reason, created_at, policy_id, customer_id")
@@ -313,6 +332,7 @@ export const updateApprovalStatus = createServerFn({ method: "POST" })
 export const getCallSessions = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const tenantId = await resolveCurrentTenantId();
+    if (!tenantId) return [];
     const { data: sessions, error } = await insforgeServer.database
       .from("call_sessions")
       .select("id, room_name, caller_name, caller_phone, started_at, ended_at, duration_sec, status, transcript, risk_state, customer_id")
@@ -346,6 +366,7 @@ export const getCallSessions = createServerFn({ method: "GET" }).handler(async (
 export const getAuditLogs = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const tenantId = await resolveCurrentTenantId();
+    if (!tenantId) return [];
     const { data, error } = await insforgeServer.database
       .from("audit_logs")
       .select("id, actor_type, actor_id, action, target_resource, target_id, risk_level, status, payload, created_at, customer_id, call_session_id")
@@ -365,17 +386,12 @@ export const getTenantSettings = createServerFn({ method: "GET" }).handler(async
     const { data: tenant, error } = await insforgeServer.database
       .from("tenants")
       .select("id, name, slug, status, branding_config, created_at")
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    return tenant ?? {
-      id: "a0000000-0000-0000-0000-000000000001",
-      name: "SafeLife Insurance Co.",
-      slug: "safelife",
-      status: "active",
-      branding_config: { primary_color: "#0891b2", support_phone: "+91 800 555 0199", support_email: "claims@safelife.com" },
-    };
+    return tenant ?? null;
   } catch (err: any) {
     console.error("Get tenant settings error:", err);
     throw new Error(err.message || "Failed to load tenant settings");
@@ -383,8 +399,8 @@ export const getTenantSettings = createServerFn({ method: "GET" }).handler(async
 });
 
 const UpdateTenantInput = z.object({
-  name: z.string().min(2),
-  slug: z.string().min(2),
+  name: z.string().min(1),
+  slug: z.string().optional(),
   branding_config: z.record(z.unknown()).default({}),
 });
 
@@ -392,32 +408,119 @@ export const updateTenantSettings = createServerFn({ method: "POST" })
   .validator((input: unknown) => UpdateTenantInput.parse(input))
   .handler(async ({ data }) => {
     try {
-      const { data: tenant, error } = await insforgeServer.database
+      const slug = data.slug
+        ? data.slug.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/(^-|-$)/g, "")
+        : data.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/(^-|-$)/g, "") || "company-workspace";
+
+      const { data: existing } = await insforgeServer.database
         .from("tenants")
-        .update({
-          name: data.name,
-          slug: data.slug,
-          branding_config: data.branding_config,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("slug", data.slug)
-        .select()
+        .select("id, slug")
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (!error && tenant) return tenant;
+      let tenant;
+      if (existing) {
+        const { data: updated, error } = await insforgeServer.database
+          .from("tenants")
+          .update({
+            name: data.name,
+            slug: existing.slug || slug,
+            branding_config: data.branding_config,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id)
+          .select()
+          .maybeSingle();
 
-      // @ts-expect-error pg types are optional at runtime
-      const { Pool } = await import("pg");
-      const pool = new Pool({ connectionString: process.env["DATABASE_URL"] });
-      const res = await pool.query(
-        `UPDATE tenants SET name = $1, branding_config = $2, updated_at = NOW() WHERE slug = $3 RETURNING *`,
-        [data.name, JSON.stringify(data.branding_config), data.slug]
-      );
-      await pool.end();
-      return res.rows[0];
+        if (error) throw error;
+        tenant = updated;
+      } else {
+        const { data: inserted, error } = await insforgeServer.database
+          .from("tenants")
+          .insert([
+            {
+              name: data.name,
+              slug,
+              status: "active",
+              branding_config: data.branding_config,
+            },
+          ])
+          .select()
+          .maybeSingle();
+
+        if (error) throw error;
+        tenant = inserted;
+      }
+
+      // Link any active Clerk user to this tenant as owner
+      try {
+        const { clerkClient } = await import("@/lib/auth/clerk.server");
+        const users = await clerkClient.users.getUserList({ limit: 1 });
+        const firstUser = users.data[0];
+        if (firstUser && tenant) {
+          await insforgeServer.database
+            .from("tenant_members")
+            .upsert(
+              [
+                {
+                  tenant_id: tenant.id,
+                  clerk_user_id: firstUser.id,
+                  role: "owner",
+                  status: "active",
+                },
+              ],
+              { onConflict: "tenant_id,clerk_user_id" }
+            );
+        }
+      } catch (cErr: any) {
+        console.warn("Notice: could not link Clerk member:", cErr?.message);
+      }
+
+      return tenant;
     } catch (err: any) {
       console.error("Update tenant settings error:", err);
       throw new Error(err.message || "Failed to update tenant settings");
+    }
+  });
+
+const UpdatePlanInput = z.object({
+  plan: z.enum(["starter", "growth", "business", "enterprise"]),
+});
+
+export const updateSubscriptionPlan = createServerFn({ method: "POST" })
+  .validator((input: unknown) => UpdatePlanInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId();
+      if (!tenantId) throw new Error("No organization found. Please complete setup first.");
+
+      const { data: tenant, error: fetchErr } = await insforgeServer.database
+        .from("tenants")
+        .select("id, branding_config")
+        .eq("id", tenantId)
+        .maybeSingle();
+
+      if (fetchErr || !tenant) throw new Error("Tenant record not found.");
+
+      const branding = (tenant.branding_config as any) || {};
+      branding.plan = data.plan;
+
+      const { data: updated, error } = await insforgeServer.database
+        .from("tenants")
+        .update({
+          branding_config: branding,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", tenantId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return updated;
+    } catch (err: any) {
+      console.error("Update subscription plan error:", err);
+      throw new Error(err.message || "Failed to update subscription plan");
     }
   });
 

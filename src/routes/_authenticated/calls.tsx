@@ -3,21 +3,16 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Search,
-  PhoneCall,
-  Clock,
-  ShieldAlert,
-  Mic,
-  AlertCircle,
-  FileText,
-  Volume2,
-} from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Search, PhoneCall, Clock, Mic, FileText, PhoneIncoming, MessageSquare, ShieldCheck } from "lucide-react";
 import { getCallSessions } from "@/lib/insurance.functions";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { getCallStatusPresentation } from "@/lib/insurance/status-presentation";
 
 export const Route = createFileRoute("/_authenticated/calls")({
   head: () => ({
@@ -28,13 +23,9 @@ export const Route = createFileRoute("/_authenticated/calls")({
 
 function VoiceSessionsPage() {
   const [search, setSearch] = useState("");
-  const [selectedTranscript, setSelectedTranscript] = useState<{
-    caller: string;
-    room: string;
-    transcript: string;
-  } | null>(null);
+  const [selectedSession, setSelectedSession] = useState<any | null>(null);
 
-  const { data: sessions, isLoading, error } = useQuery({
+  const { data: sessions, isLoading, error, refetch } = useQuery({
     queryKey: ["call-sessions-list"],
     queryFn: () => getCallSessions(),
   });
@@ -63,9 +54,10 @@ function VoiceSessionsPage() {
   return (
     <AppShell
       title="Voice Sessions"
-      subtitle="Live & archived WebRTC conversational AI calls with risk scoring and auditable transcripts"
+      subtitle="Live & archived WebRTC conversational AI calls with transcript logs and outcome verification"
     >
       <div className="space-y-6">
+        {/* Top Control Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -77,137 +69,120 @@ function VoiceSessionsPage() {
             />
           </div>
 
-          <Link to="/voice">
-            <Button className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold gap-2 shadow w-full sm:w-auto">
-              <Mic className="h-4 w-4" />
-              Launch Live Call
-            </Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground font-mono hidden sm:inline">
+              Showing {filtered.length} of {sessions?.length || 0} calls
+            </span>
+            <Link to="/voice">
+              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium gap-1.5 shadow-xs w-full sm:w-auto">
+                <Mic className="size-3.5" />
+                Launch Live Call
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            <span>Failed to load voice sessions: {error.message}</span>
-          </div>
+          <ErrorState
+            title="Failed to load voice sessions"
+            message={(error as any)?.message || "PostgreSQL query failed"}
+            onRetry={() => refetch()}
+          />
         )}
 
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader className="p-4 sm:p-6 pb-4">
-            <CardTitle className="text-base font-semibold">LiveKit Call Registry</CardTitle>
-            <CardDescription className="text-xs">
-              Every inbound or WebRTC session is recorded, timestamped, and stored in InsForge PostgreSQL.
-            </CardDescription>
+        {/* Sessions Registry Card */}
+        <Card className="border border-border bg-card shadow-xs">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold text-foreground">
+                  LiveKit Call Registry
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Recorded WebRTC voice sessions and conversational transcripts stored in InsForge PostgreSQL
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
-
           <CardContent className="p-0">
             {isLoading ? (
-              <div className="flex justify-center p-8 text-xs text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                  Loading call history from database...
-                </span>
+              <div className="py-16 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+                <span className="size-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                <span>Loading voice sessions from database...</span>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground space-y-3">
-                <PhoneCall className="h-10 w-10 text-muted-foreground/40" />
-                <p className="text-sm font-medium">No voice sessions found in database</p>
-                <p className="text-xs max-w-sm">
-                  Active WebRTC calls initiated from the Customer Voice UI will be recorded and listed here automatically.
-                </p>
-                <Link to="/voice">
-                  <Button variant="outline" size="sm" className="mt-2 text-xs">
-                    Start a Test Call
-                  </Button>
-                </Link>
+              <div className="p-6">
+                <EmptyState
+                  icon={<PhoneCall className="size-8" />}
+                  title="No voice sessions found"
+                  description={
+                    search
+                      ? "No calls match your search query."
+                      : "Start a browser test call to record your first LiveKit session."
+                  }
+                  actionLabel="Launch Test Call"
+                  onAction={() => window.location.assign("/voice")}
+                />
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Caller / Policyholder</TableHead>
-                      <TableHead className="text-xs">Room / ID</TableHead>
-                      <TableHead className="text-xs">Duration</TableHead>
-                      <TableHead className="text-xs">Risk Level</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
-                      <TableHead className="text-xs">Started At</TableHead>
-                      <TableHead className="text-xs text-right">Transcript</TableHead>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-xs font-semibold">Caller</TableHead>
+                      <TableHead className="text-xs font-semibold">LiveKit Room</TableHead>
+                      <TableHead className="text-xs font-semibold">Duration</TableHead>
+                      <TableHead className="text-xs font-semibold">Status</TableHead>
+                      <TableHead className="text-xs font-semibold">Started At</TableHead>
+                      <TableHead className="text-xs font-semibold">Transcript</TableHead>
+                      <TableHead className="text-xs text-right font-semibold">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((s: any) => {
-                      const caller = typeof s.customers?.name === "string" ? s.customers.name : typeof s.caller_name === "string" ? s.caller_name : "Unverified Caller";
-                      const rawRisk = s.risk_state ?? s.risk_level;
-                      const riskStr =
-                        typeof rawRisk === "object" && rawRisk !== null
-                          ? String(rawRisk.tier || rawRisk.level || "LOW")
-                          : String(rawRisk || "LOW");
-                      const risk = riskStr.toUpperCase();
-                      const riskBadge =
-                        risk === "HIGH" || risk === "CRITICAL"
-                          ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
-                          : risk === "MEDIUM"
-                          ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
-                          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400";
+                      const statusInfo = getCallStatusPresentation(s.status);
 
                       return (
-                        <TableRow key={s.id}>
-                          <TableCell className="font-medium text-xs">
-                            <div>{caller}</div>
-                            {s.caller_phone && (
-                              <div className="text-[10px] text-muted-foreground">{s.caller_phone}</div>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
-                            {s.room_name}
-                          </TableCell>
+                        <TableRow key={s.id} className="hover:bg-muted/30 transition-colors">
                           <TableCell className="text-xs">
-                            <span className="flex items-center gap-1 text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              {formatDuration(s.duration_sec)}
-                            </span>
+                            <div className="font-semibold text-foreground flex items-center gap-1.5">
+                              <PhoneIncoming className="size-3.5 text-primary" />
+                              {s.caller_name || "Anonymous Caller"}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              {s.caller_phone || "WebRTC Client"}
+                            </div>
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={`text-[10px] ${riskBadge}`}>
-                              {risk}
-                            </Badge>
+
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            {s.room_name?.slice(0, 20)}...
                           </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] ${
-                                s.status === "active"
-                                  ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400 animate-pulse"
-                                  : "border-muted text-muted-foreground"
-                              }`}
-                            >
-                              {s.status}
-                            </Badge>
+
+                          <TableCell className="text-xs font-semibold font-mono text-foreground">
+                            {formatDuration(s.duration_sec)}
                           </TableCell>
+
+                          <TableCell className="text-xs">
+                            <StatusBadge label={statusInfo.label} tone={statusInfo.tone} />
+                          </TableCell>
+
                           <TableCell className="text-xs text-muted-foreground">
                             {s.started_at ? new Date(s.started_at).toLocaleString() : "--"}
                           </TableCell>
+
+                          <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
+                            {s.transcript ? s.transcript : "No recorded transcript"}
+                          </TableCell>
+
                           <TableCell className="text-right">
-                            {s.transcript ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs gap-1"
-                                onClick={() =>
-                                  setSelectedTranscript({
-                                    caller,
-                                    room: s.room_name,
-                                    transcript: s.transcript,
-                                  })
-                                }
-                              >
-                                <FileText className="h-3 w-3 text-cyan-400" />
-                                View
-                              </Button>
-                            ) : (
-                              <span className="text-[11px] text-muted-foreground">None</span>
-                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedSession(s)}
+                              className="h-7 text-xs text-primary hover:text-primary/90 hover:bg-primary/10"
+                            >
+                              Inspect
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );
@@ -219,40 +194,71 @@ function VoiceSessionsPage() {
           </CardContent>
         </Card>
 
-        {/* Transcript Modal */}
-        {selectedTranscript && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <Card className="w-full max-w-lg border-border bg-card shadow-2xl">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold">
-                    Call Transcript: {selectedTranscript.caller}
-                  </CardTitle>
+        {/* Transcript & Session Detail Dialog */}
+        {selectedSession && (
+          <Dialog open={!!selectedSession} onOpenChange={() => setSelectedSession(null)}>
+            <DialogContent className="max-w-lg bg-card border-border">
+              <DialogHeader>
+                <div className="flex items-center justify-between pr-6">
+                  <span className="font-mono text-xs font-bold text-foreground">
+                    {selectedSession.caller_name || "Caller"}
+                  </span>
+                  <StatusBadge
+                    label={getCallStatusPresentation(selectedSession.status).label}
+                    tone={getCallStatusPresentation(selectedSession.status).tone}
+                  />
+                </div>
+                <DialogTitle className="font-display text-lg font-bold text-foreground">
+                  Voice Session Transcript
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  LiveKit Room: {selectedSession.room_name} • Duration: {formatDuration(selectedSession.duration_sec)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 pt-2 text-xs">
+                <div className="grid grid-cols-2 gap-3 p-3 rounded-xl border border-border bg-muted/20">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">
+                      Started At
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {selectedSession.started_at ? new Date(selectedSession.started_at).toLocaleString() : "--"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">
+                      Session ID
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground block truncate">
+                      {selectedSession.id}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl border border-border bg-card space-y-2">
+                  <span className="text-[10px] text-muted-foreground uppercase font-semibold block">
+                    Recorded Audio Transcript
+                  </span>
+                  <div className="font-mono text-xs text-foreground bg-muted/30 p-3 rounded-lg border border-border/60 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                    {selectedSession.transcript || "No transcript turns captured for this call."}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
                   <Button
-                    variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => setSelectedTranscript(null)}
+                    variant="outline"
+                    onClick={() => setSelectedSession(null)}
+                    className="text-xs"
                   >
-                    ✕
-                  </Button>
-                </div>
-                <CardDescription className="text-xs font-mono">
-                  {selectedTranscript.room}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="max-h-72 overflow-y-auto rounded-lg border border-border/80 bg-background/60 p-4 text-xs whitespace-pre-wrap leading-relaxed text-foreground">
-                  {selectedTranscript.transcript}
-                </div>
-                <div className="flex justify-end">
-                  <Button size="sm" onClick={() => setSelectedTranscript(null)}>
                     Close
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </AppShell>

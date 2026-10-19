@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,11 +7,17 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig({
   resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
     tsconfigPaths: true,
   },
   server: {
     host: true,
     allowedHosts: [".e2b.app", ".localhost", "172.30.160.10"],
+    watch: {
+      ignored: ["**/*.md", "**/scratch/**", "**/.git/**", "**/.tanstack/**", "**/.github/**", "**/*.crdownload"],
+    },
     proxy: {
       "/rtc": {
         target: process.env["LIVEKIT_HTTP_URL"] || "http://127.0.0.1:7880",

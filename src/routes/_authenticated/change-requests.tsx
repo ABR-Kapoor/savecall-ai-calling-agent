@@ -3,16 +3,17 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, CheckCircle2, XCircle, AlertCircle, Clock, ShieldAlert } from "lucide-react";
+import { Search, CheckCircle2, ShieldAlert } from "lucide-react";
 import { getApprovalRequests, updateApprovalStatus } from "@/lib/insurance.functions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { ApprovalReviewCard, type ApprovalRequestRecord } from "@/components/insurance/approval-review-card";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/change-requests")({
   head: () => ({
-    meta: [{ title: "Approvals — SaveCall Insurance AI" }],
+    meta: [{ title: "Pending Approvals — SaveCall Insurance AI" }],
   }),
   component: ApprovalsPage,
 });
@@ -21,7 +22,7 @@ function ApprovalsPage() {
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
 
-  const { data: requests, isLoading, error } = useQuery({
+  const { data: requests, isLoading, error, refetch } = useQuery({
     queryKey: ["approvals-list"],
     queryFn: () => getApprovalRequests(),
   });
@@ -29,9 +30,18 @@ function ApprovalsPage() {
   const mutation = useMutation({
     mutationFn: (vars: { id: string; status: "approved" | "rejected" }) =>
       updateApprovalStatus({ data: { id: vars.id, status: vars.status } }),
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["approvals-list"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["policies-list"] });
+      toast.success(
+        vars.status === "approved"
+          ? "Request approved and committed to database."
+          : "Request rejected successfully."
+      );
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update approval status");
     },
   });
 
@@ -43,13 +53,17 @@ function ApprovalsPage() {
     return type.includes(q) || custName.includes(q) || polNum.includes(q);
   });
 
+  const pendingRequests = filtered.filter((r: any) => r.status === "pending");
+  const pastRequests = filtered.filter((r: any) => r.status !== "pending");
+
   return (
     <AppShell
       title="High-Risk Approval Queue"
-      subtitle="Human-in-the-loop review for policy cancellations, nominee changes, and sensitive updates staged by AI"
+      subtitle="Human-in-the-loop review for policy cancellations, nominee changes, and high-impact updates staged by AI"
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
+        {/* Search Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -59,143 +73,77 @@ function ApprovalsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+
+          <div className="text-xs text-muted-foreground self-center sm:self-auto font-mono">
+            {pendingRequests.length} pending review • {pastRequests.length} completed
+          </div>
         </div>
 
         {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            <span>Failed to load approval requests: {error.message}</span>
-          </div>
+          <ErrorState
+            title="Failed to load approvals"
+            message={(error as any)?.message || "PostgreSQL query failed"}
+            onRetry={() => refetch()}
+          />
         )}
 
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader className="p-4 sm:p-6 pb-4">
-            <CardTitle className="text-base font-semibold">Pending Compliance Reviews</CardTitle>
-            <CardDescription className="text-xs">
-              Actions requiring compliance officer sign-off before being committed to carrier core systems.
-            </CardDescription>
-          </CardHeader>
+        {/* Section 1: Pending Actions Requiring Decision */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-sm font-semibold text-foreground">
+              Awaiting Compliance Decision ({pendingRequests.length})
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              Requires dual-authorization before committing to carrier policy records
+            </span>
+          </div>
 
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="flex justify-center p-8 text-xs text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                  Loading approval requests from database...
-                </span>
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground space-y-3">
-                <CheckCircle2 className="h-10 w-10 text-emerald-500/40" />
-                <p className="text-sm font-medium">All caught up! No pending approvals</p>
-                <p className="text-xs max-w-sm">
-                  High-risk operations initiated by policyholders via the AI voice agent will appear here for verification.
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Request Type</TableHead>
-                      <TableHead className="text-xs">Policy / Customer</TableHead>
-                      <TableHead className="text-xs">Payload Details</TableHead>
-                      <TableHead className="text-xs">Risk Level</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
-                      <TableHead className="text-xs">Requested</TableHead>
-                      <TableHead className="text-xs text-right">Officer Decision</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((r: any) => {
-                      const rawRisk = r.risk_level;
-                      const riskStr =
-                        typeof rawRisk === "object" && rawRisk !== null
-                          ? String(rawRisk.tier || rawRisk.level || "HIGH")
-                          : String(rawRisk || "HIGH");
-                      const risk = riskStr.toUpperCase();
-                      const riskBadge =
-                        risk === "CRITICAL"
-                          ? "border-rose-500/40 bg-rose-500/20 text-rose-300"
-                          : "border-amber-500/30 bg-amber-500/10 text-amber-400";
+          {isLoading ? (
+            <div className="py-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-2 border border-border rounded-xl bg-card">
+              <span className="size-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <span>Loading approvals from database...</span>
+            </div>
+          ) : pendingRequests.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircle2 className="size-8 text-emerald-600" />}
+              title="All caught up! Zero pending approvals"
+              description="High-risk modifications initiated by policyholders via the voice receptionist will appear here for staff sign-off."
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingRequests.map((req: any) => (
+                <ApprovalReviewCard
+                  key={req.id}
+                  request={req}
+                  isPendingMutation={mutation.isPending}
+                  onApprove={(id) => mutation.mutate({ id, status: "approved" })}
+                  onReject={(id) => mutation.mutate({ id, status: "rejected" })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
-                      const isPending = r.status === "pending";
+        {/* Section 2: Historical Approvals */}
+        {pastRequests.length > 0 && (
+          <div className="space-y-3 pt-4 border-t border-border">
+            <h3 className="font-display text-sm font-semibold text-foreground">
+              Past Decisions & Audit History ({pastRequests.length})
+            </h3>
 
-                      return (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-mono text-xs font-semibold text-cyan-400">
-                            {r.request_type}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div className="font-medium text-foreground">
-                              {r.customers?.name || "Customer"}
-                            </div>
-                            <div className="font-mono text-[11px] text-muted-foreground">
-                              {r.policies?.policy_number || "Policy #"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono max-w-xs truncate text-muted-foreground">
-                            {typeof r.payload === "string" ? r.payload : JSON.stringify(r.payload)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={`text-[10px] ${riskBadge}`}>
-                              {risk}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] ${
-                                r.status === "approved"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                                  : r.status === "rejected"
-                                  ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
-                                  : "border-amber-500/30 bg-amber-500/10 text-amber-400"
-                              }`}
-                            >
-                              {r.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {r.created_at ? new Date(r.created_at).toLocaleString() : "--"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {isPending ? (
-                              <div className="flex items-center justify-end gap-1.5">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20"
-                                  disabled={mutation.isPending}
-                                  onClick={() => mutation.mutate({ id: r.id, status: "approved" })}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs border-rose-500/40 text-rose-400 hover:bg-rose-500/20"
-                                  disabled={mutation.isPending}
-                                  onClick={() => mutation.mutate({ id: r.id, status: "rejected" })}
-                                >
-                                  Reject
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground capitalize">
-                                {r.status}
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pastRequests.map((req: any) => (
+                <ApprovalReviewCard
+                  key={req.id}
+                  request={req}
+                  isPendingMutation={false}
+                  onApprove={() => {}}
+                  onReject={() => {}}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );
