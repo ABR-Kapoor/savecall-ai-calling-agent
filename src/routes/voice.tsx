@@ -35,6 +35,8 @@ import {
   CheckCircle2,
   FileText,
   Send,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,37 +48,118 @@ export const Route = createFileRoute("/voice")({
   component: VoiceCallPage,
 });
 
+/* =========================================================================
+   VOICE CONNECTION STATE MACHINE
+   idle -> requesting_microphone -> connecting -> connected -> listening -> processing -> speaking -> listening
+   Error / Recovery states: permission_denied, connection_failed, reconnecting, disconnected, ended
+   ========================================================================= */
+export type VoiceConnectionState =
+  | "idle"
+  | "requesting_microphone"
+  | "connecting"
+  | "connected"
+  | "listening"
+  | "processing"
+  | "speaking"
+  | "permission_denied"
+  | "connection_failed"
+  | "reconnecting"
+  | "disconnected"
+  | "ended";
+
+/* =========================================================================
+   SPEECH SYNTHESIS ENGINE (WITH GC RETENTION & WATCHDOG SAFETY)
+   ========================================================================= */
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+let speechWatchdogTimeout: any = null;
+
+export function stopSpeaking() {
+  if (speechWatchdogTimeout) {
+    clearTimeout(speechWatchdogTimeout);
+    speechWatchdogTimeout = null;
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch (_) {}
+  }
+  activeUtterance = null;
+}
 
 function speakAi(text: string, isSpeakerMuted: boolean, onEnd?: () => void) {
+  stopSpeaking();
+
   if (isSpeakerMuted || typeof window === "undefined" || !("speechSynthesis" in window) || !text) {
     if (onEnd) onEnd();
     return;
   }
+
   try {
-    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
     const cleanText = text
       .replace(/<think>[\s\S]*?<\/think>/gi, "")
       .replace(/[*_#`~>]/g, "")
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
       .trim();
+
+    if (!cleanText) {
+      if (onEnd) onEnd();
+      return;
+    }
+
     const utterance = new SpeechSynthesisUtterance(cleanText);
+    activeUtterance = utterance; // Prevent garbage collection bug in Chrome
+
     const voices = window.speechSynthesis.getVoices();
     const preferred =
       voices.find((v) => v.lang === "en-IN" || v.lang === "hi-IN") ||
-      voices.find((v) => v.name.includes("India") || v.name.includes("Neerja") || v.name.includes("Swara") || v.name.includes("Natural") || v.name.includes("Jenny")) ||
+      voices.find(
+        (v) =>
+          v.name.includes("India") ||
+          v.name.includes("Neerja") ||
+          v.name.includes("Swara") ||
+          v.name.includes("Natural") ||
+          v.name.includes("Jenny")
+      ) ||
       voices.find((v) => v.lang.startsWith("en-")) ||
       voices[0];
+
     if (preferred) utterance.voice = preferred;
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
-    if (onEnd) {
-      utterance.onend = () => onEnd();
-      utterance.onerror = () => onEnd();
-    }
+
+    let finished = false;
+    const finalize = () => {
+      if (finished) return;
+      finished = true;
+      if (speechWatchdogTimeout) {
+        clearTimeout(speechWatchdogTimeout);
+        speechWatchdogTimeout = null;
+      }
+      activeUtterance = null;
+      if (onEnd) onEnd();
+    };
+
+    utterance.onend = finalize;
+    utterance.onerror = (e) => {
+      console.warn("Speech synthesis notice:", e);
+      finalize();
+    };
+
+    // Watchdog timer: If browser speech synthesis gets stuck, auto-release after expected duration + buffer
+    const estimatedDurationMs = Math.max(3000, (cleanText.length / 14) * 1000 + 3000);
+    speechWatchdogTimeout = setTimeout(() => {
+      console.warn("Speech synthesis watchdog triggered state release");
+      finalize();
+    }, estimatedDurationMs);
+
     window.speechSynthesis.speak(utterance);
   } catch (err) {
-    console.warn("Speech synthesis notice:", err);
+    console.warn("Speech synthesis error:", err);
     if (onEnd) onEnd();
   }
 }
@@ -98,8 +181,7 @@ class PhoneAudioFX {
     if (!this.ctx) {
       const AudioCtx =
         window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext;
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) this.ctx = new AudioCtx();
     }
     if (this.ctx && this.ctx.state === "suspended") {
@@ -113,24 +195,21 @@ class PhoneAudioFX {
     const ctx = this.getContext();
     if (!ctx) return;
 
-    const playPulse = () => {
-      if (!this.ctx || this.ctx.state === "closed") return;
-      try {
+    try {
+      const playBurst = () => {
+        if (!this.ctx) return;
         const now = this.ctx.currentTime;
         const osc1 = this.ctx.createOscillator();
         const osc2 = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
 
-        // Standard US telephone ringback tone: 440Hz + 480Hz
-        osc1.frequency.setValueAtTime(440, now);
-        osc2.frequency.setValueAtTime(480, now);
         osc1.type = "sine";
         osc2.type = "sine";
+        osc1.frequency.setValueAtTime(440, now);
+        osc2.frequency.setValueAtTime(480, now);
 
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.04, now + 0.05);
-        gain.gain.setValueAtTime(0.04, now + 1.5);
-        gain.gain.linearRampToValueAtTime(0, now + 1.8);
+        gain.gain.setValueAtTime(0.04, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.6);
 
         osc1.connect(gain);
         osc2.connect(gain);
@@ -138,15 +217,15 @@ class PhoneAudioFX {
 
         osc1.start(now);
         osc2.start(now);
-        osc1.stop(now + 1.8);
-        osc2.stop(now + 1.8);
-      } catch (e) {
-        console.warn("Ring sound notice:", e);
-      }
-    };
+        osc1.stop(now + 1.6);
+        osc2.stop(now + 1.6);
+      };
 
-    playPulse();
-    this.ringInterval = setInterval(playPulse, 3800);
+      playBurst();
+      this.ringInterval = setInterval(playBurst, 3500);
+    } catch (e) {
+      console.warn("Audio dial tone notice:", e);
+    }
   }
 
   static stopRinging() {
@@ -166,16 +245,15 @@ class PhoneAudioFX {
       const gain = ctx.createGain();
       osc.type = "sine";
       osc.frequency.setValueAtTime(523.25, now);
-      osc.frequency.setValueAtTime(659.25, now + 0.1);
-      osc.frequency.setValueAtTime(783.99, now + 0.2);
-      gain.gain.setValueAtTime(0.07, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.18);
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.45);
+      osc.stop(now + 0.25);
     } catch (e) {
-      console.warn("Connect sound notice:", e);
+      console.warn("Connected sound notice:", e);
     }
   }
 
@@ -222,31 +300,73 @@ class PhoneAudioFX {
   }
 }
 
+/* =========================================================================
+   MAIN ROUTE CONTROLLER
+   ========================================================================= */
 function VoiceCallPage() {
   const { user } = useUser();
-  const [session, setSession] = useState<{
-    token: string;
-    livekitUrl: string;
-    roomName: string;
-    callSessionId?: string | undefined;
-    greeting?: string;
-    agentConfig?: any;
-    customer: { id: string | null; name: string; customerNumber: string | null; tenantId?: string; isVerified?: boolean };
-  } | null>(null);
-
-  const [connecting, setConnecting] = useState(false);
+  const [connectionState, setConnectionState] = useState<VoiceConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [callEndedStats, setCallEndedStats] = useState<{
     duration: number;
     turns: number;
   } | null>(null);
 
+  const [session, setSession] = useState<{
+    token: string;
+    livekitUrl: string;
+    roomName: string;
+    callSessionId: string;
+    greeting?: string;
+    agentConfig?: any;
+    customer: { id: string | null; name: string; customerNumber: string | null; tenantId?: string; isVerified?: boolean };
+    micStream?: MediaStream | null | undefined;
+  } | null>(null);
+
   const startVoiceCall = useCallback(async () => {
-    setConnecting(true);
     setError(null);
     setCallEndedStats(null);
+    setConnectionState("requesting_microphone");
+
+    // 1. Explicitly prompt and acquire user microphone first
+    let mediaStream: MediaStream | null = null;
+    try {
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.mediaDevices ||
+        typeof navigator.mediaDevices.getUserMedia !== "function"
+      ) {
+        throw new Error("Your browser does not support microphone capture.");
+      }
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (micErr: any) {
+      console.warn("Microphone access error:", micErr);
+      if (micErr.name === "NotAllowedError" || micErr.name === "PermissionDeniedError") {
+        setConnectionState("permission_denied");
+        setError(
+          "Microphone permission was denied. Please allow microphone access in your browser to speak with SaveCall AI."
+        );
+      } else if (micErr.name === "NotFoundError" || micErr.name === "DevicesNotFoundError") {
+        setConnectionState("permission_denied");
+        setError("No microphone detected. Please plug in or enable a microphone device.");
+      } else {
+        setConnectionState("permission_denied");
+        setError(`Microphone error: ${micErr.message || "Failed to acquire audio input"}`);
+      }
+      return;
+    }
+
+    // 2. Transition to connecting and play dial tone
+    setConnectionState("connecting");
     PhoneAudioFX.playDialTone();
 
+    // 3. Request LiveKit session credentials from server with 10s timeout
     try {
       const clerkEmail = user?.primaryEmailAddress?.emailAddress;
       const clerkName =
@@ -254,6 +374,9 @@ function VoiceCallPage() {
         `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
         clerkEmail?.split("@")[0] ||
         "Valued Policyholder";
+
+      const sessionAbort = new AbortController();
+      const sessionTimeout = setTimeout(() => sessionAbort.abort(), 10000);
 
       const res = await fetch("/api/voice/session", {
         method: "POST",
@@ -264,10 +387,13 @@ function VoiceCallPage() {
           customerName: clerkName,
           customerPhone: user?.primaryPhoneNumber?.phoneNumber,
         }),
+        signal: sessionAbort.signal,
       });
 
+      clearTimeout(sessionTimeout);
+
       if (!res.ok) {
-        throw new Error(`Failed to initialize session: ${res.statusText}`);
+        throw new Error(`Failed to initialize session (${res.status}: ${res.statusText})`);
       }
 
       const data = await res.json();
@@ -281,37 +407,56 @@ function VoiceCallPage() {
         token: data.token,
         livekitUrl: resolvedLivekitUrl,
         roomName: data.roomName,
+        callSessionId: data.callSessionId,
         customer: data.customer,
         greeting: data.greeting,
         agentConfig: data.agentConfig,
+        micStream: mediaStream,
       });
     } catch (err: any) {
       PhoneAudioFX.stopRinging();
-      console.error(err);
-      setError(err.message || "Failed to start call");
-    } finally {
-      setConnecting(false);
-    }
-  }, []);
-
-  const handleEndCall = useCallback((stats?: { duration: number; turns: number }) => {
-    PhoneAudioFX.playEndCall();
-    if (stats) {
-      setCallEndedStats(stats);
-      if (session?.callSessionId) {
-        fetch("/api/voice/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callSessionId: session.callSessionId,
-            durationSeconds: stats.duration,
-            turnsCount: stats.turns,
-          }),
-        }).catch((e) => console.warn("Call end sync notice:", e));
+      console.error("Session connection error:", err);
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((t) => t.stop());
       }
+      setConnectionState("connection_failed");
+      setError(
+        err.name === "AbortError"
+          ? "Voice server connection timed out. Please try again."
+          : err.message || "Failed to establish voice session."
+      );
     }
-    setSession(null);
-  }, [session]);
+  }, [user]);
+
+  const handleEndCall = useCallback(
+    (stats?: { duration: number; turns: number }) => {
+      stopSpeaking();
+      PhoneAudioFX.playEndCall();
+
+      if (session?.micStream) {
+        session.micStream.getTracks().forEach((t) => t.stop());
+      }
+
+      if (stats) {
+        setCallEndedStats(stats);
+        if (session?.callSessionId) {
+          fetch("/api/voice/end", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              callSessionId: session.callSessionId,
+              durationSeconds: stats.duration,
+              turnsCount: stats.turns,
+            }),
+          }).catch((e) => console.warn("Call end sync notice:", e));
+        }
+      }
+
+      setSession(null);
+      setConnectionState("ended");
+    },
+    [session]
+  );
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-slate-950 p-2 sm:p-4 text-slate-100 antialiased overflow-hidden selection:bg-cyan-500/30">
@@ -356,14 +501,18 @@ function VoiceCallPage() {
             <CallEndedScreen
               stats={callEndedStats}
               onCallAgain={startVoiceCall}
-              onDismiss={() => setCallEndedStats(null)}
+              onDismiss={() => {
+                setCallEndedStats(null);
+                setConnectionState("idle");
+              }}
             />
           ) : (
             /* PRE-CALL / DIAL SCREEN */
             <PreCallDialerScreen
-              connecting={connecting}
+              connectionState={connectionState}
               error={error}
               onStartCall={startVoiceCall}
+              onRetry={startVoiceCall}
             />
           )
         ) : (
@@ -372,27 +521,40 @@ function VoiceCallPage() {
             serverUrl={session.livekitUrl}
             token={session.token}
             connect={true}
-            audio={typeof navigator !== "undefined" && Boolean(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function")}
+            audio={true}
             video={false}
             onConnected={() => {
               PhoneAudioFX.stopRinging();
               PhoneAudioFX.playConnected();
+              setConnectionState("connected");
             }}
             onError={(err) => {
               console.warn("LiveKit transport notice:", err?.message || err);
+              if (connectionState === "connecting") {
+                setConnectionState("connection_failed");
+                setError(
+                  "LiveKit gateway connection notice: " + (err?.message || "Verify WebRTC network")
+                );
+              }
             }}
             onDisconnected={(reason) => {
-              console.log("LiveKit disconnected notice:", reason, "- continuing in browser HD voice mode.");
+              console.log("LiveKit disconnected notice:", reason);
+              if (connectionState !== "ended") {
+                setConnectionState("disconnected");
+              }
             }}
             className="w-full h-full flex flex-col"
           >
             <ActivePhoneCallScreen
+              connectionState={connectionState}
+              setConnectionState={setConnectionState}
               callSessionId={session.callSessionId}
               customerName={session.customer.name}
               customerId={session.customer.id}
               tenantId={(session.customer as any).tenantId}
               customerNumber={session.customer.customerNumber}
               initialGreeting={(session as any).greeting}
+              micStream={session.micStream}
               onEnd={handleEndCall}
             />
             <RoomAudioRenderer />
@@ -412,13 +574,15 @@ function VoiceCallPage() {
    1. PRE-CALL / DIALER SCREEN
    ========================================================================= */
 function PreCallDialerScreen({
-  connecting,
+  connectionState,
   error,
   onStartCall,
+  onRetry,
 }: {
-  connecting: boolean;
+  connectionState: VoiceConnectionState;
   error: string | null;
   onStartCall: () => void;
+  onRetry: () => void;
 }) {
   return (
     <div className="flex-1 flex flex-col justify-between p-6 pt-11 pb-8 text-center bg-gradient-to-b from-slate-900/90 via-slate-950 to-slate-950">
@@ -453,31 +617,69 @@ function PreCallDialerScreen({
           </p>
         </div>
 
-        {/* Feature Highlights */}
-        <div className="w-full rounded-2xl border border-slate-800/80 bg-slate-900/50 p-3.5 text-left text-xs space-y-2">
-          <div className="flex items-center gap-2 text-cyan-400 font-semibold text-[11px]">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            4-Tier Verified Risk Engine
+        {/* Dynamic Diagnostics or Feature Highlights */}
+        {connectionState === "permission_denied" ? (
+          <div className="w-full rounded-2xl border border-rose-500/40 bg-rose-950/30 p-3.5 text-left text-xs space-y-2">
+            <div className="flex items-center gap-2 text-rose-400 font-semibold text-[11px]">
+              <MicOff className="h-4 w-4 shrink-0 text-rose-400" />
+              <span>Microphone Access Required</span>
+            </div>
+            <p className="text-[11px] text-rose-300/90 leading-relaxed">
+              {error ||
+                "SaveCall needs microphone access so the AI assistant can hear you speak. Please click the permissions icon in your browser address bar and enable microphone access."}
+            </p>
+            <div className="pt-1">
+              <Button
+                onClick={onRetry}
+                size="sm"
+                className="w-full h-8 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Grant Microphone & Retry
+              </Button>
+            </div>
           </div>
-          <div className="space-y-1.5 text-[11px] text-slate-400">
-            <div className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              <span>Instant Policy Benefit & Expiry Lookup</span>
+        ) : connectionState === "connection_failed" ? (
+          <div className="w-full rounded-2xl border border-amber-500/40 bg-amber-950/30 p-3.5 text-left text-xs space-y-2">
+            <div className="flex items-center gap-2 text-amber-400 font-semibold text-[11px]">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>Connection Notice</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              <span>Real-Time Claim Status & Payout Updates</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-              <span>Nominee Updates with OTP Safeguards</span>
+            <p className="text-[11px] text-amber-300/90 leading-relaxed">
+              {error ||
+                "Unable to establish real-time voice connection to the gateway. Please verify your connection or try again."}
+            </p>
+            <div className="pt-1">
+              <Button
+                onClick={onRetry}
+                size="sm"
+                className="w-full h-8 bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-semibold rounded-xl"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Retry Connection
+              </Button>
             </div>
           </div>
-        </div>
-
-        {error && (
-          <div className="w-full rounded-xl bg-rose-500/10 border border-rose-500/30 p-2.5 text-xs text-rose-400">
-            {error}
+        ) : (
+          <div className="w-full rounded-2xl border border-slate-800/80 bg-slate-900/50 p-3.5 text-left text-xs space-y-2">
+            <div className="flex items-center gap-2 text-cyan-400 font-semibold text-[11px]">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              4-Tier Verified Risk Engine
+            </div>
+            <div className="space-y-1.5 text-[11px] text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span>Instant Policy Benefit & Expiry Lookup</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span>Real-Time Claim Status & Payout Updates</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                <span>Nominee Updates with OTP Safeguards</span>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -486,13 +688,18 @@ function PreCallDialerScreen({
       <div className="space-y-3 pt-2">
         <Button
           onClick={onStartCall}
-          disabled={connecting}
+          disabled={connectionState === "requesting_microphone" || connectionState === "connecting"}
           className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-bold text-base shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.98]"
         >
-          {connecting ? (
+          {connectionState === "requesting_microphone" ? (
             <span className="flex items-center gap-2">
-              <span className="h-4 w-4 rounded-full border-2 border-slate-950 border-t-transparent animate-spin" />
-              Dialing SaveCall Line...
+              <Mic className="h-5 w-5 animate-pulse text-slate-950" />
+              Allow Microphone Access...
+            </span>
+          ) : connectionState === "connecting" ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-slate-950" />
+              Connecting to SaveCall Network...
             </span>
           ) : (
             <span className="flex items-center gap-2.5">
@@ -502,7 +709,11 @@ function PreCallDialerScreen({
           )}
         </Button>
         <p className="text-[10px] text-slate-500">
-          Encrypted WebRTC Audio Line • Bilingual English & Hindi
+          {connectionState === "requesting_microphone"
+            ? "Please click 'Allow' on the browser microphone prompt"
+            : connectionState === "connecting"
+            ? "Negotiating encrypted WebRTC audio session..."
+            : "Encrypted WebRTC Audio Line • Bilingual English & Hindi"}
         </p>
       </div>
     </div>
@@ -513,26 +724,31 @@ function PreCallDialerScreen({
    2. ACTIVE PHONE CALL SCREEN
    ========================================================================= */
 function ActivePhoneCallScreen({
+  connectionState,
+  setConnectionState,
   callSessionId,
   customerName,
   customerId,
   tenantId,
   customerNumber,
   initialGreeting,
+  micStream,
   onEnd,
 }: {
+  connectionState: VoiceConnectionState;
+  setConnectionState: React.Dispatch<React.SetStateAction<VoiceConnectionState>>;
   callSessionId?: string | undefined;
   customerName: string;
   customerId?: string | null;
   tenantId?: string;
   customerNumber?: string | null;
   initialGreeting?: string;
+  micStream?: MediaStream | null | undefined;
   onEnd: (stats?: { duration: number; turns: number }) => void;
 }) {
   const room = useRoomContext();
-  const connectionState = useConnectionState();
+  const roomConnectionState = useConnectionState();
   const { state: agentState } = useVoiceAssistant();
-  const [localAgentState, setLocalAgentState] = useState<"listening" | "thinking" | "speaking">("speaking");
 
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerMuted, setIsSpeakerMuted] = useState(false);
@@ -542,13 +758,16 @@ function ActivePhoneCallScreen({
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
   const [duration, setDuration] = useState(0);
   const [textInput, setTextInput] = useState("");
+  const [micVolume, setMicVolume] = useState(0);
 
   // Live transcript state
   const [messages, setMessages] = useState<TranscriptMessage[]>([
     {
       id: "initial-greeting",
       role: "agent",
-      text: initialGreeting || `Hello ${customerName || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`,
+      text:
+        initialGreeting ||
+        `Hello ${customerName || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`,
       time: "00:00",
     },
   ]);
@@ -576,6 +795,53 @@ function ActivePhoneCallScreen({
     fullTranscriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTranscriptExpanded]);
 
+  // Real-time Audio Analyzer for Microphone Volume Reaction
+  useEffect(() => {
+    if (!micStream || isMuted) {
+      setMicVolume(0);
+      return;
+    }
+
+    let animationFrameId: number;
+    let audioCtx: AudioContext | null = null;
+    try {
+      const AudioContextClass =
+        window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      audioCtx = new AudioContextClass();
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+      const source = audioCtx.createMediaStreamSource(micStream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateVolume = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i] ?? 0;
+        }
+        const avg = sum / dataArray.length;
+        setMicVolume(Math.min(100, Math.round(avg * 1.5)));
+        animationFrameId = requestAnimationFrame(updateVolume);
+      };
+      updateVolume();
+    } catch (e) {
+      console.warn("Audio meter setup notice:", e);
+    }
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+      }
+    };
+  }, [micStream, isMuted]);
+
   // Listen for real-time transcript data broadcasted by LiveKit agent
   useEffect(() => {
     if (!room) return;
@@ -586,7 +852,6 @@ function ActivePhoneCallScreen({
         const data = JSON.parse(text);
         if (data.type === "transcript" && data.text) {
           setMessages((prev) => {
-            // Avoid duplicate identical immediate messages
             if (prev.length > 0 && prev[prev.length - 1]?.text === data.text) {
               return prev;
             }
@@ -612,16 +877,20 @@ function ActivePhoneCallScreen({
     };
   }, [room, duration]);
 
-  // Auto-enable microphone on connection
+  // Auto-publish microphone to LiveKit room on connection
   useEffect(() => {
-    if (room?.localParticipant && connectionState === "connected") {
-      if (typeof navigator !== "undefined" && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-        room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
+    if (room?.localParticipant && roomConnectionState === "connected") {
+      room.localParticipant
+        .setMicrophoneEnabled(true, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        })
+        .catch((err) => {
           console.warn("Microphone auto-enable notice:", err);
         });
-      }
     }
-  }, [room, connectionState]);
+  }, [room, roomConnectionState]);
 
   // Microphone toggle
   const toggleMute = useCallback(() => {
@@ -630,6 +899,8 @@ function ActivePhoneCallScreen({
       room.localParticipant.setMicrophoneEnabled(!nextState);
       setIsMuted(nextState);
       PhoneAudioFX.playBeep(nextState ? 440 : 880);
+    } else {
+      setIsMuted(!isMuted);
     }
   }, [room, isMuted]);
 
@@ -639,31 +910,36 @@ function ActivePhoneCallScreen({
     setIsSpeakerMuted(nextSpeakerState);
     PhoneAudioFX.playBeep(nextSpeakerState ? 350 : 700);
 
-    // Mute/unmute all remote audio elements in DOM
     const audioEls = document.querySelectorAll("audio");
     audioEls.forEach((el) => {
       el.muted = nextSpeakerState;
     });
   }, [isSpeakerMuted]);
 
-  // Speak the initial greeting upon connect
+  // Speak initial greeting upon successful connection
   useEffect(() => {
+    if (connectionState !== "connected") return;
     PhoneAudioFX.stopRinging();
-    const greeting = initialGreeting || `Hello ${customerName || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`;
-    setLocalAgentState("speaking");
+    const greeting =
+      initialGreeting ||
+      `Hello ${customerName || "there"}! Welcome to SaveCall insurance assistance. How may I help you today?`;
+
+    setConnectionState("speaking");
     const t = setTimeout(() => {
       speakAi(greeting, isSpeakerMuted, () => {
-        setLocalAgentState("listening");
+        setConnectionState("listening");
       });
-    }, 500);
-    return () => clearTimeout(t);
-  }, [initialGreeting]);
+    }, 400);
 
-  // Send a prompt to the AI agent & speak the response aloud
+    return () => clearTimeout(t);
+  }, [connectionState, initialGreeting, customerName, isSpeakerMuted, setConnectionState]);
+
+  // Send a prompt to the AI agent & vocalize the response
   const sendPrompt = useCallback(
     async (promptText: string) => {
+      stopSpeaking();
       PhoneAudioFX.playBeep(587);
-      setLocalAgentState("thinking");
+      setConnectionState("processing");
 
       // Append user turn to transcript
       setMessages((prev) => [
@@ -718,40 +994,51 @@ function ActivePhoneCallScreen({
                 time: formatTimer(duration),
               },
             ]);
-            setLocalAgentState("speaking");
+            setConnectionState("speaking");
             speakAi(data.reply, isSpeakerMuted, () => {
-              setLocalAgentState("listening");
+              setConnectionState("listening");
             });
           } else {
-            setLocalAgentState("listening");
+            setConnectionState("listening");
           }
         } else {
-          setLocalAgentState("listening");
+          setConnectionState("listening");
         }
       } catch (err) {
         console.warn("AI chat response notice:", err);
-        setLocalAgentState("listening");
+        setConnectionState("listening");
       }
     },
-    [room, duration, customerName, tenantId, customerId, isSpeakerMuted, messages]
+    [
+      room,
+      duration,
+      customerName,
+      tenantId,
+      customerId,
+      isSpeakerMuted,
+      messages,
+      callSessionId,
+      setConnectionState,
+    ]
   );
 
-  // Send a typed text message (fallback when microphone is unavailable)
+  // Send a typed text message (fallback when microphone is silent or unavailable)
   const handleSendText = useCallback(
     (e?: React.FormEvent) => {
       if (e) e.preventDefault();
       const trimmed = textInput.trim();
-      if (!trimmed || localAgentState === "thinking") return;
+      if (!trimmed || connectionState === "processing") return;
       sendPrompt(trimmed);
       setTextInput("");
     },
-    [textInput, localAgentState, sendPrompt]
+    [textInput, connectionState, sendPrompt]
   );
 
-  // Native Speech Recognition for hands-free talking into microphone
+  // Native Speech Recognition with Barge-in and Interim Tracking
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (isMuted) return;
+    if (isMuted || connectionState === "processing") return;
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -762,47 +1049,63 @@ function ActivePhoneCallScreen({
     try {
       reco = new SpeechRecognition();
       reco.continuous = true;
-      reco.interimResults = false;
+      reco.interimResults = true;
       reco.lang = "en-IN";
 
       reco.onresult = (event: any) => {
+        if (!active) return;
         const lastResult = event.results[event.results.length - 1];
-        if (lastResult && lastResult.isFinal) {
+        if (lastResult) {
           const speechText = lastResult[0]?.transcript?.trim();
-          if (speechText && !isMuted) {
-            sendPrompt(speechText);
+          if (speechText) {
+            // Barge-in: if AI is currently speaking and user speaks, stop AI speech immediately
+            if (connectionState === "speaking") {
+              stopSpeaking();
+              setConnectionState("listening");
+            }
+            if (lastResult.isFinal) {
+              sendPrompt(speechText);
+            }
           }
         }
       };
 
       reco.onerror = (e: any) => {
-        if (e.error !== "no-speech" && e.error !== "aborted") {
-          console.warn("Speech recognition event:", e.error);
+        if (e.error === "not-allowed") {
+          setConnectionState("permission_denied");
+        } else if (e.error !== "no-speech" && e.error !== "aborted") {
+          console.warn("Speech recognition notice:", e.error);
         }
       };
 
       reco.onend = () => {
-        if (active && !isMuted) {
-          try { reco.start(); } catch {}
+        if (active && !isMuted && connectionState === "listening") {
+          try {
+            reco.start();
+          } catch {}
         }
       };
 
-      if (!isMuted) {
+      try {
         reco.start();
+      } catch (err) {
+        console.warn("Speech recognition start notice:", err);
       }
     } catch (e) {
-      console.warn("Speech recognition init:", e);
+      console.warn("Speech recognition init notice:", e);
     }
 
     return () => {
       active = false;
       if (reco) {
-        try { reco.stop(); } catch {}
+        try {
+          reco.stop();
+        } catch {}
       }
     };
-  }, [isMuted, sendPrompt]);
+  }, [isMuted, connectionState, sendPrompt, setConnectionState]);
 
-  const isSpeaking = localAgentState === "speaking" || agentState === "speaking";
+  const isSpeaking = connectionState === "speaking";
 
   return (
     <div className="flex-1 flex flex-col justify-between p-4 pt-11 pb-6 relative overflow-hidden bg-gradient-to-b from-slate-900/95 via-slate-950 to-slate-950">
@@ -813,12 +1116,12 @@ function ActivePhoneCallScreen({
           <span>{formatTimer(duration)}</span>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-[10px] text-emerald-400">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             HD Voice
           </span>
-          <Wifi className="h-3 w-3 text-slate-400 ml-1" />
+          <Wifi className="h-3 w-3 text-slate-400" />
           <Battery className="h-3.5 w-3.5 text-emerald-400" />
         </div>
       </div>
@@ -860,62 +1163,62 @@ function ActivePhoneCallScreen({
           </p>
         </div>
 
-        {/* Speaking Status Badge & Equalizer Wave */}
+        {/* Speaking Status Badge & Real Microphone Reactivity Equalizer */}
         <div className="flex items-center gap-2 pt-0.5">
           <Badge
             variant="outline"
             className={`text-[10px] py-0.5 px-2.5 transition-all ${
-              isSpeaking
+              connectionState === "speaking"
                 ? "border-cyan-400 text-cyan-300 bg-cyan-500/15"
-                : agentState === "thinking"
+                : connectionState === "processing"
                 ? "border-amber-400 text-amber-300 bg-amber-500/10"
+                : connectionState === "listening"
+                ? "border-emerald-400 text-emerald-300 bg-emerald-500/15"
+                : connectionState === "connected"
+                ? "border-cyan-500/40 text-cyan-300 bg-cyan-500/10"
+                : connectionState === "reconnecting"
+                ? "border-rose-400 text-rose-300 bg-rose-500/10"
                 : "border-slate-800 text-slate-400 bg-slate-900/60"
             }`}
           >
-            {isSpeaking
+            {connectionState === "speaking"
               ? "Speaking..."
-              : localAgentState === "thinking" || agentState === "thinking"
+              : connectionState === "processing"
               ? "Thinking..."
-              : "Listening..."}
+              : connectionState === "listening"
+              ? "Listening..."
+              : connectionState === "connected"
+              ? "Preparing AI..."
+              : connectionState === "reconnecting"
+              ? "Reconnecting..."
+              : "Connecting..."}
           </Badge>
 
-          {/* Equalizer Waveform Bars */}
-          <div className="flex items-center gap-0.5 h-3.5 px-1">
-            <span
-              className={`w-0.5 rounded-full transition-all duration-200 ${
-                isSpeaking
-                  ? "bg-cyan-400 h-3.5 animate-[pulse_0.4s_ease-in-out_infinite]"
-                  : "bg-slate-600 h-1.5"
-              }`}
-            />
-            <span
-              className={`w-0.5 rounded-full transition-all duration-200 ${
-                isSpeaking
-                  ? "bg-cyan-400 h-4 animate-[pulse_0.7s_ease-in-out_infinite]"
-                  : "bg-slate-600 h-2"
-              }`}
-            />
-            <span
-              className={`w-0.5 rounded-full transition-all duration-200 ${
-                isSpeaking
-                  ? "bg-cyan-300 h-2.5 animate-[pulse_0.3s_ease-in-out_infinite]"
-                  : "bg-slate-600 h-1"
-              }`}
-            />
-            <span
-              className={`w-0.5 rounded-full transition-all duration-200 ${
-                isSpeaking
-                  ? "bg-cyan-400 h-4 animate-[pulse_0.6s_ease-in-out_infinite]"
-                  : "bg-slate-600 h-2.5"
-              }`}
-            />
-            <span
-              className={`w-0.5 rounded-full transition-all duration-200 ${
-                isSpeaking
-                  ? "bg-cyan-400 h-3 animate-[pulse_0.5s_ease-in-out_infinite]"
-                  : "bg-slate-600 h-1.5"
-              }`}
-            />
+          {/* Equalizer Waveform Bars with dynamic microphone volume reactivity */}
+          <div className="flex items-center gap-1 h-4 px-1">
+            {[0.7, 1.2, 0.9, 1.3, 0.8].map((mult, i) => {
+              const height =
+                connectionState === "speaking"
+                  ? i % 2 === 0
+                    ? "14px"
+                    : "18px"
+                  : connectionState === "listening"
+                  ? `${Math.max(4, Math.min(18, 4 + Math.round((micVolume / 100) * 14 * mult)))}px`
+                  : "4px";
+              return (
+                <span
+                  key={i}
+                  style={{ height }}
+                  className={`w-0.5 rounded-full transition-all duration-100 ${
+                    connectionState === "speaking"
+                      ? "bg-cyan-400 animate-pulse"
+                      : micVolume > 10
+                      ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
+                      : "bg-slate-600"
+                  }`}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
@@ -952,7 +1255,7 @@ function ActivePhoneCallScreen({
             </div>
           </div>
 
-          {/* Subtitle stream (shows latest spoken bubbles) */}
+          {/* Subtitle stream */}
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 text-[11px] leading-tight select-text scrollbar-thin">
             {messages.slice(-3).map((m) => (
               <div
@@ -986,12 +1289,12 @@ function ActivePhoneCallScreen({
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Can't use mic? Type message..."
-              disabled={localAgentState === "thinking"}
+              disabled={connectionState === "processing"}
               className="flex-1 min-w-0 bg-slate-950/90 border border-slate-700/70 rounded-lg px-2.5 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 transition-colors"
             />
             <button
               type="submit"
-              disabled={!textInput.trim() || localAgentState === "thinking"}
+              disabled={!textInput.trim() || connectionState === "processing"}
               title="Send text message"
               className="h-6 w-6 shrink-0 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 disabled:hover:bg-cyan-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm"
             >
@@ -1016,7 +1319,7 @@ function ActivePhoneCallScreen({
           🛡️ Claim Update
         </button>
         <button
-          onClick={() => sendPrompt("I want to update my nominee")}
+          onClick={() => sendPrompt("I want to update my policy nominee")}
           className="text-[10px] whitespace-nowrap bg-slate-900/90 hover:bg-cyan-950/70 border border-slate-800 hover:border-cyan-500/40 text-slate-300 px-2 py-1 rounded-full transition-all active:scale-95"
         >
           👤 Change Nominee
@@ -1137,14 +1440,18 @@ function ActivePhoneCallScreen({
       {/* 5. BIG RED PHONE HANGUP BUTTON */}
       <div className="pt-2 flex flex-col items-center">
         <button
-          onClick={() => onEnd({ duration, turns: messages.length })}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 active:scale-90 text-white shadow-xl shadow-red-600/40 border-2 border-red-400/40 transition-all"
+          onClick={() => {
+            onEnd({
+              duration,
+              turns: messages.filter((m) => m.role === "user").length,
+            });
+          }}
+          className="group relative flex h-16 w-16 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/40 active:scale-95 transition-all"
         >
-          <PhoneOff className="h-7 w-7" />
+          <div className="absolute -inset-1 rounded-full bg-red-500/30 blur-md group-hover:bg-red-500/50 transition-all" />
+          <PhoneOff className="h-7 w-7 relative z-10 transition-transform group-hover:rotate-12" />
         </button>
-        <span className="text-[11px] font-semibold text-red-400 pt-1">
-          End Call
-        </span>
+        <span className="text-[10px] font-medium text-slate-400 mt-1">End Call</span>
       </div>
 
       {/* SLIDE-UP DRAWER: FULL TRANSCRIPT HISTORY MODAL */}
@@ -1199,12 +1506,12 @@ function ActivePhoneCallScreen({
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Can't use microphone? Type here..."
-              disabled={localAgentState === "thinking"}
+              disabled={connectionState === "processing"}
               className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 transition-colors"
             />
             <Button
               type="submit"
-              disabled={!textInput.trim() || localAgentState === "thinking"}
+              disabled={!textInput.trim() || connectionState === "processing"}
               size="sm"
               className="bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl px-3 h-8 shadow-sm"
             >
@@ -1235,59 +1542,37 @@ function ActivePhoneCallScreen({
               ✕
             </button>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <button
-              onClick={() => {
-                sendPrompt("What is the status of my health insurance policy?");
-                setShowKeypad(false);
-              }}
-              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-cyan-950/60 border border-slate-700 hover:border-cyan-500/40 text-left transition-all"
-            >
-              <div className="font-semibold text-white">📋 Policy Details</div>
-              <div className="text-[10px] text-slate-400">Coverage & premium</div>
-            </button>
-
-            <button
-              onClick={() => {
-                sendPrompt("Check my latest claim settlement status");
-                setShowKeypad(false);
-              }}
-              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-cyan-950/60 border border-slate-700 hover:border-cyan-500/40 text-left transition-all"
-            >
-              <div className="font-semibold text-white">🛡️ Claim Status</div>
-              <div className="text-[10px] text-slate-400">Track pending payout</div>
-            </button>
-
-            <button
-              onClick={() => {
-                sendPrompt("I need to update my policy nominee");
-                setShowKeypad(false);
-              }}
-              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-cyan-950/60 border border-slate-700 hover:border-cyan-500/40 text-left transition-all"
-            >
-              <div className="font-semibold text-white">👥 Update Nominee</div>
-              <div className="text-[10px] text-slate-400">OTP-secured change</div>
-            </button>
-
-            <button
-              onClick={() => {
-                sendPrompt("Show network cashless hospitals near me");
-                setShowKeypad(false);
-              }}
-              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-cyan-950/60 border border-slate-700 hover:border-cyan-500/40 text-left transition-all"
-            >
-              <div className="font-semibold text-white">🏥 Network Hospitals</div>
-              <div className="text-[10px] text-slate-400">Cashless claim tie-ups</div>
-            </button>
+          <div className="grid grid-cols-2 gap-2 pt-3">
+            {[
+              { label: "Policy Coverage", query: "What does my policy cover?" },
+              { label: "Check Claims", query: "What is the status of my claim?" },
+              { label: "Cashless Network", query: "Which hospitals are cashless?" },
+              { label: "Change Nominee", query: "I want to change my nominee." },
+              { label: "Renewal Due Date", query: "When is my renewal date?" },
+              { label: "Download Certificate", query: "Can you email my policy document?" },
+            ].map((item, idx) => (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowKeypad(false);
+                  sendPrompt(item.query);
+                }}
+                className="justify-start text-xs border-slate-800 bg-slate-950/80 hover:bg-cyan-950/60 hover:border-cyan-500/40 text-slate-200"
+              >
+                {item.label}
+              </Button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* SLIDE-UP DRAWER: POLICYHOLDER VERIFICATION DETAILS */}
+      {/* SLIDE-UP DRAWER: POLICYHOLDER PROFILE */}
       {showDetails && (
         <div className="absolute inset-x-3 bottom-24 z-40 rounded-3xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <span className="text-xs font-bold text-white">Verified Caller Identity</span>
+            <span className="text-xs font-bold text-white">Authenticated Profile</span>
             <button
               onClick={() => setShowDetails(false)}
               className="text-xs text-slate-400 hover:text-white"
@@ -1295,18 +1580,24 @@ function ActivePhoneCallScreen({
               ✕
             </button>
           </div>
-          <div className="mt-3 space-y-2 text-xs">
-            <div className="flex justify-between text-slate-400">
-              <span>Policyholder:</span>
-              <span className="font-semibold text-slate-200">{customerName}</span>
+          <div className="space-y-2 pt-3 text-xs">
+            <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <span className="text-slate-400">Caller Name</span>
+              <span className="text-white font-medium">{customerName}</span>
             </div>
-            <div className="flex justify-between text-slate-400">
-              <span>Customer ID:</span>
-              <span className="font-mono text-cyan-400">{customerNumber}</span>
+            <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <span className="text-slate-400">Policyholder ID</span>
+              <span className="text-cyan-400 font-mono">
+                {customerNumber || "GUEST-UNVERIFIED"}
+              </span>
             </div>
-            <div className="flex justify-between text-slate-400">
-              <span>Security Tier:</span>
-              <span className="text-emerald-400 font-medium">4-Tier Verified (OTP Safeguarded)</span>
+            <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <span className="text-slate-400">Audio Quality</span>
+              <span className="text-emerald-400 font-medium">Opus 48kHz HD</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <span className="text-slate-400">Security Tier</span>
+              <span className="text-emerald-400 font-medium">Tier-4 Encrypted</span>
             </div>
           </div>
         </div>
@@ -1330,57 +1621,58 @@ function CallEndedScreen({
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
-    return `${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+    return `${mins < 10 ? "0" : ""}${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
   return (
     <div className="flex-1 flex flex-col justify-between p-6 pt-12 pb-8 text-center bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950">
-      <div className="my-auto space-y-5">
-        <div className="flex h-18 w-18 items-center justify-center rounded-full bg-slate-800/80 border-2 border-slate-700 mx-auto text-slate-400">
-          <CheckCircle2 className="h-9 w-9 text-emerald-400" />
+      <div className="flex items-center justify-center text-xs text-slate-400">
+        <span>Call Disconnected</span>
+      </div>
+
+      <div className="my-auto space-y-4">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-slate-900 border border-slate-800 shadow-xl">
+          <CheckCircle2 className="h-10 w-10 text-emerald-400" />
         </div>
 
-        <div className="space-y-1">
-          <h2 className="text-xl font-bold text-white">Call Completed</h2>
-          <p className="text-xs text-slate-400">SaveCall AI Assistant Session</p>
+        <div>
+          <h2 className="text-lg font-bold text-white font-display">Call Summary</h2>
+          <p className="text-xs text-slate-400">Thank you for contacting SaveCall.</p>
         </div>
 
-        <div className="w-full rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-2.5 text-xs text-slate-300">
-          <div className="flex justify-between items-center">
-            <span className="text-slate-400">Duration:</span>
-            <span className="font-mono font-bold text-cyan-400">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-2 text-xs">
+          <div className="flex justify-between py-1 border-b border-slate-800/60">
+            <span className="text-slate-400">Call Duration</span>
+            <span className="text-white font-mono font-bold">
               {formatTimer(stats.duration)}
             </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-slate-400">Conversation Turns:</span>
-            <span className="font-semibold text-slate-200">{stats.turns} messages</span>
+          <div className="flex justify-between py-1 border-b border-slate-800/60">
+            <span className="text-slate-400">Turns Exchanged</span>
+            <span className="text-white font-medium">{stats.turns} conversational turns</span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-slate-400">Security Safeguard:</span>
-            <span className="text-emerald-400 font-medium">Logged to Audit Trail</span>
+          <div className="flex justify-between py-1">
+            <span className="text-slate-400">Resolution Status</span>
+            <span className="text-emerald-400 font-semibold">Logged to Audit Trail</span>
           </div>
         </div>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-2 pt-2">
         <Button
           onClick={onCallAgain}
-          className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20"
+          className="w-full h-12 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm shadow-lg shadow-cyan-600/30"
         >
           <RotateCcw className="h-4 w-4 mr-2" />
           Call Again
         </Button>
-
-        <Link to="/calls" className="block w-full">
-          <Button
-            variant="outline"
-            className="w-full h-12 rounded-xl border-slate-800 text-slate-300 hover:text-white text-xs"
-          >
-            <FileText className="h-4 w-4 mr-2 text-cyan-400" />
-            View in Session History
-          </Button>
-        </Link>
+        <Button
+          onClick={onDismiss}
+          variant="outline"
+          className="w-full h-12 rounded-2xl border-slate-800 text-slate-300 text-xs hover:bg-slate-900"
+        >
+          Return to Dialer
+        </Button>
       </div>
     </div>
   );
