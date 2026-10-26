@@ -160,6 +160,13 @@ interface TranscriptMessage {
   role: "agent" | "user" | "system";
   text: string;
   time: string;
+  citations?: Array<{
+    sourceName: string;
+    similarity: number;
+    pageNumber?: number | null;
+  }>;
+  grounded?: boolean;
+  escalated?: boolean;
 }
 
 class PhoneAudioFX {
@@ -307,6 +314,7 @@ function VoiceCallPage() {
     livekitUrl: string;
     roomName: string;
     callSessionId: string;
+    agentId?: string;
     greeting?: string;
     agentConfig?: any;
     customer: { id: string | null; name: string; customerNumber: string | null; tenantId?: string; isVerified?: boolean };
@@ -403,6 +411,7 @@ function VoiceCallPage() {
           livekitUrl: resolvedLivekitUrl,
           roomName: data.roomName,
           callSessionId: data.callSessionId,
+          agentId: data.agentId,
           customer: data.customer,
           greeting: data.greeting,
           agentConfig: data.agentConfig,
@@ -555,6 +564,7 @@ function VoiceCallPage() {
               connectionState={connectionState}
               setConnectionState={setConnectionState}
               callSessionId={session.callSessionId}
+              agentId={session.agentId}
               customerName={session.customer.name}
               customerId={session.customer.id}
               tenantId={(session.customer as any).tenantId}
@@ -752,6 +762,7 @@ function ActivePhoneCallScreen({
   connectionState,
   setConnectionState,
   callSessionId,
+  agentId,
   customerName,
   customerId,
   tenantId,
@@ -763,6 +774,7 @@ function ActivePhoneCallScreen({
   connectionState: VoiceConnectionState;
   setConnectionState: React.Dispatch<React.SetStateAction<VoiceConnectionState>>;
   callSessionId?: string | undefined;
+  agentId?: string | undefined;
   customerName: string;
   customerId?: string | null;
   tenantId?: string;
@@ -1000,6 +1012,7 @@ function ActivePhoneCallScreen({
             query: promptText,
             callSessionId,
             tenantId,
+            agentId,
             customerId,
             customerName,
             history: messages.slice(-4).map((m) => ({
@@ -1019,6 +1032,9 @@ function ActivePhoneCallScreen({
                 role: "agent",
                 text: data.reply,
                 time: formatTimer(duration),
+                citations: data.citations || [],
+                grounded: data.grounded,
+                escalated: data.escalated,
               },
             ]);
             setConnectionState("speaking");
@@ -1280,20 +1296,32 @@ function ActivePhoneCallScreen({
             {messages.slice(-3).map((m) => (
               <div
                 key={m.id}
-                className={`flex items-start gap-1.5 ${
+                className={`flex flex-col items-start gap-0.5 ${
                   m.role === "user" ? "text-emerald-900" : "text-[#111827]"
                 }`}
               >
-                <span
-                  className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                    m.role === "user"
-                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                      : "bg-[#E6F6F7] text-[#087F8C] border border-[#087F8C]/30"
-                  }`}
-                >
-                  {m.role === "user" ? "You" : "AI"}
-                </span>
-                <p className="line-clamp-2 text-[11px] leading-snug">{m.text}</p>
+                <div className="flex items-start gap-1.5 w-full">
+                  <span
+                    className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                      m.role === "user"
+                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                        : "bg-[#E6F6F7] text-[#087F8C] border border-[#087F8C]/30"
+                    }`}
+                  >
+                    {m.role === "user" ? "You" : "AI"}
+                  </span>
+                  <p className="line-clamp-2 text-[11px] leading-snug flex-1">{m.text}</p>
+                </div>
+                {m.citations && m.citations.length > 0 && (
+                  <span className="text-[9px] text-teal-700 bg-teal-50 border border-teal-200/80 rounded px-1.5 py-0.2 ml-7">
+                    Grounded in: {m.citations[0]?.sourceName}
+                  </span>
+                )}
+                {m.escalated && (
+                  <span className="text-[9px] text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.2 ml-7 font-semibold">
+                    Escalated to human supervisor
+                  </span>
+                )}
               </div>
             ))}
             <div ref={transcriptEndRef} />
@@ -1506,7 +1534,24 @@ function ActivePhoneCallScreen({
                   <div className="text-[9px] font-bold text-[#667085] mb-0.5 uppercase tracking-wider">
                     {m.role === "user" ? "You" : "InsurCall AI"}
                   </div>
-                  {m.text}
+                  <div>{m.text}</div>
+                  {m.citations && m.citations.length > 0 && (
+                    <div className="mt-1.5 pt-1 border-t border-[#087F8C]/20 flex flex-wrap gap-1">
+                      {m.citations.map((c, ci) => (
+                        <span
+                          key={ci}
+                          className="inline-flex items-center text-[9px] font-medium text-teal-800 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5"
+                        >
+                          Source: {c.sourceName} ({(c.similarity * 100).toFixed(0)}%)
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {m.escalated && (
+                    <div className="mt-1 text-[9px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5">
+                      Escalated to Human Review
+                    </div>
+                  )}
                 </div>
                 <span className="text-[9px] text-[#667085] px-1 mt-0.5">{m.time}</span>
               </div>

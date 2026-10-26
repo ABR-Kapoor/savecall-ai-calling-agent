@@ -72,6 +72,27 @@ export const TOOL_POLICIES: Record<string, ToolSecurityPolicy> = {
     requiresHumanReview: true,
     description: "Update direct debit or claim payout bank account",
   },
+  search_policy_docs: {
+    riskLevel: "LOW",
+    requiresOtp: false,
+    requiresConfirmation: false,
+    requiresHumanReview: false,
+    description: "Search verified policy documentation and guidelines for caller inquiries",
+  },
+  request_human_escalation: {
+    riskLevel: "LOW",
+    requiresOtp: false,
+    requiresConfirmation: false,
+    requiresHumanReview: true,
+    description: "Escalate ungrounded or complex inquiries to a human claims specialist",
+  },
+  file_claim: {
+    riskLevel: "HIGH",
+    requiresOtp: false,
+    requiresConfirmation: true,
+    requiresHumanReview: true,
+    description: "Register a new insurance claim with incident details",
+  },
   cancel_policy: {
     riskLevel: "VERY_HIGH",
     requiresOtp: true,

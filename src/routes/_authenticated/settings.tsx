@@ -80,16 +80,24 @@ function SettingsPage() {
   const queryClient = useQueryClient();
 
   const { data: tenant, isLoading } = useQuery({
-    queryKey: ["tenant-settings"],
-    queryFn: () => getTenantSettings(),
+    queryKey: ["tenant-settings", user?.id],
+    queryFn: () =>
+      getTenantSettings({
+        data: {
+          clerkUserId: user?.id,
+          userEmail: user?.primaryEmailAddress?.emailAddress,
+          userName: user?.fullName || undefined,
+        },
+      }),
   });
 
   const { data: callerProfile } = useQuery({
-    queryKey: ["caller-profile", user?.id, user?.primaryEmailAddress?.emailAddress],
+    queryKey: ["caller-profile", user?.id, tenant?.id],
     queryFn: () => {
-      const payload: { clerkUserId?: string; email?: string } = {};
+      const payload: { clerkUserId?: string; email?: string; tenantId?: string } = {};
       if (user?.id) payload.clerkUserId = user.id;
       if (user?.primaryEmailAddress?.emailAddress) payload.email = user.primaryEmailAddress.emailAddress;
+      if (tenant?.id) payload.tenantId = tenant.id;
       return getCallerProfile({ data: payload });
     },
     enabled: !!user,
@@ -151,6 +159,8 @@ function SettingsPage() {
 
       return updateTenantSettings({
         data: {
+          tenantId: tenant?.id,
+          clerkUserId: user?.id,
           name,
           slug: tenant?.slug || "safelife",
           branding_config: {
@@ -203,12 +213,18 @@ function SettingsPage() {
   };
 
   const syncMutation = useMutation({
-    mutationFn: () => syncClerkUser(),
+    mutationFn: () =>
+      syncClerkUser({
+        data: {
+          tenantId: tenant?.id,
+          clerkUserId: user?.id,
+        },
+      }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["caller-profile"] });
       queryClient.invalidateQueries({ queryKey: ["policies-list"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
-      toast.success(`Successfully synced ${res.syncedCount} Clerk user(s) with database`);
+      toast.success(`Successfully fetched & synced ${res.syncedCount} Clerk user(s) with database`);
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to sync Clerk users");

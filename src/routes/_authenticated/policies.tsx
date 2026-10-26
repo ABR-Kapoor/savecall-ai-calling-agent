@@ -23,14 +23,22 @@ export const Route = createFileRoute("/_authenticated/policies")({
   component: PoliciesPage,
 });
 
+import { useUser } from "@clerk/clerk-react";
+
 function PoliciesPage() {
+  const { user } = useUser();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [activePolicyModal, setActivePolicyModal] = useState<PolicyRecord | null>(null);
 
   const { data: policies, isLoading, error, refetch } = useQuery({
-    queryKey: ["policies-list"],
-    queryFn: () => getPolicies(),
+    queryKey: ["policies-list", user?.id],
+    queryFn: () =>
+      getPolicies({
+        data: {
+          clerkUserId: user?.id,
+        },
+      }),
   });
 
   // Filter policies by search text and category

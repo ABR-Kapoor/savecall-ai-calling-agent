@@ -27,6 +27,7 @@ import { Route as ApiAgentToolsRouteImport } from './routes/api/agent/tools'
 import { Route as ApiVoiceChatRouteImport } from './routes/api/voice/chat'
 import { Route as ApiVoiceEndRouteImport } from './routes/api/voice/end'
 import { Route as ApiVoiceSessionRouteImport } from './routes/api/voice/session'
+import { Route as ApiWebhooksClerkRouteImport } from './routes/api/webhooks/clerk'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -118,6 +119,11 @@ const ApiVoiceSessionRoute = ApiVoiceSessionRouteImport.update({
   path: '/api/voice/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksClerkRoute = ApiWebhooksClerkRouteImport.update({
+  id: '/api/webhooks/clerk',
+  path: '/api/webhooks/clerk',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
+  '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
+  '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
+  '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -198,6 +207,7 @@ export interface FileRouteTypes {
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
+    | '/api/webhooks/clerk'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -217,6 +227,7 @@ export interface FileRouteTypes {
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
+    | '/api/webhooks/clerk'
   id:
     | '__root__'
     | '/'
@@ -237,6 +248,7 @@ export interface FileRouteTypes {
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
+    | '/api/webhooks/clerk'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -248,6 +260,7 @@ export interface RootRouteChildren {
   ApiVoiceChatRoute: typeof ApiVoiceChatRoute
   ApiVoiceEndRoute: typeof ApiVoiceEndRoute
   ApiVoiceSessionRoute: typeof ApiVoiceSessionRoute
+  ApiWebhooksClerkRoute: typeof ApiWebhooksClerkRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -378,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVoiceSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/clerk': {
+      id: '/api/webhooks/clerk'
+      path: '/api/webhooks/clerk'
+      fullPath: '/api/webhooks/clerk'
+      preLoaderRoute: typeof ApiWebhooksClerkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -419,6 +439,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiVoiceChatRoute: ApiVoiceChatRoute,
   ApiVoiceEndRoute: ApiVoiceEndRoute,
   ApiVoiceSessionRoute: ApiVoiceSessionRoute,
+  ApiWebhooksClerkRoute: ApiWebhooksClerkRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,5 +1,5 @@
 """
-SaveCall LiveKit AI Voice Agent
+SaveCall LiveKit AI Voice Agent: Secure Tool Layer
 Connects to self-hosted LiveKit rooms, performs real-time full-duplex conversational audio
 with sub-30ms Silero VAD barge-in/interruption, and dispatches authorized insurance tools.
 """
@@ -58,6 +58,7 @@ async def entrypoint(ctx: JobContext):
 
     session_id = metadata.get("voice_session_id", "demo-session")
     tenant_id = metadata.get("tenant_id", "a0000000-0000-0000-0000-000000000001")
+    agent_id = metadata.get("agent_id", "")
     customer_id = metadata.get("customer_id", "c0000000-0000-0000-0000-000000000001")
     customer_name = metadata.get("customer_name") or participant.name or "Policyholder"
     customer_number = metadata.get("customer_number", "")
@@ -149,9 +150,28 @@ async def entrypoint(ctx: JobContext):
         })
         return json.dumps(res)
 
+    @llm.function_tool
+    async def search_policy_docs(query: str) -> str:
+        """Search verified policy documents and underwriting guidelines to answer customer questions."""
+        res = await execute_remote_tool(session_id, tenant_id, customer_id, "search_policy_docs", {
+            "query": query,
+            "agent_id": agent_id,
+        })
+        return json.dumps(res)
+
+    @llm.function_tool
+    async def request_human_escalation(reason: str) -> str:
+        """Escalate the conversation to a human supervisor or senior claims specialist."""
+        res = await execute_remote_tool(session_id, tenant_id, customer_id, "request_human_escalation", {
+            "reason": reason,
+        })
+        return json.dumps(res)
+
     tools = [
         get_policy,
         get_claim_status,
+        search_policy_docs,
+        request_human_escalation,
         send_otp,
         verify_otp,
         update_contact_details,

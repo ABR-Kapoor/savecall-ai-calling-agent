@@ -16,6 +16,8 @@ import { ClaimSummaryCard, type ClaimRecord } from "@/components/insurance/claim
 import { ClaimProgressTimeline } from "@/components/insurance/claim-progress-timeline";
 import { getClaimStatusPresentation } from "@/lib/insurance/status-presentation";
 
+import { useUser } from "@clerk/clerk-react";
+
 export const Route = createFileRoute("/_authenticated/claims")({
   head: () => ({
     meta: [{ title: "Claims Processing: InsurCall Insurance AI" }],
@@ -24,12 +26,18 @@ export const Route = createFileRoute("/_authenticated/claims")({
 });
 
 function ClaimsPage() {
+  const { user } = useUser();
   const [search, setSearch] = useState("");
   const [activeClaimModal, setActiveClaimModal] = useState<ClaimRecord | null>(null);
 
   const { data: claims, isLoading, error, refetch } = useQuery({
-    queryKey: ["claims-list"],
-    queryFn: () => getClaims(),
+    queryKey: ["claims-list", user?.id],
+    queryFn: () =>
+      getClaims({
+        data: {
+          clerkUserId: user?.id,
+        },
+      }),
   });
 
   const filtered = (claims ?? []).filter((c: any) => {

@@ -1,5 +1,5 @@
 """
-SaveCall LiveKit Agent — Secure Tool Layer
+SaveCall LiveKit Agent: Secure Tool Layer
 The Agent holds NO database credentials. Every tool dispatches via an authenticated
 RPC to the SaveCall backend which enforces RLS, customer scoping, and risk policies.
 """

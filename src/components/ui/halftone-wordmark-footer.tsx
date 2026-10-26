@@ -183,7 +183,7 @@ const HWF_CSS = `
 export default function HalftoneWordmarkFooter({
   wordmark = "insurcall",
   label = "InsurCall Platform",
-  meta = "©2026 · AI Voice Employee",
+  meta = "2026 : Autonomous AI Voice Employee",
   columns = DEFAULT_COLUMNS,
   backToTop = true,
   preset = "paper",

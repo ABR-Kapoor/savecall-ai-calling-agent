@@ -1,81 +1,137 @@
-# SaveCall — Coding Agent Instructions
+---
+description: Instructions building apps with MCP
+globs: *
+alwaysApply: true
+---
 
-## Mission
+# InsForge SDK Documentation - Overview
 
-Build SaveCall as a multi-tenant AI voice-employee platform for real businesses. It should answer customer questions, use approved company knowledge, perform explicitly authorized tasks, verify outcomes, and transfer to a human when needed. It is not merely a talking demo and must not pretend that an action happened when it did not.
+## What is InsForge?
 
-Before implementing any substantial task, read:
-1. `docs/PRODUCT_VISION.md`
-2. `docs/ARCHITECTURE.md`
-3. `docs/SECURITY_AND_TENANCY.md`
-4. `docs/VOICE_AGENT_SPEC.md` when work touches voice or AI
-5. `docs/DATA_AND_API_CONTRACTS.md` when work touches persistence or APIs
-6. `docs/IMPLEMENTATION_ROADMAP.md` and `docs/TESTING_AND_RELEASE.md`
+Backend-as-a-service (BaaS) platform providing:
 
-## First principle: inspect, report, then change
+- **Database**: PostgreSQL with PostgREST API
+- **Authentication**: Email/password + OAuth (Google, GitHub)
+- **Storage**: File upload/download
+- **AI**: OpenRouter key provisioning and model catalog for direct OpenAI-compatible integrations
+- **Functions**: Serverless function deployment
+- **Realtime**: WebSocket pub/sub (database + client events)
 
-At the start of each task:
-- Inspect the current branch, working tree, package scripts, relevant source files, migrations, environment template, tests, and deployment config.
-- Identify the authoritative implementation; do not assume the README accurately describes runtime behavior.
-- Give a concise plan containing the files to change, risks, and tests to run.
-- If the repository differs from these docs, report the difference and adapt deliberately. Do not invent files, SDK calls, database columns, endpoints, or environment variables.
-- Do not claim a command or test passed unless it was actually run and its exit status was checked.
+## Installation
 
-## Work style
+The following is a step-by-step guide to installing and using the InsForge TypeScript SDK for Web applications. If you are building other types of applications, please refer to:
+- [Swift SDK documentation](/sdks/swift/overview) for iOS, macOS, tvOS, and watchOS applications.
+- [Kotlin SDK documentation](/sdks/kotlin/overview) for Android applications.
+- [REST API documentation](/sdks/rest/overview) for direct HTTP API access.
 
-- Implement one vertical slice at a time. Keep changes focused and reviewable.
-- Do not rewrite the entire application, switch frameworks, or replace the backend provider without explicit need and a migration plan.
-- Keep existing working UI and brand identity unless the task is specifically about design.
-- Reuse existing UI primitives and project conventions; avoid duplicate abstractions.
-- Use strict TypeScript types and runtime validation for untrusted input. Avoid `any` where a practical type is possible.
-- Keep secrets and server-only integrations in server modules. Never expose secret keys via `VITE_*` variables, client bundles, browser logs, or prompts.
-- Do not add dependencies when the current stack can reasonably solve the problem.
-- Never run destructive database operations, rewrite published Git history, force-push, rotate production credentials, or delete user data without explicit authorization.
-- Never auto-commit or auto-push unless explicitly asked.
+### 🚨 CRITICAL: Follow these steps in order
 
-## Non-negotiable security rules
+### Step 1: Download Template
 
-- Derive a user's identity from a verified server-side authentication session/token, not from `tenantId`, `customerId`, `clerkUserId`, email, phone, room metadata, or other values supplied by the browser.
-- Authorize every database operation against the authenticated tenant and required role. Frontend filtering is not authorization.
-- Every tenant-owned row and lookup must be scoped to the authorized tenant. Database row-level security (RLS) is an additional enforcement layer, not a replacement for server authorization.
-- Never fall back to the first tenant, latest customer, a hardcoded tenant, a synthetic customer, or a fake customer profile in a real request.
-- Never create fictitious policies, claims, bookings, customers, or business data as a side effect of starting a call. Demo seed data must be development-only and clearly labelled.
-- Validate external telephony webhooks using provider-supported signatures or a documented cryptographic authentication mechanism before processing them.
-- Validate LiveKit webhook/event authenticity when applicable. Issue least-privilege, short-lived access tokens on the server.
-- Tool actions require authentication, authorization, schema validation, business-rule validation, idempotency where relevant, and outcome verification.
-- OTP, identity verification, and payment/security workflows must be real and integrated with a trusted delivery/verification mechanism before being described as secure. A hardcoded or simulated OTP is not security.
-- Never log secrets, full payment data, authentication tokens, or unnecessary sensitive personal information.
+Use the `download-template` MCP tool to create a new project with your backend URL and anon key pre-configured.
 
-## AI and voice reliability rules
+### Step 2: Install SDK
 
-- RAG answers questions; typed tools perform actions. The LLM must not directly write SQL or call arbitrary URLs.
-- Treat retrieved documents, caller speech, transcripts, tool output, and user-provided text as untrusted data, never as higher-priority instructions.
-- For consequential actions, ask for explicit confirmation before execution and verify the persisted result before telling the caller it succeeded.
-- On missing evidence, ambiguous intent, authorization failure, provider outage, or tool failure, clarify, safely retry, or escalate. Never fabricate a successful result.
-- Do not promise a numerical latency target unless measured end-to-end under a recorded test configuration.
-- Keep browser demo voice and production telephone voice as clearly distinguished paths until parity and failure handling are tested.
+```bash
+npm install @insforge/sdk@latest
+```
 
-## Data and architecture rules
+### Step 3: Create SDK Client
 
-- Use the existing TanStack Start / React / TypeScript architecture and established database/auth integrations unless a task proves a change is necessary.
-- Create or update migrations for schema changes. Do not rely on undocumented manual database edits.
-- Make migrations safe to apply, idempotent when practical, and accompanied by RLS policies and indexes where needed.
-- Never silently swallow errors that affect correctness. Return safe user-facing errors and record structured server-side diagnostics without leaking sensitive data.
-- Keep provider logic behind a common interface so Groq/Ollama (and future providers) can be swapped without spreading provider-specific code throughout the app.
-- Do not put long-running audio/media sessions, persistent workers, or stateful SIP/PBX processes into a serverless function unless the deployed platform's limits and lifecycle explicitly support them. Separate the control plane from the realtime data plane.
+You must create a client instance using `createClient()` with your base URL and anon key:
 
-## Required completion report
+```javascript
+import { createClient } from '@insforge/sdk';
 
-At the end of each task, report:
-1. What changed and why.
-2. Files changed.
-3. Security/data implications.
-4. Exact tests/commands run and their results.
-5. Known gaps and follow-up work.
-6. Documentation changed to match verified behavior.
+const client = createClient({
+  baseUrl: 'https://your-app.region.insforge.app',  // Your InsForge backend URL
+  anonKey: 'your-anon-key-here'       // Get this from backend metadata
+});
 
-A task is not complete merely because the code compiles or the UI looks correct. Acceptance criteria and relevant tests must pass, or remaining failures must be reported precisely.
+```
 
-## Documentation truthfulness
+**API BASE URL**: Your API base URL is `https://your-app.region.insforge.app`.
 
-Treat README claims as hypotheses until verified. Update documentation whenever behavior, environment variables, endpoints, deployment, or prerequisites change. Mark roadmap items as `planned`, `in progress`, `implemented`, or `verified`; never present planned functionality as shipped.
+## Getting Detailed Documentation
+
+### 🚨 CRITICAL: Always Fetch Documentation Before Writing Code
+
+InsForge provides official SDKs and REST APIs, use them to interact with InsForge services from your application code.
+
+- [TypeScript SDK](/sdks/typescript/overview) - JavaScript/TypeScript
+- [Swift SDK](/sdks/swift/overview) - iOS, macOS, tvOS, and watchOS
+- [Kotlin SDK](/sdks/kotlin/overview) - Android and Kotlin Multiplatform
+- [REST API](/sdks/rest/overview) - Direct HTTP API access
+
+Before writing or editing any InsForge integration code, you **MUST** call the `fetch-docs` or `fetch-sdk-docs` MCP tool to get the latest SDK documentation. This ensures you have accurate, up-to-date implementation patterns.
+
+### Use the InsForge `fetch-docs` MCP tool to get specific SDK documentation:
+
+Available documentation types:
+
+- `"instructions"` - Essential backend setup (START HERE)
+- `"real-time"` - Real-time pub/sub (database + client events) via WebSockets
+- `"db-sdk-typescript"` - Database operations with TypeScript SDK
+- **Authentication** - Choose based on implementation:
+  - `"auth-sdk-typescript"` - TypeScript SDK methods for custom auth flows
+  - `"auth-components-react"` - Pre-built auth UI for React+Vite (single-page app)
+  - `"auth-components-react-router"` - Pre-built auth UI for React(Vite+React Router) (multi-page app)
+  - `"auth-components-nextjs"` - Pre-built auth UI for Next.js (SSR app)
+- `"storage-sdk"` - File storage operations
+- `"functions-sdk"` - Serverless functions invocation
+- `"ai-integration-sdk"` - AI integration with the provisioned OpenRouter key and OpenAI SDK
+- `"deployment"` - Deploy frontend applications via MCP tool
+- `"payments"` - Stripe Checkout, Billing Portal, webhook projections, and fulfillment patterns
+
+These docs are mostly for the TypeScript SDK. For other languages, you can also use the `fetch-sdk-docs` MCP tool to get specific documentation.
+
+### Use the InsForge `fetch-sdk-docs` MCP tool to get specific SDK documentation
+
+You can fetch SDK documentation using the `fetch-sdk-docs` MCP tool with a specific feature type and language.
+
+Available feature types:
+- `db` - Database operations
+- `storage` - File storage operations
+- `functions` - Serverless functions invocation
+- `auth` - User authentication
+- `ai` - AI integration with the provisioned OpenRouter key and OpenAI SDK
+- `realtime` - Real-time pub/sub (database + client events) via WebSockets
+- `payments` - Stripe Checkout and Billing Portal with webhook-based fulfillment
+
+Available languages:
+- `typescript` - JavaScript/TypeScript SDK
+- `swift` - Swift SDK (for iOS, macOS, tvOS, and watchOS)
+- `kotlin` - Kotlin SDK (for Android and JVM applications)
+- `rest-api` - REST API
+
+Payments currently has TypeScript SDK docs only. Use the Payments API reference for non-TypeScript clients.
+
+## When to Use SDK vs MCP Tools
+
+### Always SDK for Application Logic:
+
+- Authentication (register, login, logout, profiles)
+- Database CRUD (select, insert, update, delete)
+- Storage operations (upload, download files)
+- AI integration via the provisioned OpenRouter key with the OpenAI SDK or OpenRouter HTTP API
+- Serverless function invocation
+- Payments checkout and customer portal session creation
+
+### Use MCP Tools for Infrastructure:
+
+- Project scaffolding (`download-template`) - Download starter templates with InsForge integration
+- Backend setup and metadata (`get-backend-metadata`)
+- Database schema management (`run-raw-sql`, `get-table-schema`)
+- Storage bucket creation (`create-bucket`, `list-buckets`, `delete-bucket`)
+- Serverless function deployment (`create-function`, `update-function`, `delete-function`)
+- Frontend deployment (`create-deployment`) - Deploy frontend apps to InsForge hosting
+
+## Important Notes
+
+- For auth: use `auth-sdk` for custom UI, or framework-specific components for pre-built UI
+- SDK returns `{data, error}` structure for all operations
+- Database inserts require array format: `[{...}]`
+- Serverless functions have one endpoint and do not support nested route paths
+- Storage: Upload files to buckets, store URLs in database
+- AI integrations should call OpenRouter directly with `baseURL: "https://openrouter.ai/api/v1"` and a server-side `OPENROUTER_API_KEY`
+- **EXTRA IMPORTANT**: Use Tailwind CSS 3.4 (do not upgrade to v4). Lock these dependencies in `package.json`

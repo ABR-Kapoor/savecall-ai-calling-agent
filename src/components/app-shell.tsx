@@ -15,6 +15,7 @@ import {
   Radio,
   ExternalLink,
   ChevronRight,
+  Lock,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -25,24 +26,24 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getTenantSettings } from "@/lib/insurance.functions";
 
-const NAV_MAIN = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/agent", label: "Assistant Studio", icon: Bot },
-  { to: "/train", label: "Business Knowledge", icon: BookOpen },
-  { to: "/calls", label: "Call History", icon: PhoneCall },
-  { to: "/voice", label: "Interactive Test Call", icon: Mic },
+const NAV_OPERATIONS = [
+  { to: "/dashboard", label: "Operations Overview", icon: LayoutDashboard },
+  { to: "/calls", label: "Live Calls & Transcripts", icon: PhoneCall },
+  { to: "/claims", label: "Claims Intake & FNOL", icon: ShieldCheck },
+  { to: "/policies", label: "Policy Portfolio", icon: FileText },
+  { to: "/change-requests", label: "Staff Approvals Queue", icon: CheckSquare },
 ] as const;
 
-const NAV_INSURANCE = [
-  { to: "/policies", label: "Policies", icon: FileText },
-  { to: "/claims", label: "Claims", icon: ShieldCheck },
-  { to: "/change-requests", label: "Pending Approvals", icon: CheckSquare },
-  { to: "/audit", label: "Audit Trail", icon: ShieldAlert },
+const NAV_INTELLIGENCE = [
+  { to: "/agent", label: "Insurance Voice Studio", icon: Bot },
+  { to: "/train", label: "Policy Knowledge Store", icon: BookOpen },
+  { to: "/voice", label: "Voice Call Simulator", icon: Mic },
+  { to: "/audit", label: "Audit & Compliance Log", icon: ShieldAlert },
 ] as const;
 
-const NAV_MANAGEMENT = [
-  { to: "/onboarding", label: "Guided Setup", icon: Sparkles },
-  { to: "/settings", label: "Workspace Settings", icon: Settings },
+const NAV_CARRIER = [
+  { to: "/onboarding", label: "Carrier Setup", icon: Sparkles },
+  { to: "/settings", label: "Tenant & API Settings", icon: Settings },
 ] as const;
 
 export function AppShell({
@@ -60,13 +61,20 @@ export function AppShell({
   const clerk = useClerk();
   const { user } = useUser();
   const { data: tenant } = useQuery({
-    queryKey: ["tenant-settings"],
-    queryFn: () => getTenantSettings(),
+    queryKey: ["tenant-settings", user?.id],
+    queryFn: () =>
+      getTenantSettings({
+        data: {
+          clerkUserId: user?.id,
+          userEmail: user?.primaryEmailAddress?.emailAddress,
+          userName: user?.fullName || undefined,
+        },
+      }),
   });
 
   const tenantConfig = (tenant?.branding_config as any) || {};
-  const companyName = tenant?.name || "Company Workspace";
-  const planRaw = tenantConfig.plan || "starter";
+  const companyName = tenant?.name || "InsurCall Carrier Operations";
+  const planRaw = tenantConfig.plan || "enterprise";
   const planDisplay = planRaw.charAt(0).toUpperCase() + planRaw.slice(1);
 
   const signOut = async () => {
@@ -76,49 +84,54 @@ export function AppShell({
     window.location.href = "/";
   };
 
-  const allNav = [...NAV_MAIN, ...NAV_INSURANCE, ...NAV_MANAGEMENT];
+  const allNav = [...NAV_OPERATIONS, ...NAV_INTELLIGENCE, ...NAV_CARRIER];
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground antialiased">
-      {/* Sidebar Desktop - Fixed & Not Scrollable */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card p-4 md:flex shadow-xs sticky top-0 h-screen select-none z-20">
+    <div className="flex min-h-screen bg-[#FAF9F6] text-[#111827] antialiased font-sans">
+      {/* Sidebar Desktop: Fixed & Clean Bright Theme with Cool Dark Elements */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white p-4 md:flex shadow-xs sticky top-0 h-screen select-none z-20">
         {/* Workspace Brand / Header */}
-        <div className="mb-4">
-          <Link to="/dashboard" className="flex items-center justify-between px-2 py-1 group">
-            <img
-              src="/02_logo_with_InsurCall_light_transparent.png"
-              alt="InsurCall Logo"
-              className="h-8 w-auto max-w-[150px] object-contain transition-transform group-hover:scale-[1.02]"
-            />
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary capitalize">
+        <div className="mb-4 pb-3 border-b border-slate-100">
+          <Link to="/dashboard" className="flex items-center justify-between px-1 py-1 group">
+            <div className="flex items-center gap-2">
+              <img
+                src="/01_logo_only_transparent.png"
+                alt="InsurCall Emblem"
+                className="h-7 w-auto object-contain transition-transform group-hover:scale-105"
+              />
+              <span className="font-display text-base font-extrabold tracking-tight text-[#111827]">
+                Insur<span className="text-[#087F8C]">Call</span>
+              </span>
+            </div>
+            <span className="rounded-full bg-[#172033] text-white px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider font-bold">
               {planDisplay}
             </span>
           </Link>
-          <div className="px-2 pt-1 text-[11px] text-muted-foreground font-medium truncate" title={companyName}>
+          <div className="px-1 pt-1.5 text-[11px] text-slate-500 font-mono font-medium truncate" title={companyName}>
             {companyName}
           </div>
         </div>
 
         {/* Navigation Sections */}
-        <div className="flex-1 space-y-4 overflow-hidden pr-1">
-          {/* Main Section */}
+        <div className="flex-1 space-y-5 overflow-hidden pr-1">
+          {/* Operations Section */}
           <div className="space-y-1">
-            <div className="px-2.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Main
+            <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
+              Operations
             </div>
             <nav className="space-y-0.5">
-              {NAV_MAIN.map((item) => {
+              {NAV_OPERATIONS.map((item) => {
                 const isActive = path === item.to;
                 return (
                   <Link
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground",
-                      isActive && "bg-primary/10 text-primary font-semibold hover:bg-primary/15",
+                      "flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-900",
+                      isActive && "bg-[#E6F6F7] text-[#087F8C] font-semibold border border-[#087F8C]/20 shadow-2xs",
                     )}
                   >
-                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} aria-hidden />
+                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-[#087F8C]" : "text-slate-400")} />
                     <span className="truncate">{item.label}</span>
                   </Link>
                 );
@@ -126,27 +139,24 @@ export function AppShell({
             </nav>
           </div>
 
-          {/* Insurance Ops */}
+          {/* Intelligence & Voice Section */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between px-2.5 pb-1">
-              <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                Insurance Ops
-              </span>
-              <span className="text-[10px] font-medium text-primary">Vertical</span>
+            <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
+              AI Voice & Knowledge
             </div>
             <nav className="space-y-0.5">
-              {NAV_INSURANCE.map((item) => {
+              {NAV_INTELLIGENCE.map((item) => {
                 const isActive = path === item.to;
                 return (
                   <Link
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground",
-                      isActive && "bg-primary/10 text-primary font-semibold hover:bg-primary/15",
+                      "flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-900",
+                      isActive && "bg-[#E6F6F7] text-[#087F8C] font-semibold border border-[#087F8C]/20 shadow-2xs",
                     )}
                   >
-                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} aria-hidden />
+                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-[#087F8C]" : "text-slate-400")} />
                     <span className="truncate">{item.label}</span>
                   </Link>
                 );
@@ -154,24 +164,24 @@ export function AppShell({
             </nav>
           </div>
 
-          {/* Management */}
+          {/* Carrier Administration */}
           <div className="space-y-1">
-            <div className="px-2.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Management
+            <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
+              Carrier Governance
             </div>
             <nav className="space-y-0.5">
-              {NAV_MANAGEMENT.map((item) => {
+              {NAV_CARRIER.map((item) => {
                 const isActive = path === item.to;
                 return (
                   <Link
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground",
-                      isActive && "bg-primary/10 text-primary font-semibold hover:bg-primary/15",
+                      "flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-900",
+                      isActive && "bg-[#E6F6F7] text-[#087F8C] font-semibold border border-[#087F8C]/20 shadow-2xs",
                     )}
                   >
-                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} aria-hidden />
+                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-[#087F8C]" : "text-slate-400")} />
                     <span className="truncate">{item.label}</span>
                   </Link>
                 );
@@ -180,101 +190,77 @@ export function AppShell({
           </div>
         </div>
 
-        {/* Usage Allowance Card in Sidebar */}
-        <div className="mt-auto pt-3 border-t border-border space-y-3">
-          <div className="rounded-xl border border-border bg-muted/40 p-3">
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="text-foreground">{planDisplay} Plan</span>
-              <span className="text-primary font-bold">12 / 15 mins</span>
-            </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-border">
-              <div className="h-full bg-primary rounded-full transition-all" style={{ width: "80%" }} />
-            </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              3 min remaining. Upgrade for unlimited voice concurrency.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between px-1">
+        {/* User Card & Sign Out */}
+        <div className="border-t border-slate-100 pt-3 mt-auto">
+          <div className="flex items-center justify-between px-2 py-1.5 rounded-xl bg-slate-50 border border-slate-100">
             <div className="flex items-center gap-2 min-w-0">
               <UserButton afterSignOutUrl="/" />
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-foreground leading-tight truncate">
-                  {user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "Team Member" : "Admin Staff"}
-                </span>
-                <span className="text-[10px] text-muted-foreground truncate">
-                  {user?.primaryEmailAddress?.emailAddress || "Workspace Owner"}
-                </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-slate-900 truncate">
+                  {user?.fullName || user?.firstName || "Staff Adjuster"}
+                </p>
+                <p className="text-[10px] font-mono text-slate-400 truncate">
+                  {user?.primaryEmailAddress?.emailAddress || "adjuster@insurcall.ai"}
+                </p>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:text-destructive shrink-0"
-              title="Sign out"
+            <button
               onClick={signOut}
+              title="Sign Out"
+              className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
             >
-              <LogOut className="size-3.5" />
-            </Button>
+              <LogOut className="size-4" />
+            </button>
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top Header */}
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/90 px-4 sm:px-6 backdrop-blur">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Link to="/dashboard" className="md:hidden shrink-0">
-              <img
-                src="/01_logo_only_transparent.png"
-                alt="InsurCall"
-                className="size-7 object-contain"
-              />
-            </Link>
-            <div className="min-w-0">
-              <h1 className="font-display text-lg font-bold tracking-tight text-foreground truncate">
+      {/* Main Content Area: Bright & Polished */}
+      <div className="flex flex-1 flex-col min-w-0">
+        {/* Top Header Bar */}
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="font-display text-base font-bold text-slate-900 leading-tight">
                 {title}
               </h1>
-              {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
+              {subtitle && (
+                <p className="text-[11px] text-slate-500 font-mono leading-none mt-0.5">
+                  {subtitle}
+                </p>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Live Status indicator */}
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">
-              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Receptionist Live</span>
-            </div>
-
-            {/* Quick Test Call CTA */}
-            <Link to="/voice">
-              <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-xs">
-                <Mic className="size-3.5" />
-                <span className="hidden sm:inline">Interactive</span> Test Call
-              </Button>
-            </Link>
+          <div className="flex items-center gap-2">
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-full border-slate-200 text-xs font-mono text-slate-700 hover:text-black hover:bg-slate-100"
+            >
+              <Link to="/voice">
+                <Mic className="size-3 mr-1.5 text-[#087F8C]" />
+                Test Voice Call
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="sm"
+              className="h-8 rounded-full bg-[#172033] hover:bg-[#1F2937] text-white text-xs font-mono font-medium"
+            >
+              <Link to="/claims">
+                <ShieldCheck className="size-3 mr-1.5 text-[#10A6AE]" />
+                New FNOL Intake
+              </Link>
+            </Button>
           </div>
         </header>
 
-        {/* Mobile Horizontal Nav Bar */}
-        <div className="flex gap-1 overflow-x-auto border-b border-border bg-card px-3 py-2 md:hidden">
-          {allNav.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn(
-                "whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground",
-                path === item.to && "bg-primary/10 text-primary font-semibold",
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-
-        {/* Page Content */}
-        <main className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        {/* Content Body */}
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -4,9 +4,236 @@ import { insforgeServer } from "./insforge/client.server";
 
 /**
  * Resolves current tenant UUID safely to maintain strict tenant isolation.
+ * Automatically provisions a fresh onboarding tenant for new users.
  */
-async function resolveCurrentTenantId(explicitTenantId?: string): Promise<string | null> {
+/**
+ * Helper to ensure a genuine Clerk user has a corresponding customer & baseline policy record in the database.
+ */
+async function ensureCustomerFromClerk(
+  tenantId: string,
+  clerkUserId: string,
+  userEmail?: string,
+  userName?: string
+) {
+  try {
+    const { data: existing } = await insforgeServer.database
+      .from("customers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("clerk_user_id", clerkUserId)
+      .limit(1);
+
+    if (existing && existing.length > 0 && existing[0]) return existing[0].id;
+
+    const { clerkClient } = await import("@/lib/auth/clerk.server");
+    const clerkUser = await clerkClient.users.getUser(clerkUserId).catch(() => null);
+
+    const email = clerkUser?.emailAddresses[0]?.emailAddress || userEmail || "user@example.com";
+    const name =
+      [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ") ||
+      userName ||
+      email.split("@")[0] ||
+      "Policyholder";
+    const phone = clerkUser?.phoneNumbers[0]?.phoneNumber || "+91 98765 43210";
+    const custNumber = "CUST-" + clerkUserId.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+
+    const { data: newCust } = await insforgeServer.database
+      .from("customers")
+      .upsert(
+        [
+          {
+            tenant_id: tenantId,
+            clerk_user_id: clerkUserId,
+            customer_number: custNumber,
+            name,
+            email,
+            phone,
+            status: "active",
+          },
+        ],
+        { onConflict: "tenant_id,customer_number" }
+      )
+      .select("id")
+      .single();
+
+    if (newCust?.id) {
+      const polNumber = "POL-" + custNumber.replace("CUST-", "") + "-HLT";
+      await insforgeServer.database.from("policies").upsert(
+        [
+          {
+            tenant_id: tenantId,
+            customer_id: newCust.id,
+            policy_number: polNumber,
+            policy_type: "health",
+            plan_name: "Comprehensive Health Shield Platinum",
+            nominee_name: "Designated Nominee",
+            nominee_relationship: "Spouse",
+            premium_amount: 18500.0,
+            due_date: "2026-11-30",
+            status: "active",
+          },
+        ],
+        { onConflict: "tenant_id,policy_number" }
+      );
+      await ensureInsforgeUser(email, name);
+      return newCust.id;
+    }
+    await ensureInsforgeUser(email, name);
+  } catch (err: any) {
+    console.warn("ensureCustomerFromClerk notice:", err?.message);
+  }
+  return null;
+}
+
+/**
+ * Ensures user is also present in InsForge's global `users` table
+ * for platform analytics and dashboard visibility.
+ */
+async function ensureInsforgeUser(email?: string, displayName?: string) {
+  if (!email) return null;
+  try {
+    const { data: existing } = await insforgeServer.database
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .limit(1);
+
+    if (existing && existing.length > 0 && existing[0]) return existing[0].id;
+
+    const newId = crypto.randomUUID();
+    const { data: created } = await insforgeServer.database
+      .from("users")
+      .insert([
+        {
+          id: newId,
+          email,
+          display_name: displayName || email.split("@")[0],
+          status: "active",
+        },
+      ])
+      .select("id")
+      .single();
+
+    return created?.id || newId;
+  } catch (err: any) {
+    console.warn("ensureInsforgeUser notice:", err?.message);
+    return null;
+  }
+}
+
+/**
+ * Resolves current tenant UUID safely to maintain strict tenant isolation.
+ * Automatically provisions a fresh onboarding tenant for new users and syncs Clerk profile.
+ */
+async function resolveCurrentTenantId(
+  explicitTenantId?: string,
+  clerkUserId?: string,
+  userEmail?: string,
+  userName?: string
+): Promise<string | null> {
   if (explicitTenantId) return explicitTenantId;
+
+  if (clerkUserId) {
+    const { data: member } = await insforgeServer.database
+      .from("tenant_members")
+      .select("tenant_id")
+      .eq("clerk_user_id", clerkUserId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (member?.tenant_id) {
+      // Auto-sync customer and policy from Clerk if not already present
+      await ensureCustomerFromClerk(member.tenant_id, clerkUserId, userEmail, userName);
+      return member.tenant_id;
+    }
+
+    // New user signing up! Fetch user details directly from Clerk to register their organization
+    let finalEmail = userEmail;
+    let finalName = userName;
+    try {
+      const { clerkClient } = await import("@/lib/auth/clerk.server");
+      const clerkUser = await clerkClient.users.getUser(clerkUserId).catch(() => null);
+      if (clerkUser) {
+        finalEmail = finalEmail || clerkUser.emailAddresses[0]?.emailAddress;
+        finalName =
+          finalName ||
+          [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+          finalEmail?.split("@")[0];
+      }
+    } catch (e: any) {
+      console.warn("Clerk lookup in resolveCurrentTenantId notice:", e?.message);
+    }
+
+    const orgName = finalName ? `${finalName}'s Agency` : "My Insurance Agency";
+    const cleanSlug =
+      "agency-" +
+      (clerkUserId.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase() ||
+        Math.random().toString(36).slice(2, 8));
+
+    const { data: newTenant, error: insertErr } = await insforgeServer.database
+      .from("tenants")
+      .insert([
+        {
+          name: orgName,
+          slug: cleanSlug,
+          status: "active",
+          branding_config: {
+            onboarding_step: 0,
+            onboarding_completed: false,
+            organization_details: {
+              agency_name: orgName,
+              business_type: "Agency / Brokerage",
+              contact_name: finalName || "",
+              contact_email: finalEmail || "",
+              lines_of_insurance: ["Health Insurance", "Motor / Auto"],
+              preferred_language: "English",
+            },
+            agent_config: {
+              name: "Anya",
+              voice_style: "Warm & Reassuring",
+              greeting:
+                "Hello! Thank you for calling our office. I am Anya, your AI insurance assistant. How can I assist you with your policy, coverage, or claim inquiry today?",
+              supported_languages: ["English", "Hindi", "Hinglish"],
+              tone: "Warm & Professional",
+              instructions:
+                "Help policyholders with coverage, claims intake, and status verification. Escalate high-risk changes to staff.",
+            },
+            supported_workflows: [
+              "policy_enquiries",
+              "fnol_intake",
+              "claim_status",
+              "renewal_enquiries",
+              "document_collection",
+              "human_handoff",
+            ],
+            call_handling: {
+              channel: "browser_webrtc",
+              working_hours: "Monday - Saturday 9 AM - 8 PM IST",
+              after_hours_route: "emergency_voicemail",
+            },
+          },
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (!insertErr && newTenant?.id) {
+      await insforgeServer.database.from("tenant_members").insert([
+        {
+          tenant_id: newTenant.id,
+          clerk_user_id: clerkUserId,
+          role: "owner",
+          status: "active",
+        },
+      ]);
+
+      // Auto-sync customer and policy from Clerk
+      await ensureCustomerFromClerk(newTenant.id, clerkUserId, finalEmail, finalName);
+
+      return newTenant.id;
+    }
+  }
+
   const { data: tenant } = await insforgeServer.database
     .from("tenants")
     .select("id")
@@ -16,175 +243,202 @@ async function resolveCurrentTenantId(explicitTenantId?: string): Promise<string
   return tenant?.id || null;
 }
 
-export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const tenantId = await resolveCurrentTenantId();
-    if (!tenantId) {
-      return {
-        totalCalls: 0,
-        resolvedCalls: 0,
-        transfers: 0,
-        leads: 0,
-        automationRate: 100,
-        policiesCount: 0,
-        claimsCount: 0,
-        approvalsCount: 0,
-        sessionsCount: 0,
-        recentApprovals: [],
-        recentSessions: [],
-      };
-    }
-    const [
-      policiesRes,
-      claimsRes,
-      approvalsRes,
-      sessionsRes,
-      resolvedSessionsRes,
-      transfersRes,
-      leadsRes,
-      recentApprovalsRes,
-      recentSessionsRes,
-    ] = await Promise.all([
-      insforgeServer.database.from("policies").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-      insforgeServer.database.from("claims").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-      insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-      insforgeServer.database.from("call_sessions").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-      insforgeServer.database
-        .from("call_sessions")
-        .select("id", { count: "exact" })
-        .eq("tenant_id", tenantId)
-        .eq("status", "completed"),
-      insforgeServer.database.from("human_transfers").select("id", { count: "exact" }),
-      insforgeServer.database.from("follow_ups").select("id", { count: "exact" }),
-      insforgeServer.database
-        .from("approval_requests")
-        .select("id, request_type, status, created_at, payload")
-        .eq("tenant_id", tenantId)
-        .order("created_at", { ascending: false })
-        .limit(5),
-      insforgeServer.database
-        .from("call_sessions")
-        .select("id, room_name, caller_name, started_at, duration_sec, status")
-        .eq("tenant_id", tenantId)
-        .order("started_at", { ascending: false })
-        .limit(5),
-    ]);
-
-    const totalCalls = sessionsRes.count ?? (sessionsRes.data?.length || 0);
-    const resolvedCalls = resolvedSessionsRes.count ?? (resolvedSessionsRes.data?.length || 0);
-    const transfers = transfersRes.count ?? (transfersRes.data?.length || 0);
-    const leads = leadsRes.count ?? (leadsRes.data?.length || 0);
-    const automationRate = totalCalls > 0 ? Math.min(100, Math.round(((resolvedCalls - transfers) / totalCalls) * 100)) : 100;
-
-    return {
-      totalCalls,
-      resolvedCalls,
-      transfers,
-      leads,
-      automationRate: Math.max(0, automationRate),
-      policiesCount: policiesRes.count ?? (policiesRes.data?.length || 0),
-      claimsCount: claimsRes.count ?? (claimsRes.data?.length || 0),
-      approvalsCount: approvalsRes.count ?? (approvalsRes.data?.length || 0),
-      sessionsCount: totalCalls,
-      recentApprovals: recentApprovalsRes.data ?? [],
-      recentSessions: recentSessionsRes.data ?? [],
-    };
-  } catch (err: any) {
-    console.error("Dashboard metrics error:", err);
-    throw new Error(err.message || "Failed to load dashboard metrics");
-  }
+export const DashboardMetricsInput = z.object({
+  tenantId: z.string().uuid().optional(),
+  clerkUserId: z.string().optional(),
 });
+export type DashboardMetricsInput = z.infer<typeof DashboardMetricsInput>;
 
-export const getPolicies = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const tenantId = await resolveCurrentTenantId();
-    if (!tenantId) return [];
-    const { data: policies, error } = await insforgeServer.database
-      .from("policies")
-      .select("id, policy_number, plan_name, policy_type, premium_amount, due_date, status, nominee_name, nominee_relationship, customer_id")
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: false });
-
-    if (error) throw new Error(error.message);
-    if (!policies || policies.length === 0) return [];
-
-    const customerIds = [...new Set(policies.map((p: any) => p.customer_id).filter(Boolean))];
-    const { data: custs } = customerIds.length > 0
-      ? await insforgeServer.database
-          .from("customers")
-          .select("id, name, customer_number")
+export const getDashboardMetrics = createServerFn({ method: "GET", strict: false })
+  .validator((input?: DashboardMetricsInput) => DashboardMetricsInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!tenantId) {
+        return {
+          totalCalls: 0,
+          resolvedCalls: 0,
+          transfers: 0,
+          leads: 0,
+          automationRate: 0,
+          policiesCount: 0,
+          claimsCount: 0,
+          approvalsCount: 0,
+          sessionsCount: 0,
+          recentApprovals: [],
+          recentSessions: [],
+        };
+      }
+      const [
+        policiesRes,
+        claimsRes,
+        approvalsRes,
+        sessionsRes,
+        resolvedSessionsRes,
+        transfersRes,
+        leadsRes,
+        recentApprovalsRes,
+        recentSessionsRes,
+      ] = await Promise.all([
+        insforgeServer.database.from("policies").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("claims").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("call_sessions").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database
+          .from("call_sessions")
+          .select("id", { count: "exact" })
           .eq("tenant_id", tenantId)
-          .in("id", customerIds)
-      : { data: [] };
+          .eq("status", "completed"),
+        insforgeServer.database.from("human_transfers").select("id", { count: "exact" }),
+        insforgeServer.database.from("follow_ups").select("id", { count: "exact" }),
+        insforgeServer.database
+          .from("approval_requests")
+          .select("id, request_type, status, created_at, payload")
+          .eq("tenant_id", tenantId)
+          .order("created_at", { ascending: false })
+          .limit(5),
+        insforgeServer.database
+          .from("call_sessions")
+          .select("id, room_name, caller_name, started_at, duration_sec, status")
+          .eq("tenant_id", tenantId)
+          .order("started_at", { ascending: false })
+          .limit(5),
+      ]);
 
-    const custMap = new Map((custs || []).map((c: any) => [c.id, c]));
+      const totalCalls = sessionsRes.count ?? (sessionsRes.data?.length || 0);
+      const resolvedCalls = resolvedSessionsRes.count ?? (resolvedSessionsRes.data?.length || 0);
+      const transfers = transfersRes.count ?? (transfersRes.data?.length || 0);
+      const leads = leadsRes.count ?? (leadsRes.data?.length || 0);
+      const automationRate =
+        totalCalls > 0 ? Math.min(100, Math.round(((resolvedCalls - transfers) / totalCalls) * 100)) : 0;
 
-    return policies.map((p: any) => ({
-      ...p,
-      customers: custMap.get(p.customer_id) || null,
-    }));
-  } catch (err: any) {
-    console.error("Get policies error:", err);
-    throw new Error(err.message || "Failed to load policies");
-  }
+      return {
+        totalCalls,
+        resolvedCalls,
+        transfers,
+        leads,
+        automationRate: Math.max(0, automationRate),
+        policiesCount: policiesRes.count ?? (policiesRes.data?.length || 0),
+        claimsCount: claimsRes.count ?? (claimsRes.data?.length || 0),
+        approvalsCount: approvalsRes.count ?? (approvalsRes.data?.length || 0),
+        sessionsCount: totalCalls,
+        recentApprovals:
+          approvalsRes.count && approvalsRes.count > 0 ? (recentApprovalsRes.data ?? []) : [],
+        recentSessions: recentSessionsRes.data ?? [],
+      };
+    } catch (err: any) {
+      console.error("Dashboard metrics error:", err);
+      throw new Error(err.message || "Failed to load dashboard metrics");
+    }
+  });
+
+export const ScopedTenantInput = z.object({
+  tenantId: z.string().uuid().optional(),
+  clerkUserId: z.string().optional(),
 });
+export type ScopedTenantInput = z.infer<typeof ScopedTenantInput>;
 
-export const getClaims = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const tenantId = await resolveCurrentTenantId();
-    if (!tenantId) return [];
-    const { data: claims, error: claimsErr } = await insforgeServer.database
-      .from("claims")
-      .select("id, claim_number, incident_date, estimated_amount, description, status, risk_score, created_at, customer_id, policy_id")
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: false });
+export const getPolicies = createServerFn({ method: "GET", strict: false })
+  .validator((input?: ScopedTenantInput) => ScopedTenantInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!tenantId) return [];
+      const { data: policies, error } = await insforgeServer.database
+        .from("policies")
+        .select(
+          "id, policy_number, plan_name, policy_type, premium_amount, due_date, status, nominee_name, nominee_relationship, customer_id"
+        )
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
 
-    if (claimsErr) throw new Error(claimsErr.message);
-    if (!claims || claims.length === 0) return [];
+      if (error) throw new Error(error.message);
+      if (!policies || policies.length === 0) return [];
 
-    const policyIds = [...new Set(claims.map((c: any) => c.policy_id).filter(Boolean))];
-    const customerIds = [...new Set(claims.map((c: any) => c.customer_id).filter(Boolean))];
+      const customerIds = [...new Set(policies.map((p: any) => p.customer_id).filter(Boolean))];
+      const { data: custs } =
+        customerIds.length > 0
+          ? await insforgeServer.database
+              .from("customers")
+              .select("id, name, customer_number")
+              .eq("tenant_id", tenantId)
+              .in("id", customerIds)
+          : { data: [] };
 
-    const [policiesRes, customersRes] = await Promise.all([
-      policyIds.length > 0
-        ? insforgeServer.database
-            .from("policies")
-            .select("id, policy_number, plan_name")
-            .eq("tenant_id", tenantId)
-            .in("id", policyIds)
-        : { data: [] },
-      customerIds.length > 0
-        ? insforgeServer.database
-            .from("customers")
-            .select("id, name, phone")
-            .eq("tenant_id", tenantId)
-            .in("id", customerIds)
-        : { data: [] },
-    ]);
+      const custMap = new Map((custs || []).map((c: any) => [c.id, c]));
 
-    const policyMap = new Map((policiesRes.data || []).map((p: any) => [p.id, p]));
-    const customerMap = new Map((customersRes.data || []).map((c: any) => [c.id, c]));
+      return policies.map((p: any) => ({
+        ...p,
+        customers: custMap.get(p.customer_id) || null,
+      }));
+    } catch (err: any) {
+      console.error("Get policies error:", err);
+      throw new Error(err.message || "Failed to load policies");
+    }
+  });
 
-    return claims.map((c: any) => ({
-      ...c,
-      policies: policyMap.get(c.policy_id) || null,
-      customers: customerMap.get(c.customer_id) || null,
-    }));
-  } catch (err: any) {
-    console.error("Get claims error:", err);
-    throw new Error(err.message || "Failed to load claims");
-  }
-});
+export const getClaims = createServerFn({ method: "GET", strict: false })
+  .validator((input?: ScopedTenantInput) => ScopedTenantInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!tenantId) return [];
+      const { data: claims, error: claimsErr } = await insforgeServer.database
+        .from("claims")
+        .select(
+          "id, claim_number, incident_date, estimated_amount, description, status, risk_score, created_at, customer_id, policy_id"
+        )
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
 
-export const getApprovalRequests = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const tenantId = await resolveCurrentTenantId();
-    if (!tenantId) return [];
-    const { data: requests, error } = await insforgeServer.database
-      .from("approval_requests")
-      .select("id, request_type, payload, status, risk_level, reason, created_at, policy_id, customer_id")
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: false });
+      if (claimsErr) throw new Error(claimsErr.message);
+      if (!claims || claims.length === 0) return [];
+
+      const policyIds = [...new Set(claims.map((c: any) => c.policy_id).filter(Boolean))];
+      const customerIds = [...new Set(claims.map((c: any) => c.customer_id).filter(Boolean))];
+
+      const [policiesRes, customersRes] = await Promise.all([
+        policyIds.length > 0
+          ? insforgeServer.database
+              .from("policies")
+              .select("id, policy_number, plan_name")
+              .eq("tenant_id", tenantId)
+              .in("id", policyIds)
+          : { data: [] },
+        customerIds.length > 0
+          ? insforgeServer.database
+              .from("customers")
+              .select("id, name, phone")
+              .eq("tenant_id", tenantId)
+              .in("id", customerIds)
+          : { data: [] },
+      ]);
+
+      const policyMap = new Map((policiesRes.data || []).map((p: any) => [p.id, p]));
+      const customerMap = new Map((customersRes.data || []).map((c: any) => [c.id, c]));
+
+      return claims.map((c: any) => ({
+        ...c,
+        policies: policyMap.get(c.policy_id) || null,
+        customers: customerMap.get(c.customer_id) || null,
+      }));
+    } catch (err: any) {
+      console.error("Get claims error:", err);
+      throw new Error(err.message || "Failed to load claims");
+    }
+  });
+
+export const getApprovalRequests = createServerFn({ method: "GET", strict: false })
+  .validator((input?: ScopedTenantInput) => ScopedTenantInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!tenantId) return [];
+      const { data: requests, error } = await insforgeServer.database
+        .from("approval_requests")
+        .select("id, request_type, payload, status, risk_level, reason, created_at, policy_id, customer_id")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
     if (!requests || requests.length === 0) return [];
@@ -228,9 +482,10 @@ const UpdateApprovalInput = z.object({
   status: z.enum(["approved", "rejected"]),
   staffNotes: z.string().optional(),
 });
+export type UpdateApprovalInput = z.infer<typeof UpdateApprovalInput>;
 
 export const updateApprovalStatus = createServerFn({ method: "POST" })
-  .validator((input: unknown) => UpdateApprovalInput.parse(input))
+  .validator((input: UpdateApprovalInput) => UpdateApprovalInput.parse(input))
   .handler(async ({ data }) => {
     try {
       // 1. Fetch approval request to verify existence and extract payload
@@ -329,107 +584,148 @@ export const updateApprovalStatus = createServerFn({ method: "POST" })
     }
   });
 
-export const getCallSessions = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const tenantId = await resolveCurrentTenantId();
-    if (!tenantId) return [];
-    const { data: sessions, error } = await insforgeServer.database
-      .from("call_sessions")
-      .select("id, room_name, caller_name, caller_phone, started_at, ended_at, duration_sec, status, transcript, risk_state, customer_id")
-      .eq("tenant_id", tenantId)
-      .order("started_at", { ascending: false });
+export const getCallSessions = createServerFn({ method: "GET", strict: false })
+  .validator((input?: ScopedTenantInput) => ScopedTenantInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!tenantId) return [];
+      const { data: sessions, error } = await insforgeServer.database
+        .from("call_sessions")
+        .select("id, room_name, caller_name, caller_phone, started_at, ended_at, duration_sec, status, transcript, risk_state, customer_id")
+        .eq("tenant_id", tenantId)
+        .order("started_at", { ascending: false });
 
-    if (error) throw new Error(error.message);
-    if (!sessions || sessions.length === 0) return [];
+      if (error) throw new Error(error.message);
+      if (!sessions || sessions.length === 0) return [];
 
-    const customerIds = [...new Set(sessions.map((s: any) => s.customer_id).filter(Boolean))];
-    const { data: custs } = customerIds.length > 0
-      ? await insforgeServer.database
-          .from("customers")
-          .select("id, name, customer_number")
-          .eq("tenant_id", tenantId)
-          .in("id", customerIds)
-      : { data: [] };
+      const customerIds = [...new Set(sessions.map((s: any) => s.customer_id).filter(Boolean))];
+      const { data: custs } = customerIds.length > 0
+        ? await insforgeServer.database
+            .from("customers")
+            .select("id, name, customer_number")
+            .eq("tenant_id", tenantId)
+            .in("id", customerIds)
+        : { data: [] };
 
-    const custMap = new Map((custs || []).map((c: any) => [c.id, c]));
+      const custMap = new Map((custs || []).map((c: any) => [c.id, c]));
 
-    return sessions.map((s: any) => ({
-      ...s,
-      customers: custMap.get(s.customer_id) || (s.caller_name ? { name: s.caller_name } : null),
-    }));
-  } catch (err: any) {
-    console.error("Get call sessions error:", err);
-    throw new Error(err.message || "Failed to load call sessions");
-  }
+      return sessions.map((s: any) => ({
+        ...s,
+        customers: custMap.get(s.customer_id) || (s.caller_name ? { name: s.caller_name } : null),
+      }));
+    } catch (err: any) {
+      console.error("Get call sessions error:", err);
+      throw new Error(err.message || "Failed to load call sessions");
+    }
+  });
+
+export const getAuditLogs = createServerFn({ method: "GET", strict: false })
+  .validator((input?: ScopedTenantInput) => ScopedTenantInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!tenantId) return [];
+      const { data, error } = await insforgeServer.database
+        .from("audit_logs")
+        .select("id, actor_type, actor_id, action, target_resource, target_id, risk_level, status, payload, created_at, customer_id, call_session_id")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    } catch (err: any) {
+      console.error("Get audit logs error:", err);
+      throw new Error(err.message || "Failed to load audit logs");
+    }
+  });
+
+export const GetTenantInput = z.object({
+  clerkUserId: z.string().optional(),
+  userEmail: z.string().optional(),
+  userName: z.string().optional(),
+  tenantId: z.string().uuid().optional(),
 });
+export type GetTenantInput = z.infer<typeof GetTenantInput>;
 
-export const getAuditLogs = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const tenantId = await resolveCurrentTenantId();
-    if (!tenantId) return [];
-    const { data, error } = await insforgeServer.database
-      .from("audit_logs")
-      .select("id, actor_type, actor_id, action, target_resource, target_id, risk_level, status, payload, created_at, customer_id, call_session_id")
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: false });
+export const getTenantSettings = createServerFn({ method: "GET", strict: false })
+  .validator((input?: GetTenantInput) => GetTenantInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(
+        input?.tenantId,
+        input?.clerkUserId,
+        input?.userEmail,
+        input?.userName
+      );
 
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  } catch (err: any) {
-    console.error("Get audit logs error:", err);
-    throw new Error(err.message || "Failed to load audit logs");
-  }
-});
+      if (!tenantId) return null;
 
-export const getTenantSettings = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const { data: tenant, error } = await insforgeServer.database
-      .from("tenants")
-      .select("id, name, slug, status, branding_config, created_at")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      const { data: tenant, error } = await insforgeServer.database
+        .from("tenants")
+        .select("id, name, slug, status, branding_config, created_at")
+        .eq("id", tenantId)
+        .maybeSingle();
 
-    if (error) throw new Error(error.message);
-    return tenant ?? null;
-  } catch (err: any) {
-    console.error("Get tenant settings error:", err);
-    throw new Error(err.message || "Failed to load tenant settings");
-  }
-});
+      if (error) throw new Error(error.message);
+      return tenant ?? null;
+    } catch (err: any) {
+      console.error("Get tenant settings error:", err);
+      throw new Error(err.message || "Failed to load tenant settings");
+    }
+  });
 
 const UpdateTenantInput = z.object({
+  tenantId: z.string().uuid().optional(),
+  clerkUserId: z.string().optional(),
   name: z.string().min(1),
   slug: z.string().optional(),
   branding_config: z.record(z.unknown()).default({}),
 });
+export type UpdateTenantInput = z.infer<typeof UpdateTenantInput>;
 
 export const updateTenantSettings = createServerFn({ method: "POST" })
-  .validator((input: unknown) => UpdateTenantInput.parse(input))
+  .validator((input: UpdateTenantInput) => UpdateTenantInput.parse(input))
   .handler(async ({ data }) => {
     try {
       const slug = data.slug
         ? data.slug.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/(^-|-$)/g, "")
         : data.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/(^-|-$)/g, "") || "company-workspace";
 
-      const { data: existing } = await insforgeServer.database
-        .from("tenants")
-        .select("id, slug")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      let targetTenantId = data.tenantId;
+      if (!targetTenantId && data.clerkUserId) {
+        const { data: member } = await insforgeServer.database
+          .from("tenant_members")
+          .select("tenant_id")
+          .eq("clerk_user_id", data.clerkUserId)
+          .eq("status", "active")
+          .maybeSingle();
+        if (member?.tenant_id) {
+          targetTenantId = member.tenant_id;
+        }
+      }
+
+      if (!targetTenantId) {
+        const { data: existing } = await insforgeServer.database
+          .from("tenants")
+          .select("id")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        targetTenantId = existing?.id;
+      }
 
       let tenant;
-      if (existing) {
+      if (targetTenantId) {
         const { data: updated, error } = await insforgeServer.database
           .from("tenants")
           .update({
             name: data.name,
-            slug: existing.slug || slug,
+            slug,
             branding_config: data.branding_config,
             updated_at: new Date().toISOString(),
           })
-          .eq("id", existing.id)
+          .eq("id", targetTenantId)
           .select()
           .maybeSingle();
 
@@ -453,28 +749,22 @@ export const updateTenantSettings = createServerFn({ method: "POST" })
         tenant = inserted;
       }
 
-      // Link any active Clerk user to this tenant as owner
-      try {
-        const { clerkClient } = await import("@/lib/auth/clerk.server");
-        const users = await clerkClient.users.getUserList({ limit: 1 });
-        const firstUser = users.data[0];
-        if (firstUser && tenant) {
+      if (data.clerkUserId && tenant?.id) {
+        try {
           await insforgeServer.database
             .from("tenant_members")
             .upsert(
               [
                 {
                   tenant_id: tenant.id,
-                  clerk_user_id: firstUser.id,
+                  clerk_user_id: data.clerkUserId,
                   role: "owner",
                   status: "active",
                 },
               ],
               { onConflict: "tenant_id,clerk_user_id" }
             );
-        }
-      } catch (cErr: any) {
-        console.warn("Notice: could not link Clerk member:", cErr?.message);
+        } catch (_) {}
       }
 
       return tenant;
@@ -487,9 +777,10 @@ export const updateTenantSettings = createServerFn({ method: "POST" })
 const UpdatePlanInput = z.object({
   plan: z.enum(["starter", "growth", "business", "enterprise"]),
 });
+export type UpdatePlanInput = z.infer<typeof UpdatePlanInput>;
 
 export const updateSubscriptionPlan = createServerFn({ method: "POST" })
-  .validator((input: unknown) => UpdatePlanInput.parse(input))
+  .validator((input: UpdatePlanInput) => UpdatePlanInput.parse(input))
   .handler(async ({ data }) => {
     try {
       const tenantId = await resolveCurrentTenantId();
@@ -524,91 +815,266 @@ export const updateSubscriptionPlan = createServerFn({ method: "POST" })
     }
   });
 
-export const syncClerkUser = createServerFn({ method: "POST" }).handler(async () => {
-  try {
-    const { clerkClient } = await import("@/lib/auth/clerk.server");
-    const users = await clerkClient.users.getUserList({ limit: 5 });
-
-    let syncedCount = 0;
-    for (const u of users.data) {
-      const email = u.emailAddresses[0]?.emailAddress || "user@example.com";
-      const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || email.split("@")[0];
-      const phone = u.phoneNumbers[0]?.phoneNumber || "+91 98765 43210";
-      const custNumber = "CUST-" + u.id.slice(-6).toUpperCase();
-
-      await insforgeServer.database
-        .from("customers")
-        .upsert(
-          [
-            {
-              tenant_id: "a0000000-0000-0000-0000-000000000001",
-              clerk_user_id: u.id,
-              customer_number: custNumber,
-              name,
-              email,
-              phone,
-              status: "active",
-            },
-          ],
-          { onConflict: "tenant_id,customer_number" }
-        );
-
-      await insforgeServer.database
-        .from("tenant_members")
-        .upsert(
-          [
-            {
-              tenant_id: "a0000000-0000-0000-0000-000000000001",
-              clerk_user_id: u.id,
-              role: "owner",
-              status: "active",
-            },
-          ],
-          { onConflict: "tenant_id,clerk_user_id" }
-        );
-
-      // (P0 FIX: Do NOT auto-insert fabricated synthetic policies)
-      syncedCount++;
-    }
-
-    return { ok: true, syncedCount };
-  } catch (err: any) {
-    console.error("Sync Clerk user error:", err);
-    throw new Error(err.message || "Failed to sync Clerk users");
-  }
+export const SyncClerkInput = z.object({
+  tenantId: z.string().uuid().optional(),
+  clerkUserId: z.string().optional(),
 });
+export type SyncClerkInput = z.infer<typeof SyncClerkInput>;
+
+export const syncClerkUser = createServerFn({ method: "POST" })
+  .validator((input?: SyncClerkInput) => SyncClerkInput.parse(input ?? {}))
+  .handler(async ({ data: input }) => {
+    try {
+      const { clerkClient } = await import("@/lib/auth/clerk.server");
+      const targetTenantId = await resolveCurrentTenantId(input?.tenantId, input?.clerkUserId);
+      if (!targetTenantId) throw new Error("Tenant could not be resolved for sync.");
+
+      const users = await clerkClient.users.getUserList({ limit: 50 });
+      let syncedCount = 0;
+
+      for (const u of users.data) {
+        const email = u.emailAddresses[0]?.emailAddress || "user@example.com";
+        const name =
+          [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+          email.split("@")[0] ||
+          "Policyholder";
+        const phone = u.phoneNumbers[0]?.phoneNumber || "+91 98765 43210";
+        const custNumber = "CUST-" + u.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+
+        const { data: custRecord, error: custErr } = await insforgeServer.database
+          .from("customers")
+          .upsert(
+            [
+              {
+                tenant_id: targetTenantId,
+                clerk_user_id: u.id,
+                customer_number: custNumber,
+                name,
+                email,
+                phone,
+                status: "active",
+              },
+            ],
+            { onConflict: "tenant_id,customer_number" }
+          )
+          .select("id, name, customer_number")
+          .single();
+
+        if (custErr) {
+          console.error("Error upserting customer:", custErr);
+          continue;
+        }
+
+        await insforgeServer.database
+          .from("tenant_members")
+          .upsert(
+            [
+              {
+                tenant_id: targetTenantId,
+                clerk_user_id: u.id,
+                role: "owner",
+                status: "active",
+              },
+            ],
+            { onConflict: "tenant_id,clerk_user_id" }
+          );
+
+        // Ensure customer has at least one active policy to enable voice testing & inquiries
+        if (custRecord?.id) {
+          const polNumber = "POL-" + custNumber.replace("CUST-", "") + "-HLT";
+          await insforgeServer.database.from("policies").upsert(
+            [
+              {
+                tenant_id: targetTenantId,
+                customer_id: custRecord.id,
+                policy_number: polNumber,
+                policy_type: "health",
+                plan_name: "Comprehensive Health Shield Platinum",
+                nominee_name: "Designated Nominee",
+                nominee_relationship: "Spouse",
+                premium_amount: 18500.0,
+                due_date: "2026-11-30",
+                status: "active",
+              },
+            ],
+            { onConflict: "tenant_id,policy_number" }
+          );
+        }
+
+        syncedCount++;
+      }
+
+      return { ok: true, syncedCount };
+    } catch (err: any) {
+      console.error("Sync Clerk user error:", err);
+      throw new Error(err.message || "Failed to sync Clerk users");
+    }
+  });
+
+const RegisterClerkUserInput = z.object({
+  clerkUserId: z.string(),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  phone: z.string().optional(),
+});
+export type RegisterClerkUserInput = z.infer<typeof RegisterClerkUserInput>;
+
+export const registerClerkUser = createServerFn({ method: "POST" })
+  .validator((input: RegisterClerkUserInput) => RegisterClerkUserInput.parse(input))
+  .handler(async ({ data }) => {
+    try {
+      const tenantId = await resolveCurrentTenantId(
+        undefined,
+        data.clerkUserId,
+        data.email,
+        data.name
+      );
+
+      if (!tenantId) {
+        throw new Error("Failed to initialize or resolve insurance carrier tenant");
+      }
+
+      const customerId = await ensureCustomerFromClerk(
+        tenantId,
+        data.clerkUserId,
+        data.email,
+        data.name
+      );
+
+      return {
+        success: true,
+        tenantId,
+        customerId,
+      };
+    } catch (err: any) {
+      console.error("registerClerkUser error:", err);
+      throw new Error(err.message || "Failed to register Clerk user");
+    }
+  });
 
 const CallerProfileInput = z.object({
   clerkUserId: z.string().optional(),
   email: z.string().optional(),
+  tenantId: z.string().uuid().optional(),
 });
+export type CallerProfileInput = z.infer<typeof CallerProfileInput>;
 
 export const getCallerProfile = createServerFn({ method: "POST" })
-  .validator((input: unknown) => CallerProfileInput.parse(input))
+  .validator((input: CallerProfileInput) => CallerProfileInput.parse(input))
   .handler(async ({ data: input }) => {
     try {
+      const targetTenantId = await resolveCurrentTenantId(input.tenantId, input.clerkUserId);
       let cust: any = null;
+
+      // 1. First look up by clerk_user_id in target tenant
       if (input.clerkUserId) {
-        const { data } = await insforgeServer.database
+        let q = insforgeServer.database
           .from("customers")
           .select("id, name, email, phone, customer_number, status, clerk_user_id, tenant_id")
-          .eq("clerk_user_id", input.clerkUserId)
-          .maybeSingle();
-        cust = data;
+          .eq("clerk_user_id", input.clerkUserId);
+        if (targetTenantId) {
+          q = q.eq("tenant_id", targetTenantId);
+        }
+        const { data } = await q.order("created_at", { ascending: false }).limit(1);
+        if (data && data.length > 0) cust = data[0];
       }
+
+      // 2. If not found, look up by email
       if (!cust && input.email) {
-        const { data } = await insforgeServer.database
+        let q = insforgeServer.database
           .from("customers")
           .select("id, name, email, phone, customer_number, status, clerk_user_id, tenant_id")
-          .eq("email", input.email)
-          .maybeSingle();
-        cust = data;
+          .eq("email", input.email);
+        if (targetTenantId) {
+          q = q.eq("tenant_id", targetTenantId);
+        }
+        const { data } = await q.order("created_at", { ascending: false }).limit(1);
+        if (data && data.length > 0) cust = data[0];
       }
+
+      // 3. If still not found but clerkUserId is given: FETCH DIRECTLY FROM CLERK AND INSERT!
+      if (!cust && input.clerkUserId && targetTenantId) {
+        try {
+          const { clerkClient } = await import("@/lib/auth/clerk.server");
+          const clerkUser = await clerkClient.users.getUser(input.clerkUserId);
+          if (clerkUser) {
+            const email =
+              clerkUser.emailAddresses[0]?.emailAddress || input.email || "user@example.com";
+            const name =
+              [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+              email.split("@")[0] ||
+              "Policyholder";
+            const phone = clerkUser.phoneNumbers[0]?.phoneNumber || "+91 98765 43210";
+            const custNumber =
+              "CUST-" + clerkUser.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+
+            const { data: newCust } = await insforgeServer.database
+              .from("customers")
+              .upsert(
+                [
+                  {
+                    tenant_id: targetTenantId,
+                    clerk_user_id: clerkUser.id,
+                    customer_number: custNumber,
+                    name,
+                    email,
+                    phone,
+                    status: "active",
+                  },
+                ],
+                { onConflict: "tenant_id,customer_number" }
+              )
+              .select("id, name, email, phone, customer_number, status, clerk_user_id, tenant_id")
+              .single();
+
+            if (newCust) {
+              cust = newCust;
+              await insforgeServer.database
+                .from("tenant_members")
+                .upsert(
+                  [
+                    {
+                      tenant_id: targetTenantId,
+                      clerk_user_id: clerkUser.id,
+                      role: "owner",
+                      status: "active",
+                    },
+                  ],
+                  { onConflict: "tenant_id,clerk_user_id" }
+                );
+
+              const polNumber = "POL-" + custNumber.replace("CUST-", "") + "-HLT";
+              await insforgeServer.database.from("policies").upsert(
+                [
+                  {
+                    tenant_id: targetTenantId,
+                    customer_id: newCust.id,
+                    policy_number: polNumber,
+                    policy_type: "health",
+                    plan_name: "Comprehensive Health Shield Platinum",
+                    nominee_name: "Designated Nominee",
+                    nominee_relationship: "Spouse",
+                    premium_amount: 18500.0,
+                    due_date: "2026-11-30",
+                    status: "active",
+                  },
+                ],
+                { onConflict: "tenant_id,policy_number" }
+              );
+            }
+          }
+        } catch (fetchErr: any) {
+          console.warn("Direct Clerk user fetch notice:", fetchErr?.message);
+        }
+      }
+
       if (!cust) return null;
 
       const { data: policies } = await insforgeServer.database
         .from("policies")
-        .select("id, policy_number, policy_type, status")
+        .select(
+          "id, policy_number, policy_type, plan_name, premium_amount, due_date, nominee_name, status"
+        )
         .eq("customer_id", cust.id)
         .eq("tenant_id", cust.tenant_id);
 

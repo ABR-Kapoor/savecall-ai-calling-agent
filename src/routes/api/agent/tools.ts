@@ -3,6 +3,7 @@ import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 import { evaluateToolSecurity, TOOL_POLICIES } from "@/lib/risk/risk-engine";
 import { createAndSendOtp, verifyOtpCode } from "@/lib/risk/otp.server";
+import { retrieveAgentKnowledge, generateGroundedAnswer } from "@/lib/rag/retrieval.server";
 
 const internalSecret = process.env["AGENT_INTERNAL_SECRET"] || "insurcall_agent_secret_2026_dev";
 
@@ -40,7 +41,7 @@ export const Route = createFileRoute("/api/agent/tools")({
         // 2. Fetch call session to verify active state & OTP status
         const { data: session, error: sessErr } = await insforgeServer.database
           .from("call_sessions")
-          .select("id, tenant_id, customer_id, risk_state, otp_verified_until, status")
+          .select("id, tenant_id, customer_id, risk_state, otp_verified_until, status, agent_id")
           .eq("id", call_session_id)
           .maybeSingle();
 
@@ -254,6 +255,150 @@ export const Route = createFileRoute("/api/agent/tools")({
                 ok: true,
                 message: `Policy surrender request submitted to our senior retention officer. Reference ID: ${req?.id}`,
                 request_id: req?.id,
+              };
+              break;
+            }
+
+            case "file_claim": {
+              const policyNumber = String(args["policy_number"] || "");
+              const description = String(args["description"] || "Accident / incident reported via voice receptionist");
+              const estimatedAmount = Number(args["estimated_amount"] || args["amount"] || 0);
+
+              let policyId: string | null = null;
+              if (policyNumber) {
+                const { data: pol } = await insforgeServer.database
+                  .from("policies")
+                  .select("id")
+                  .eq("tenant_id", tenant_id)
+                  .eq("customer_id", customer_id)
+                  .eq("policy_number", policyNumber)
+                  .maybeSingle();
+                policyId = pol?.id || null;
+              }
+
+              const claimNumber = "CLM-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+              const isHighRisk = estimatedAmount > 50000;
+
+              const { data: claim } = await insforgeServer.database
+                .from("claims")
+                .insert({
+                  tenant_id,
+                  customer_id,
+                  policy_id: policyId,
+                  claim_number: claimNumber,
+                  description,
+                  amount: estimatedAmount,
+                  status: "in_review",
+                  risk_score: isHighRisk ? 85 : 20,
+                })
+                .select("id, claim_number")
+                .single();
+
+              if (isHighRisk && claim?.id) {
+                await insforgeServer.database.from("approval_requests").insert({
+                  tenant_id,
+                  customer_id,
+                  policy_id: policyId,
+                  request_type: "claim_escalation",
+                  risk_level: "HIGH",
+                  reason: `High value claim filing (₹${estimatedAmount.toLocaleString("en-IN")}) reported via voice`,
+                  payload: { claim_number: claimNumber, estimated_amount: estimatedAmount, description },
+                  status: "pending",
+                });
+              }
+
+              result = {
+                ok: true,
+                message: `Claim registered with number ${claimNumber}. Status: In Review. Staff review: ${isHighRisk ? "Escalated for senior approval" : "Standard assessment"}.`,
+                claim_number: claimNumber,
+                is_high_risk: isHighRisk,
+              };
+              break;
+            }
+
+            case "search_policy_docs": {
+              const query = String(args["query"] || "").trim();
+              if (!query) {
+                result = { ok: false, error: "Search query is required" };
+                break;
+              }
+
+              let targetAgentId = String(args["agent_id"] || (session as any).agent_id || "");
+              if (!targetAgentId) {
+                const { data: ag } = await insforgeServer.database
+                  .from("ai_agents")
+                  .select("id")
+                  .eq("tenant_id", tenant_id)
+                  .limit(1)
+                  .maybeSingle();
+                targetAgentId = ag?.id || "";
+              }
+
+              if (!targetAgentId) {
+                result = { ok: false, error: "No AI agent configured for this tenant" };
+                break;
+              }
+
+              const groundedRes = await generateGroundedAnswer({
+                tenantId: tenant_id,
+                agentId: targetAgentId,
+                query,
+              });
+
+              if (!groundedRes.grounded) {
+                await insforgeServer.database
+                  .from("call_sessions")
+                  .update({
+                    escalated: true,
+                    escalation_reason: groundedRes.reason || "Low similarity or ungrounded policy inquiry",
+                  })
+                  .eq("id", call_session_id);
+              }
+
+              result = {
+                ok: true,
+                answer: groundedRes.answer,
+                grounded: groundedRes.grounded,
+                citations: groundedRes.citations,
+                needs_human_review: groundedRes.needs_human_review,
+                reason: groundedRes.reason,
+                model_used: groundedRes.model_used,
+              };
+              break;
+            }
+
+            case "request_human_escalation": {
+              const reason = String(args["reason"] || "Caller requested human supervisor or inquiry ungrounded");
+              const callerNotes = String(args["caller_notes"] || args["notes"] || "");
+
+              await insforgeServer.database
+                .from("call_sessions")
+                .update({
+                  escalated: true,
+                  escalation_reason: reason,
+                  caller_notes: callerNotes || undefined,
+                })
+                .eq("id", call_session_id);
+
+              const { data: appReq } = await insforgeServer.database
+                .from("approval_requests")
+                .insert({
+                  tenant_id,
+                  customer_id,
+                  request_type: "human_handoff",
+                  risk_level: "MEDIUM",
+                  reason,
+                  payload: { call_session_id, caller_notes: callerNotes },
+                  status: "pending",
+                })
+                .select("id")
+                .maybeSingle();
+
+              result = {
+                ok: true,
+                escalated: true,
+                escalation_id: appReq?.id || null,
+                message: "Call has been escalated to our human claims desk. A representative will be with you shortly.",
               };
               break;
             }

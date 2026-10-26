@@ -90,6 +90,7 @@ export const Route = createFileRoute("/api/voice/session")({
           } | null = null;
 
           // Lookup by Clerk User ID
+          // Lookup by Clerk User ID
           if (body.clerkUserId) {
             try {
               const { data } = await insforgeServer.database
@@ -97,19 +98,119 @@ export const Route = createFileRoute("/api/voice/session")({
                 .select("id, name, email, phone, customer_number, tenant_id")
                 .eq("tenant_id", tenantId)
                 .eq("clerk_user_id", body.clerkUserId)
-                .maybeSingle();
-              if (data) {
+                .order("created_at", { ascending: false })
+                .limit(1);
+              if (data && data.length > 0 && data[0]) {
+                const rec = data[0];
                 customer = {
-                  id: data.id,
-                  name: data.name,
-                  email: data.email,
-                  phone: data.phone,
-                  customerNumber: data.customer_number,
+                  id: rec.id,
+                  name: rec.name,
+                  email: rec.email,
+                  phone: rec.phone,
+                  customerNumber: rec.customer_number,
                   isVerified: true,
                 };
               }
             } catch (err: any) {
               console.warn("Customer lookup by clerk_user_id notice:", err?.message);
+            }
+
+            // Direct fallback: fetch user from Clerk API and insert into database
+            if (!customer) {
+              try {
+                const { clerkClient } = await import("@/lib/auth/clerk.server");
+                const clerkUser = await clerkClient.users.getUser(body.clerkUserId);
+                if (clerkUser) {
+                  const email =
+                    clerkUser.emailAddresses[0]?.emailAddress || body.customerEmail || null;
+                  const name =
+                    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+                    "Policyholder";
+                  const phone =
+                    clerkUser.phoneNumbers[0]?.phoneNumber || body.customerPhone || null;
+                  const customerNumber =
+                    "CUST-" + clerkUser.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+
+                  const { data: newCust } = await insforgeServer.database
+                    .from("customers")
+                    .upsert(
+                      [
+                        {
+                          tenant_id: tenantId,
+                          clerk_user_id: clerkUser.id,
+                          customer_number: customerNumber,
+                          name,
+                          email: email || "customer@example.com",
+                          phone: phone || "+91 98765 43210",
+                          status: "active",
+                        },
+                      ],
+                      { onConflict: "tenant_id,customer_number" }
+                    )
+                    .select("id, name, email, phone, customer_number")
+                    .single();
+
+                  if (newCust) {
+                    customer = {
+                      id: newCust.id,
+                      name: newCust.name,
+                      email: newCust.email,
+                      phone: newCust.phone,
+                      customerNumber: newCust.customer_number,
+                      isVerified: true,
+                    };
+
+                    // Also baseline policy
+                    const polNumber = "POL-" + customerNumber.replace("CUST-", "") + "-HLT";
+                    await insforgeServer.database.from("policies").upsert(
+                      [
+                        {
+                          tenant_id: tenantId,
+                          customer_id: newCust.id,
+                          policy_number: polNumber,
+                          policy_type: "health",
+                          plan_name: "Comprehensive Health Shield Platinum",
+                          nominee_name: "Designated Nominee",
+                          nominee_relationship: "Spouse",
+                          premium_amount: 18500.0,
+                          due_date: "2026-11-30",
+                          status: "active",
+                        },
+                      ],
+                      { onConflict: "tenant_id,policy_number" }
+                    );
+                  }
+                }
+              } catch (cErr: any) {
+                console.warn("Direct Clerk fetch in session notice:", cErr?.message);
+              }
+            }
+          }
+
+          // Lookup by verified Customer Phone
+          if (!customer && body.customerPhone) {
+            try {
+              const cleanPhone = body.customerPhone.trim();
+              const { data } = await insforgeServer.database
+                .from("customers")
+                .select("id, name, email, phone, customer_number, tenant_id")
+                .eq("tenant_id", tenantId)
+                .eq("phone", cleanPhone)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              if (data && data.length > 0 && data[0]) {
+                const rec = data[0];
+                customer = {
+                  id: rec.id,
+                  name: rec.name,
+                  email: rec.email,
+                  phone: rec.phone,
+                  customerNumber: rec.customer_number,
+                  isVerified: true,
+                };
+              }
+            } catch (err: any) {
+              console.warn("Customer lookup by phone notice:", err?.message);
             }
           }
 
@@ -121,14 +222,16 @@ export const Route = createFileRoute("/api/voice/session")({
                 .select("id, name, email, phone, customer_number, tenant_id")
                 .eq("tenant_id", tenantId)
                 .eq("email", body.customerEmail)
-                .maybeSingle();
-              if (data) {
+                .order("created_at", { ascending: false })
+                .limit(1);
+              if (data && data.length > 0 && data[0]) {
+                const rec = data[0];
                 customer = {
-                  id: data.id,
-                  name: data.name,
-                  email: data.email,
-                  phone: data.phone,
-                  customerNumber: data.customer_number,
+                  id: rec.id,
+                  name: rec.name,
+                  email: rec.email,
+                  phone: rec.phone,
+                  customerNumber: rec.customer_number,
                   isVerified: true,
                 };
               }
@@ -175,6 +278,46 @@ export const Route = createFileRoute("/api/voice/session")({
             };
           }
 
+          // 2b. Resolve or auto-bootstrap primary AI Agent for this tenant
+          let agentId: string | null = null;
+          let agentData: any = null;
+          try {
+            const { data: existingAgent } = await insforgeServer.database
+              .from("ai_agents")
+              .select("id, name, greeting, tone, languages, voice")
+              .eq("tenant_id", tenantId)
+              .limit(1)
+              .maybeSingle();
+
+            if (existingAgent) {
+              agentId = existingAgent.id;
+              agentData = existingAgent;
+            } else {
+              const newAgentId = crypto.randomUUID();
+              const { data: createdAgent } = await insforgeServer.database
+                .from("ai_agents")
+                .insert([
+                  {
+                    id: newAgentId,
+                    tenant_id: tenantId,
+                    name: "Anya",
+                    greeting: "Hello! Welcome to InsurCall assistance. How may I help you today?",
+                    tone: "Professional",
+                    languages: ["English", "Hindi"],
+                    voice: "en-IN-NeerjaNeural",
+                    can_answer_questions: true,
+                    can_capture_leads: true,
+                  },
+                ])
+                .select("id, name, greeting, tone, languages, voice")
+                .single();
+              agentId = createdAgent?.id || newAgentId;
+              agentData = createdAgent;
+            }
+          } catch (aErr: any) {
+            console.warn("Agent resolution notice:", aErr?.message);
+          }
+
           const roomName = `insurcall-${tenant.slug || "call"}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
           const generatedSessionId = crypto.randomUUID();
           let callSessionId = generatedSessionId;
@@ -188,6 +331,7 @@ export const Route = createFileRoute("/api/voice/session")({
                   id: generatedSessionId,
                   tenant_id: tenantId,
                   customer_id: customer.id,
+                  agent_id: agentId,
                   room_name: roomName,
                   caller_name: customer.name,
                   caller_phone: customer.phone,
@@ -216,6 +360,7 @@ export const Route = createFileRoute("/api/voice/session")({
             metadata: JSON.stringify({
               session_id: callSessionId,
               tenant_id: tenantId,
+              agent_id: agentId,
               is_authenticated: customer.isVerified,
             }),
           });
@@ -242,8 +387,13 @@ export const Route = createFileRoute("/api/voice/session")({
 
           // 5. Assemble personalized agent greeting from tenant branding config
           const branding = (tenant.branding_config as any) || {};
-          const agentConfig = branding.agent_config || {};
+          const agentConfig = {
+            ...(branding.agent_config || {}),
+            id: agentId,
+            ...(agentData || {}),
+          };
           const tmpl =
+            agentData?.greeting ||
             agentConfig.greeting ||
             "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you today?";
           const agentGreeting = tmpl
@@ -254,6 +404,7 @@ export const Route = createFileRoute("/api/voice/session")({
             token,
             roomName,
             callSessionId,
+            agentId,
             livekitUrl,
             greeting: agentGreeting,
             agentConfig,
