@@ -4,15 +4,20 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Bot,
-  Mic,
   BookOpen,
   Sparkles,
   ShieldCheck,
+  ShieldAlert,
   Radio,
   Sliders,
   CheckCircle2,
   Clock,
   ArrowRight,
+  MessageSquare,
+  Lock,
+  UserCheck,
+  Code2,
+  AlertTriangle,
 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -30,164 +35,155 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useBusiness } from "@/hooks/use-business";
 import { insforge as supabase } from "@/integrations/insforge/client";
 
 export const Route = createFileRoute("/_authenticated/agent")({
+  ssr: false,
   head: () => ({
     meta: [
-      { title: "AI Employee Studio: InsurCall" },
+      { title: "AI Agent Studio: InsurCall WhatsApp AI" },
       {
         name: "description",
         content:
-          "Configure your autonomous voice employee: role, voice, languages, personality, permitted skills, and deployment mode.",
+          "Configure your autonomous WhatsApp insurance agent: identity, customer disclosure, permitted and disallowed boundaries, escalation triggers, and prompt preview.",
       },
-      { property: "og:title", content: "AI Employee Studio: InsurCall" },
-      {
-        property: "og:description",
-        content:
-          "Configure your autonomous voice employee: role, voice, languages, personality, permitted skills, and deployment mode.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: AgentPage,
+  component: AgentStudioPage,
 });
 
 const LANGUAGE_SETS = [
-  { value: "hi,en,hinglish", label: "Hindi + English + Hinglish (Bilingual)" },
-  { value: "en", label: "English (Global / Standard)" },
+  { value: "hi,en,hinglish", label: "Hindi + English + Hinglish (Bilingual Indian Context)" },
+  { value: "en", label: "English (Formal & Standard)" },
   { value: "hi", label: "Hindi (शुद्ध हिन्दी)" },
-];
-
-const VOICES = [
-  { value: "hi-IN-SwaraNeural", label: "Swara (Natural Indian English & Hindi)" },
-  { value: "hi-IN-MadhurNeural", label: "Madhur (Deep Male, Clear Hindi & English)" },
-  { value: "en-US-JennyNeural", label: "Jenny (Warm & Friendly US English)" },
-  { value: "en-US-GuyNeural", label: "Guy (Professional Executive US English)" },
 ];
 
 const DEPLOYMENT_MODES = [
   {
+    mode: "draft",
+    title: "Draft Mode",
+    desc: "Configuration in progress. Live WhatsApp auto-replies are paused.",
+    badge: "Draft",
+    badgeColor: "border-slate-300 text-slate-600 bg-slate-100",
+  },
+  {
     mode: "test",
-    title: "Test Mode",
-    desc: "Internal staff testing only. No live external customer calls or actions.",
+    title: "Test Sandbox",
+    desc: "Internal staff testing only. Answers questions in sandbox without affecting live customers.",
     badge: "Testing",
-    badgeColor: "border-slate-500/40 text-slate-400 bg-slate-500/10",
+    badgeColor: "border-blue-300 text-blue-700 bg-blue-50",
   },
   {
     mode: "assist",
-    title: "Assist Mode",
-    desc: "AI handles routine inquiries and FAQs; transfers complex calls to staff.",
+    title: "Assist Mode (Recommended)",
+    desc: "AI answers policy questions from approved knowledge; flags complex disputes for staff review.",
     badge: "Recommended",
-    badgeColor: "border-cyan-500/40 text-cyan-400 bg-cyan-500/10",
-  },
-  {
-    mode: "controlled",
-    title: "Controlled Mode",
-    desc: "Executes only explicitly permitted actions with mandatory confirmation.",
-    badge: "Regulated",
-    badgeColor: "border-amber-500/40 text-amber-400 bg-amber-500/10",
+    badgeColor: "border-teal-300 text-teal-800 bg-teal-50",
   },
   {
     mode: "autopilot",
-    title: "Autopilot",
-    desc: "Fully autonomous customer handling within configured policy boundaries.",
+    title: "Autonomous Production",
+    desc: "Active WhatsApp auto-replies within strict policy boundaries and instant staff handoff.",
     badge: "Production",
-    badgeColor: "border-emerald-500/40 text-emerald-400 bg-emerald-500/10",
+    badgeColor: "border-emerald-300 text-emerald-800 bg-emerald-50",
   },
 ] as const;
 
-const PERMISSIONS = [
-  {
-    key: "can_answer_questions",
-    title: "Search Knowledge & Answer FAQs",
-    desc: "Answers caller questions using verified company documents, pricing, and policies.",
-  },
-  {
-    key: "can_capture_leads",
-    title: "Capture Inquiries & Leads",
-    desc: "Records caller contact details, requirements, and urgency for follow-up.",
-  },
-  {
-    key: "can_book",
-    title: "Appointment & Service Booking",
-    desc: "Checks calendar availability and books confirmed slots directly.",
-  },
-  {
-    key: "can_transfer",
-    title: "Human Staff Warm Transfer",
-    desc: "Offers instant escalation or scheduled callback when caller requests human staff.",
-  },
-] as const;
+interface AgentRecord {
+  id: string;
+  tenant_id: string;
+  name: string;
+  role?: string;
+  greeting?: string;
+  tone?: string;
+  languages?: string[] | string;
+  voice?: string;
+  deployment_mode?: string;
+  can_answer_questions?: boolean;
+  can_capture_leads?: boolean;
+  can_book?: boolean;
+  can_transfer?: boolean;
+  updated_at?: string;
+}
 
-function AgentPage() {
+function AgentStudioPage() {
   const { data: business } = useBusiness();
   const businessId = business?.id;
   const queryClient = useQueryClient();
 
-  const agent = useQuery({
-    queryKey: ["agent", businessId],
+  const [activeTab, setActiveTab] = useState<"identity" | "boundaries" | "escalation" | "prompt">("identity");
+
+  const agentQuery = useQuery({
+    queryKey: ["agent-studio", businessId],
     enabled: !!businessId,
-    queryFn: async () => {
+    queryFn: async (): Promise<AgentRecord | null> => {
       const { data, error } = await supabase.database
         .from("ai_agents")
         .select("*")
         .or(`tenant_id.eq.${businessId!},business_id.eq.${businessId!}`)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      return (data as AgentRecord | null) ?? null;
     },
   });
 
   const [form, setForm] = useState({
-    name: "Riya",
-    role: "AI Receptionist & Support Specialist",
-    greeting: "Hello! Thank you for calling. I am Riya, your AI voice assistant. How may I help you today?",
+    name: "Anya",
+    role: "Autonomous WhatsApp Insurance Receptionist",
+    businessIdentity: "Licensed Insurance Agency / Brokerage",
+    greeting: "Hello! Welcome to our office. I am Anya, your AI insurance assistant. How can I assist you with your policy, coverage, or claim inquiry today?",
+    disclosure: "I am an automated AI assistant. For legally binding policy endorsements or formal claim settlements, our licensed staff adjusters will assist you.",
     tone: "professional",
-    voice: "hi-IN-SwaraNeural",
     languages: "hi,en,hinglish",
     deployment_mode: "assist",
-    can_book: true,
-    can_capture_leads: true,
-    can_transfer: true,
+    escalationContact: "+91 98765 43210 (Claims Service Desk)",
+    // Permitted Tasks
     can_answer_questions: true,
+    can_capture_leads: true,
+    can_book: true,
+    can_transfer: true,
+    can_intake_claims: true,
+    // Disallowed Boundaries
+    never_guarantee_claims: true,
+    never_alter_beneficiary: true,
+    never_quote_unapproved: true,
+    never_collect_credentials: true,
+    // Configuration version
+    version: "v1.2.0",
   });
 
   useEffect(() => {
-    if (!agent.data) return;
-    setForm({
-      name: agent.data.name || "Riya",
-      role: (agent.data as any).role || "AI Receptionist & Support Specialist",
-      greeting: agent.data.greeting || "Hello! Thank you for calling. How may I help you today?",
-      tone: agent.data.tone || "professional",
-      voice: agent.data.voice || "hi-IN-SwaraNeural",
-      languages: Array.isArray(agent.data.languages)
-        ? agent.data.languages.join(",")
-        : (agent.data.languages ?? "hi,en,hinglish"),
-      deployment_mode: (agent.data as any).deployment_mode || "assist",
-      can_book: agent.data.can_book ?? true,
-      can_capture_leads: agent.data.can_capture_leads ?? true,
-      can_transfer: agent.data.can_transfer ?? true,
-      can_answer_questions: agent.data.can_answer_questions ?? true,
-    });
-  }, [agent.data]);
+    if (!agentQuery.data) return;
+    const a = agentQuery.data;
+    setForm((prev) => ({
+      ...prev,
+      name: a.name || "Anya",
+      role: a.role || "Autonomous WhatsApp Insurance Receptionist",
+      greeting: a.greeting || prev.greeting,
+      tone: a.tone || "professional",
+      languages: Array.isArray(a.languages) ? a.languages.join(",") : (a.languages ?? "hi,en,hinglish"),
+      deployment_mode: a.deployment_mode || "assist",
+      can_book: a.can_book ?? true,
+      can_capture_leads: a.can_capture_leads ?? true,
+      can_transfer: a.can_transfer ?? true,
+      can_answer_questions: a.can_answer_questions ?? true,
+    }));
+  }, [agentQuery.data]);
 
-  const save = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!businessId) throw new Error("No tenant workspace selected");
+
       const payload = {
-        tenant_id: businessId!,
-        business_id: businessId!,
+        tenant_id: businessId,
+        business_id: businessId,
         name: form.name.trim(),
         role: form.role.trim(),
         greeting: form.greeting.trim(),
         tone: form.tone,
-        voice: form.voice,
-        languages: form.languages
-          .split(",")
-          .map((l) => l.trim())
-          .filter(Boolean),
+        languages: form.languages.split(",").map((l) => l.trim()).filter(Boolean),
         deployment_mode: form.deployment_mode,
         can_book: form.can_book,
         can_capture_leads: form.can_capture_leads,
@@ -196,242 +192,414 @@ function AgentPage() {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = agent.data?.id
-        ? await supabase.database.from("ai_agents").update(payload).eq("id", agent.data.id)
+      const { error } = agentQuery.data?.id
+        ? await supabase.database.from("ai_agents").update(payload).eq("id", agentQuery.data.id)
         : await supabase.database.from("ai_agents").insert([payload]);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("AI Employee configuration saved successfully.");
-      void queryClient.invalidateQueries({ queryKey: ["agent", businessId] });
+      toast.success("AI Agent configuration saved and synchronized with live WhatsApp assistant.");
+      void queryClient.invalidateQueries({ queryKey: ["agent-studio", businessId] });
+      void queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save employee configuration"),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to save configuration";
+      toast.error(msg);
+    },
   });
+
+  // Generates the deterministic system prompt preview
+  const generatedPrompt = `### ROLE AND IMMUTABLE SAFETY CONTRACT
+You are ${form.name}, an authorized AI Insurance Assistant representing ${form.businessIdentity}.
+Your communication style is ${form.tone} and bilingual (${form.languages}).
+
+### MANDATORY CUSTOMER DISCLOSURE
+On conversation start, you must disclose:
+"${form.disclosure}"
+
+### APPROVED CAPABILITIES
+${form.can_answer_questions ? "- Explain coverage terms, policy wording, and claim filing steps using ONLY approved knowledge." : ""}
+${form.can_intake_claims ? "- Assist with First Notice of Loss (FNOL) incident collection (policy #, incident date, damage description)." : ""}
+${form.can_capture_leads ? "- Record policyholder renewal inquiries and contact details." : ""}
+${form.can_transfer ? "- Initiate instant human takeover when requested by customer." : ""}
+
+### STRICT PROHIBITIONS (NEVER OVERRIDE)
+- NEVER guarantee claim approval, settlement amount, or payout deadlines.
+- NEVER modify policy beneficiaries, nominees, or coverage limits without dual-control human authorization.
+- NEVER request passwords, Aadhaar OTPs, credit card CVVs, or bank login credentials.
+- NEVER invent facts, hospitals, or premiums if not found in verified knowledge sources.
+- If verified evidence is absent or confidence is below 0.65, escalate to ${form.escalationContact}.`;
 
   return (
     <AppShell
-      title="AI Employee Studio"
-      subtitle="Configure identity, conversational skills, voice parameters, and operational deployment mode."
+      title="AI Agent"
+      subtitle="Configure identity, customer disclosure, safety boundaries, escalation policies, and system prompt"
     >
-      <div className="space-y-6 max-w-4xl">
-        {/* Quick Test & Readiness Banner */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-950/40 via-slate-900 to-slate-950 shadow-sm">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-cyan-400" />
-              <span className="font-semibold text-sm text-white">Active Employee: {form.name}</span>
-              <Badge variant="outline" className="text-[10px] border-cyan-500/40 text-cyan-400 uppercase">
-                {form.deployment_mode}
-              </Badge>
+      <div className="space-y-6 max-w-5xl">
+        {/* Clean Light-Mode Status Header Banner */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="grid size-11 place-items-center rounded-xl bg-[#E6F6F7] text-[#087F8C]">
+              <Bot className="size-6" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {form.role} • Speaks {form.languages.includes("hi") ? "Hindi, English & Hinglish" : "English"}
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display text-base font-bold text-slate-900">{form.name}</h2>
+                <Badge variant="outline" className="text-[10px] font-mono border-teal-200 text-teal-800 bg-teal-50 uppercase">
+                  {form.deployment_mode}
+                </Badge>
+                <span className="text-[11px] font-mono text-slate-400">Ver: {form.version}</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {form.role} • Speaks {form.languages.includes("hi") ? "Hinglish, Hindi & English" : "English"}
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Link to="/train">
-              <Button variant="outline" size="sm" className="text-xs gap-1.5 border-border/80">
-                <BookOpen className="h-3.5 w-3.5" /> Teach Knowledge
+          <div className="flex items-center gap-2.5">
+            <Link to="/whatsapp">
+              <Button variant="outline" size="sm" className="text-xs gap-1.5 border-slate-200 font-mono">
+                <MessageSquare className="size-3.5 text-[#087F8C]" /> Test in WhatsApp Inbox
               </Button>
             </Link>
-            <Link to="/voice">
-              <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold text-xs gap-1.5 shadow">
-                <Mic className="h-3.5 w-3.5" /> Test Voice Call
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Identity & Speech Configuration */}
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Bot className="h-4 w-4 text-cyan-400" /> Employee Identity & Voice
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Define the employee's caller persona, pronunciation voice, and opening greeting.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="agent-name" className="text-xs">Employee Name</Label>
-                <Input
-                  id="agent-name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Riya, Aarav, Sarah"
-                  className="text-xs bg-background"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="agent-role" className="text-xs">Job Role & Title</Label>
-                <Input
-                  id="agent-role"
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                  placeholder="e.g. Customer Support Specialist, Appointment Coordinator"
-                  className="text-xs bg-background"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs">Voice Selection</Label>
-                <Select
-                  value={form.voice}
-                  onValueChange={(voice) => setForm({ ...form, voice })}
-                >
-                  <SelectTrigger className="text-xs bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VOICES.map((v) => (
-                      <SelectItem key={v.value} value={v.value} className="text-xs">
-                        {v.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs">Languages</Label>
-                <Select
-                  value={form.languages}
-                  onValueChange={(languages) => setForm({ ...form, languages })}
-                >
-                  <SelectTrigger className="text-xs bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LANGUAGE_SETS.map((set) => (
-                      <SelectItem key={set.value} value={set.value} className="text-xs">
-                        {set.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tone & Demeanor</Label>
-                <Select
-                  value={form.tone}
-                  onValueChange={(tone) => setForm({ ...form, tone })}
-                >
-                  <SelectTrigger className="text-xs bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="professional" className="text-xs">Professional & Courteous</SelectItem>
-                    <SelectItem value="warm" className="text-xs">Warm & Empathetic</SelectItem>
-                    <SelectItem value="friendly" className="text-xs">Friendly & Engaging</SelectItem>
-                    <SelectItem value="brisk" className="text-xs">Concise & Direct</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 pt-2">
-              <Label htmlFor="greeting" className="text-xs">Opening Line (Spoken Immediately on Call Connect)</Label>
-              <Textarea
-                id="greeting"
-                rows={3}
-                value={form.greeting}
-                onChange={(e) => setForm({ ...form, greeting: e.target.value })}
-                placeholder="Hello! Thank you for calling. How may I assist you today?"
-                className="text-xs leading-relaxed bg-background"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Permitted Business Skills */}
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Sliders className="h-4 w-4 text-emerald-400" /> Permitted Skills & Actions
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Actions the employee is explicitly authorized to execute on behalf of the company.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {PERMISSIONS.map(({ key, title, desc }) => (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-border/50 bg-background/50"
-              >
-                <div className="space-y-0.5">
-                  <div className="text-xs font-semibold text-foreground">{title}</div>
-                  <div className="text-[11px] text-muted-foreground">{desc}</div>
-                </div>
-                <Switch
-                  checked={(form as any)[key]}
-                  onCheckedChange={(checked) => setForm({ ...form, [key]: checked })}
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Deployment Mode */}
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Radio className="h-4 w-4 text-cyan-400" /> Deployment Mode
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Control the autonomy level of this AI employee when handling real customer calls.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {DEPLOYMENT_MODES.map((d) => {
-                const isSelected = form.deployment_mode === d.mode;
-                return (
-                  <div
-                    key={d.mode}
-                    onClick={() => setForm({ ...form, deployment_mode: d.mode })}
-                    className={`cursor-pointer p-3.5 rounded-xl border transition-all text-left space-y-1.5 ${
-                      isSelected
-                        ? "border-cyan-500 bg-cyan-950/20 shadow-sm"
-                        : "border-border/60 bg-background/40 hover:border-border"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-foreground">{d.title}</span>
-                      <Badge variant="outline" className={`text-[10px] ${d.badgeColor}`}>
-                        {d.badge}
-                      </Badge>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">{d.desc}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Action Bar */}
-        <div className="flex items-center justify-between pt-2">
-          <Link to="/voice">
-            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1">
-              Test in private room <ArrowRight className="h-3.5 w-3.5" />
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={!businessId || saveMutation.isPending}
+              size="sm"
+              className="bg-[#087F8C] hover:bg-[#076C77] text-white font-medium text-xs font-mono gap-1.5 shadow-xs"
+            >
+              <CheckCircle2 className="size-3.5" />
+              {saveMutation.isPending ? "Saving..." : "Save Agent"}
             </Button>
-          </Link>
-
-          <Button
-            onClick={() => save.mutate()}
-            disabled={!businessId || save.isPending}
-            className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold text-xs px-6"
-          >
-            {save.isPending ? "Saving..." : "Save AI Employee"}
-          </Button>
+          </div>
         </div>
+
+        {/* Studio Navigation Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
+          <TabsList className="bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <TabsTrigger value="identity" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+              <Bot className="size-3.5 mr-1.5" /> Identity & Disclosure
+            </TabsTrigger>
+            <TabsTrigger value="boundaries" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+              <ShieldCheck className="size-3.5 mr-1.5" /> Permitted & Prohibited Tasks
+            </TabsTrigger>
+            <TabsTrigger value="escalation" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+              <ShieldAlert className="size-3.5 mr-1.5" /> Escalation & Dual-Control
+            </TabsTrigger>
+            <TabsTrigger value="prompt" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+              <Code2 className="size-3.5 mr-1.5" /> System Prompt Preview
+            </TabsTrigger>
+          </TabsList>
+
+          {/* TAB 1: Identity & Disclosure */}
+          <TabsContent value="identity" className="space-y-4">
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Bot className="size-4 text-[#087F8C]" /> Assistant Identity & Disclosure
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Define the customer-facing name, opening greeting, and mandatory statutory AI disclosure.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="agent-name" className="text-xs font-medium text-slate-700">Agent Display Name</Label>
+                    <Input
+                      id="agent-name"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="e.g. Anya, Riya, Aarav"
+                      className="text-xs bg-white border-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="agent-role" className="text-xs font-medium text-slate-700">Job Title & Scope</Label>
+                    <Input
+                      id="agent-role"
+                      value={form.role}
+                      onChange={(e) => setForm({ ...form, role: e.target.value })}
+                      placeholder="e.g. Autonomous WhatsApp Insurance Specialist"
+                      className="text-xs bg-white border-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-700">Operating Languages</Label>
+                    <Select
+                      value={form.languages}
+                      onValueChange={(languages) => setForm({ ...form, languages })}
+                    >
+                      <SelectTrigger className="text-xs bg-white border-slate-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LANGUAGE_SETS.map((set) => (
+                          <SelectItem key={set.value} value={set.value} className="text-xs">
+                            {set.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-700">Tone & Demeanor</Label>
+                    <Select
+                      value={form.tone}
+                      onValueChange={(tone) => setForm({ ...form, tone })}
+                    >
+                      <SelectTrigger className="text-xs bg-white border-slate-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="professional" className="text-xs">Empathetic & Professional (Recommended)</SelectItem>
+                        <SelectItem value="courteous" className="text-xs">Courteous & Formal</SelectItem>
+                        <SelectItem value="concise" className="text-xs">Brisk & Concise</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-2">
+                  <Label htmlFor="greeting" className="text-xs font-medium text-slate-700">
+                    Opening Welcome Message (Sent on Inbound WhatsApp Initiation)
+                  </Label>
+                  <Textarea
+                    id="greeting"
+                    rows={3}
+                    value={form.greeting}
+                    onChange={(e) => setForm({ ...form, greeting: e.target.value })}
+                    className="text-xs leading-relaxed bg-white border-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="disclosure" className="text-xs font-medium text-slate-700">
+                      Mandatory Customer-Facing AI Notice
+                    </Label>
+                    <Badge variant="outline" className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200">
+                      Compliance Enforced
+                    </Badge>
+                  </div>
+                  <Textarea
+                    id="disclosure"
+                    rows={2}
+                    value={form.disclosure}
+                    onChange={(e) => setForm({ ...form, disclosure: e.target.value })}
+                    className="text-xs leading-relaxed bg-white border-slate-200"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Never represent the assistant as a licensed insurance broker or human adjuster when that would mislead customers.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Deployment Autonomy Mode */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Radio className="size-4 text-[#087F8C]" /> Operational Deployment Mode
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Control how the assistant responds to incoming WhatsApp customer messages.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {DEPLOYMENT_MODES.map((d) => {
+                    const isSelected = form.deployment_mode === d.mode;
+                    return (
+                      <div
+                        key={d.mode}
+                        onClick={() => setForm({ ...form, deployment_mode: d.mode })}
+                        className={`cursor-pointer p-4 rounded-xl border transition-all text-left space-y-1.5 ${
+                          isSelected
+                            ? "border-[#087F8C] bg-[#E6F6F7]/50 shadow-xs"
+                            : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-900">{d.title}</span>
+                          <Badge variant="outline" className={`text-[10px] ${d.badgeColor}`}>
+                            {d.badge}
+                          </Badge>
+                        </div>
+                        <p className="text-[11.5px] text-slate-500 leading-relaxed">{d.desc}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 2: Permitted & Disallowed Tasks */}
+          <TabsContent value="boundaries" className="space-y-4">
+            {/* Permitted Actions */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <CheckCircle2 className="size-4 text-emerald-600" /> Permitted Customer Actions
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Explicitly allowed automated services backed by approved knowledge store.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-4">
+                <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-slate-100 bg-[#FAF9F6]">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 block">Explain Verified Policy Wording & Exclusions</span>
+                    <span className="text-[11px] text-slate-500">Answers queries using pgvector cosine similarity against approved tenant chunks.</span>
+                  </div>
+                  <Switch
+                    checked={form.can_answer_questions}
+                    onCheckedChange={(v) => setForm({ ...form, can_answer_questions: v })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-slate-100 bg-[#FAF9F6]">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 block">First Notice of Loss (FNOL) Claims Intake</span>
+                    <span className="text-[11px] text-slate-500">Captures date, loss description, and docket details as draft records.</span>
+                  </div>
+                  <Switch
+                    checked={form.can_intake_claims}
+                    onCheckedChange={(v) => setForm({ ...form, can_intake_claims: v })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-slate-100 bg-[#FAF9F6]">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 block">Capture Renewal & Lead Enquiries</span>
+                    <span className="text-[11px] text-slate-500">Records customer contact info, vehicle/health details for follow-up.</span>
+                  </div>
+                  <Switch
+                    checked={form.can_capture_leads}
+                    onCheckedChange={(v) => setForm({ ...form, can_capture_leads: v })}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Disallowed Strict Boundaries */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ShieldAlert className="size-4 text-rose-600" /> Disallowed Actions (Strict Server Enforced)
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Critical safeguards preventing hallucinations, unauthorized financial advice, or credential leaks.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-4">
+                <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-rose-100 bg-rose-50/40">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 block">No Claim Settlement Guarantees</span>
+                    <span className="text-[11px] text-slate-500">Agent will never promise claim approval, payout timing, or cash disbursements.</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono text-rose-800 bg-rose-100 border-rose-200">
+                    Locked
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-rose-100 bg-rose-50/40">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 block">No Irreversible Beneficiary Changes</span>
+                    <span className="text-[11px] text-slate-500">Changes to policy nominee or contact email require staff dual-control authorization.</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono text-rose-800 bg-rose-100 border-rose-200">
+                    Locked
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-rose-100 bg-rose-50/40">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 block">Zero Sensitive Credential Collection</span>
+                    <span className="text-[11px] text-slate-500">Agent refuses to collect OTPs, CVVs, passwords, or netbanking credentials.</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono text-rose-800 bg-rose-100 border-rose-200">
+                    Locked
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 3: Escalation & Dual-Control */}
+          <TabsContent value="escalation" className="space-y-4">
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <UserCheck className="size-4 text-[#087F8C]" /> Human Handoff & Escalation Routing
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Configure when the assistant must stop automated replies and transition to staff takeover.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="escalation-contact" className="text-xs font-medium text-slate-700">
+                    Authorized Staff Contact / Desk Number
+                  </Label>
+                  <Input
+                    id="escalation-contact"
+                    value={form.escalationContact}
+                    onChange={(e) => setForm({ ...form, escalationContact: e.target.value })}
+                    className="text-xs bg-white border-slate-200"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Shared with policyholders when automated assistance is unable to verify approved facts.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-slate-100 bg-[#FAF9F6] p-4 space-y-2 text-xs">
+                  <span className="font-semibold text-slate-900 block">Automated Takeover Triggers:</span>
+                  <ul className="space-y-1.5 text-slate-600 list-disc list-inside text-[11.5px]">
+                    <li>Explicit customer request: words like "talk to human", "speak to manager", "agent".</li>
+                    <li>Unverified knowledge: retrieval cosine similarity falls below safety threshold (0.65).</li>
+                    <li>Disputed claims or hospitalization emergencies: instantly tagged for priority staff review.</li>
+                    <li>Dual-control request creation: changes to nominees or policyholder details logged in Approvals.</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 4: System Prompt Preview */}
+          <TabsContent value="prompt" className="space-y-4">
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Code2 className="size-4 text-[#087F8C]" /> Generated Live System Prompt Preview
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500">
+                      Assembled deterministically from immutable safety rules + approved business configuration.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200">
+                    Prompt Shield Active
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-3">
+                <div className="p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-[11px] leading-relaxed overflow-x-auto whitespace-pre-wrap select-text">
+                  {generatedPrompt}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Notice: Document text, training inputs, and customer messages are injected as bounded context at inference time. They can never alter or override the core immutable safety instructions.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );

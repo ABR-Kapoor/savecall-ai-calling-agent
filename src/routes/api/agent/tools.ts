@@ -2,8 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 import { evaluateToolSecurity, TOOL_POLICIES } from "@/lib/risk/risk-engine";
-import { createAndSendOtp, verifyOtpCode } from "@/lib/risk/otp.server";
-import { retrieveAgentKnowledge, generateGroundedAnswer } from "@/lib/rag/retrieval.server";
 
 const internalSecret = process.env["AGENT_INTERNAL_SECRET"] || "insurcall_agent_secret_2026_dev";
 
@@ -146,6 +144,7 @@ export const Route = createFileRoute("/api/agent/tools")({
 
             case "send_otp": {
               const purpose = (args["purpose"] as any) || "update_contact_details";
+              const { createAndSendOtp } = await import("@/lib/risk/otp.server");
               const otpRes = await createAndSendOtp({
                 callSessionId: call_session_id,
                 customerId: customer_id,
@@ -157,6 +156,7 @@ export const Route = createFileRoute("/api/agent/tools")({
 
             case "verify_otp": {
               const code = String(args["otp_code"] || args["code"] || "");
+              const { verifyOtpCode } = await import("@/lib/risk/otp.server");
               const verified = await verifyOtpCode({
                 callSessionId: call_session_id,
                 customerId: customer_id,
@@ -339,6 +339,7 @@ export const Route = createFileRoute("/api/agent/tools")({
                 break;
               }
 
+              const { generateGroundedAnswer } = await import("@/lib/rag/retrieval.server");
               const groundedRes = await generateGroundedAnswer({
                 tenantId: tenant_id,
                 agentId: targetAgentId,

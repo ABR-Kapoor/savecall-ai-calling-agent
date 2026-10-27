@@ -6,6 +6,23 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig({
+  define: {
+    global: "globalThis",
+  },
+  optimizeDeps: {
+    exclude: [
+      "pg",
+      "pg-pool",
+      "pg-types",
+      "postgres-bytea",
+      "livekit-server-sdk",
+      "@whiskeysockets/baileys",
+      "qrcode",
+    ],
+  },
+  ssr: {
+    external: ["pg", "livekit-server-sdk", "@whiskeysockets/baileys", "qrcode"],
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -16,7 +33,15 @@ export default defineConfig({
     host: true,
     allowedHosts: [".e2b.app", ".localhost", "172.30.160.10"],
     watch: {
-      ignored: ["**/*.md", "**/scratch/**", "**/.git/**", "**/.tanstack/**", "**/.github/**", "**/*.crdownload"],
+      ignored: [
+        "**/*.md",
+        "**/scratch/**",
+        "**/.git/**",
+        "**/.tanstack/**",
+        "**/.github/**",
+        "**/*.crdownload",
+        "**/routeTree.gen.ts",
+      ],
     },
     proxy: {
       "/rtc": {

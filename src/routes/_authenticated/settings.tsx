@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { useUser } from "@clerk/clerk-react";
@@ -30,6 +30,8 @@ import {
   FileCheck,
   Check,
   Save,
+  PhoneForwarded,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -41,6 +43,7 @@ import {
 } from "@/lib/insurance.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Settings & Agent Studio: InsurCall Insurance AI" }],
   }),
@@ -111,8 +114,8 @@ function SettingsPage() {
   // ElevenLabs-style Agent Studio settings
   const [agentName, setAgentName] = useState("InsurCall AI Assistant");
   const [tone, setTone] = useState("Professional & Empathetic");
-  const [language, setLanguage] = useState("English (US / Global)");
-  const [voiceId, setVoiceId] = useState("en-US-JennyNeural");
+  const [language, setLanguage] = useState("Bilingual / Hinglish");
+  const [voiceId, setVoiceId] = useState("en-IN-NeerjaNeural");
   const [greeting, setGreeting] = useState(
     "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you with your insurance policies or claims today?"
   );
@@ -255,10 +258,14 @@ function SettingsPage() {
     >
       <div className="max-w-5xl space-y-6">
         <Tabs defaultValue="agent-builder" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-muted/50 p-1 rounded-xl">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 bg-muted/50 p-1 rounded-xl">
             <TabsTrigger value="agent-builder" className="flex items-center gap-2 text-xs font-semibold">
               <Bot className="h-4 w-4 text-primary" />
               Assistant Studio
+            </TabsTrigger>
+            <TabsTrigger value="telephony" className="flex items-center gap-2 text-xs font-semibold">
+              <PhoneForwarded className="h-4 w-4 text-blue-400" />
+              Phone & Telephony
             </TabsTrigger>
             <TabsTrigger value="organization" className="flex items-center gap-2 text-xs font-semibold">
               <Building className="h-4 w-4 text-amber-500" />
@@ -279,10 +286,10 @@ function SettingsPage() {
              =============================================================== */}
           <TabsContent value="agent-builder" className="space-y-6 pt-4">
             {/* Agent Header Banner */}
-            <Card className="border-cyan-500/30 bg-gradient-to-r from-slate-900 via-cyan-950/20 to-slate-900 shadow-lg">
+            <Card className="border-border/80 bg-card/90 shadow-md">
               <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="size-12 shrink-0 rounded-2xl bg-cyan-500/10 border border-cyan-400/30 flex items-center justify-center p-1.5 shadow-inner">
+                  <div className="size-12 shrink-0 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center p-1.5 shadow-inner">
                     <img
                       src="/06_app_icon_rounded_safe_area_transparent.png"
                       alt="Agent Avatar"
@@ -291,30 +298,30 @@ function SettingsPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-base font-bold text-white font-display">{agentName}</h2>
+                      <h2 className="text-base font-bold text-foreground font-display">{agentName}</h2>
                       <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
-                        Live on Calls
+                        Active & Ready
                       </Badge>
                     </div>
-                    <p className="text-xs text-slate-400">
-                      Groq Llama 3.3 70B • Whisper STT • EdgeTTS • LiveKit WebRTC
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Intelligent AI Voice Receptionist • Low-Latency Neural Speech • Retrieval-Grounded Grounding
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                   {lastTrained && (
-                    <span className="text-[11px] text-slate-400 font-mono hidden md:inline">
-                      Trained: {new Date(lastTrained).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    <span className="text-[11px] text-muted-foreground font-mono hidden md:inline">
+                      Synced: {new Date(lastTrained).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   )}
                   <Button
                     onClick={handleQuickTrain}
                     disabled={isTraining || isLoading}
-                    className="bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/25 gap-2 h-10 px-4 rounded-xl transition-all active:scale-95"
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-sm gap-2 h-10 px-4 rounded-xl transition-all active:scale-95"
                   >
-                    <Zap className={`h-4 w-4 fill-slate-950 ${isTraining ? "animate-spin" : ""}`} />
-                    {isTraining ? "Training Agent..." : "Quick Train Agent"}
+                    <Zap className={`h-4 w-4 ${isTraining ? "animate-spin" : ""}`} />
+                    {isTraining ? "Syncing Receptionist..." : "Save & Sync Receptionist"}
                   </Button>
                 </div>
               </CardContent>
@@ -326,7 +333,7 @@ function SettingsPage() {
               <Card className="border-border/60 bg-card/60">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-2">
-                    <Volume2 className="h-4 w-4 text-cyan-400" />
+                    <Volume2 className="h-4 w-4 text-primary" />
                     <CardTitle className="text-sm font-semibold">Voice & Persona</CardTitle>
                   </div>
                   <CardDescription className="text-xs">
@@ -358,8 +365,8 @@ function SettingsPage() {
                           onClick={() => setTone(t)}
                           className={`p-2 rounded-xl text-left border transition-all text-xs font-medium ${
                             tone === t
-                              ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
-                              : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white"
+                              ? "bg-primary/20 border-primary text-primary-foreground"
+                              : "bg-muted/40 border-border text-muted-foreground hover:text-foreground"
                           }`}
                         >
                           {t}
@@ -376,10 +383,12 @@ function SettingsPage() {
                         onChange={(e) => setVoiceId(e.target.value)}
                         className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                       >
-                        <option value="en-US-JennyNeural">Jenny (Natural Friendly - US)</option>
-                        <option value="en-US-GuyNeural">Guy (Executive Clear - US)</option>
-                        <option value="hi-IN-SwaraNeural">Swara (Bilingual Hindi/English)</option>
-                        <option value="hi-IN-MadhurNeural">Madhur (Bilingual Hindi/English)</option>
+                        <option value="en-IN-NeerjaNeural">Neerja (Natural Expressive - India)</option>
+                        <option value="en-IN-PrabhatNeural">Prabhat (Professional Clear - India)</option>
+                        <option value="hi-IN-SwaraNeural">Swara (Bilingual Hindi/English - India)</option>
+                        <option value="hi-IN-MadhurNeural">Madhur (Bilingual Hindi/English - India)</option>
+                        <option value="en-US-JennyNeural">Jenny (Conversational - US)</option>
+                        <option value="en-US-GuyNeural">Guy (Executive - US)</option>
                       </select>
                     </div>
 
@@ -390,9 +399,10 @@ function SettingsPage() {
                         onChange={(e) => setLanguage(e.target.value)}
                         className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                       >
-                        <option value="English (US / Global)">English (Global)</option>
+                        <option value="Bilingual / Hinglish">Bilingual (Hinglish & English)</option>
+                        <option value="English (India)">English (Indian Accent)</option>
                         <option value="Hindi (हिन्दी)">Hindi (हिन्दी)</option>
-                        <option value="Bilingual / Hinglish">Bilingual (Hinglish)</option>
+                        <option value="English (US / Global)">English (Global)</option>
                       </select>
                     </div>
                   </div>
@@ -428,14 +438,14 @@ function SettingsPage() {
                         <Badge
                           variant="outline"
                           onClick={() => setGreeting((prev) => `${prev} {{customer_name}}`)}
-                          className="cursor-pointer text-[10px] hover:border-cyan-500 text-slate-300"
+                          className="cursor-pointer text-[10px] hover:border-primary text-foreground"
                         >
                           + {"{{customer_name}}"}
                         </Badge>
                         <Badge
                           variant="outline"
                           onClick={() => setGreeting((prev) => `${prev} {{company_name}}`)}
-                          className="cursor-pointer text-[10px] hover:border-cyan-500 text-slate-300"
+                          className="cursor-pointer text-[10px] hover:border-primary text-foreground"
                         >
                           + {"{{company_name}}"}
                         </Badge>
@@ -445,26 +455,26 @@ function SettingsPage() {
                 </div>
 
                 <div className="p-4 pt-0">
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-300 flex items-center gap-2">
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-400 flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>Greeting is synthesized immediately with sub-400ms TTFB.</span>
+                    <span>Greeting is synthesized immediately when inbound telephony or test call connects.</span>
                   </div>
                 </div>
               </Card>
             </div>
 
-            {/* Company Knowledge Base (Quick Train Data) */}
+            {/* Company Knowledge Base (Retrieval Grounding Data) */}
             <Card className="border-border/60 bg-card/60">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-cyan-400" />
+                    <BookOpen className="h-5 w-5 text-primary" />
                     <div>
                       <CardTitle className="text-base font-semibold">
-                        Company Knowledge Base (LLM Training Data)
+                        Company Knowledge & Guidelines (Retrieval-Grounded Store)
                       </CardTitle>
                       <CardDescription className="text-xs">
-                        Add your insurance company's exact rules, coverage policies, hospital networks, and FAQs. The LLM is instantly trained on this content.
+                        Add your insurance company's exact rules, coverage policies, hospital networks, and FAQs. The AI receptionist retrieves and cites these verified guidelines dynamically during customer calls.
                       </CardDescription>
                     </div>
                   </div>
@@ -474,10 +484,10 @@ function SettingsPage() {
                       onClick={handleQuickTrain}
                       disabled={isTraining}
                       size="sm"
-                      className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold text-xs gap-1.5"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs gap-1.5"
                     >
-                      <Zap className="h-3.5 w-3.5 fill-slate-950" />
-                      Quick Train
+                      <Zap className="h-3.5 w-3.5" />
+                      Save & Sync
                     </Button>
                   </div>
                 </div>
@@ -485,7 +495,7 @@ function SettingsPage() {
               <CardContent className="space-y-4">
                 {/* Quick Snippet Buttons */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-slate-400 mr-1">Insert Templates:</span>
+                  <span className="text-[11px] font-medium text-muted-foreground mr-1">Insert Templates:</span>
                   <button
                     type="button"
                     onClick={() =>
@@ -493,7 +503,7 @@ function SettingsPage() {
                         `NETWORK HOSPITALS:\n- City Care Hospital (Cashless ID: HOS-001) - 24/7 Emergency\n- Apollo MedCenter (Cashless ID: HOS-002) - Multi-specialty\n- Fortis Healthcare (Cashless ID: HOS-003) - Cardiology & Oncology`
                       )
                     }
-                    className="text-[11px] bg-slate-900 hover:bg-cyan-950/60 border border-slate-800 hover:border-cyan-500/40 text-slate-300 px-2.5 py-1 rounded-full transition-all"
+                    className="text-[11px] bg-muted/60 hover:bg-muted border border-border text-foreground px-2.5 py-1 rounded-full transition-all"
                   >
                     + Hospital Network
                   </button>
@@ -504,7 +514,7 @@ function SettingsPage() {
                         `CLAIM SETTLEMENT SLA:\n- Cashless authorization approved within 2 hours of hospital request.\n- Reimbursement claims settled in bank account within 5 business days.\n- Required: Discharge summary, final hospital bill, medical prescriptions.`
                       )
                     }
-                    className="text-[11px] bg-slate-900 hover:bg-cyan-950/60 border border-slate-800 hover:border-cyan-500/40 text-slate-300 px-2.5 py-1 rounded-full transition-all"
+                    className="text-[11px] bg-muted/60 hover:bg-muted border border-border text-foreground px-2.5 py-1 rounded-full transition-all"
                   >
                     + Claim Settlement SLA
                   </button>
@@ -515,7 +525,7 @@ function SettingsPage() {
                         `POLICY EXCLUSIONS:\n- Pre-existing diseases covered after 24-month waiting period.\n- Cosmetic surgeries and self-inflicted injuries are not covered under health plans.\n- Drink-and-drive vehicle accidents are strictly excluded from motor claims.`
                       )
                     }
-                    className="text-[11px] bg-slate-900 hover:bg-cyan-950/60 border border-slate-800 hover:border-cyan-500/40 text-slate-300 px-2.5 py-1 rounded-full transition-all"
+                    className="text-[11px] bg-muted/60 hover:bg-muted border border-border text-foreground px-2.5 py-1 rounded-full transition-all"
                   >
                     + Policy Exclusions FAQ
                   </button>
@@ -530,7 +540,7 @@ function SettingsPage() {
                     placeholder="Enter your company's product guidelines, FAQs, hospital tie-ups..."
                   />
                   <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1">
-                    <span>Injected directly into Groq Llama 3.3 70B runtime prompt on every call session.</span>
+                    <span>Retrieved dynamically at inference time with exact source grounding. No unauthorized hallucinated coverage.</span>
                     <span className="font-mono">{knowledgeBase.length} characters</span>
                   </div>
                 </div>
@@ -539,10 +549,10 @@ function SettingsPage() {
                   <Button
                     onClick={handleQuickTrain}
                     disabled={isTraining || isLoading}
-                    className="bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs gap-2"
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs gap-2"
                   >
                     <Save className="h-4 w-4" />
-                    Save & Quick Train Voice Agent
+                    Save & Sync Receptionist Knowledge
                   </Button>
                 </div>
               </CardContent>
@@ -898,6 +908,64 @@ function SettingsPage() {
                 </div>
               );
             })()}
+          </TabsContent>
+
+          {/* ===============================================================
+              TAB 5: PHONE & TELEPHONY ONBOARDING
+             =============================================================== */}
+          <TabsContent value="telephony" className="space-y-6 pt-4">
+            <Card className="border-blue-900/40 bg-zinc-950/70 shadow-lg">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                      <PhoneForwarded className="w-5 h-5 text-blue-400" />
+                      Inbound & Outbound Calling Configuration
+                    </CardTitle>
+                    <CardDescription className="text-xs text-zinc-400">
+                      Manage cellular carrier forwarding, enterprise SIP trunks, routing DIDs, and live agent test calls.
+                    </CardDescription>
+                  </div>
+                  <Link to="/phone">
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs">
+                      Open Phone Hub
+                      <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs text-zinc-300">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                    <div className="font-semibold text-white">1. Mobile Call Forwarding</div>
+                    <p className="text-zinc-400 text-[11px]">
+                      Keep your existing mobile phone and SIM. Uses carrier MMI codes (*67*, *401*) on Airtel, Jio, Vi, and BSNL.
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                    <div className="font-semibold text-white">2. Enterprise SIP Trunking</div>
+                    <p className="text-zinc-400 text-[11px]">
+                      Connect Tata Tele Smartflo, Exotel, Twilio, or FreePBX via secure SIP URI and authenticated credentials.
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                    <div className="font-semibold text-white">3. Dedicated Virtual DIDs</div>
+                    <p className="text-zinc-400 text-[11px]">
+                      Provision landline numbers (+91-11, +91-22, +91-80) or 1800 Toll Free with business GSTIN KYC under DoT regulations.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-lg bg-blue-950/20 border border-blue-900/30 text-blue-300 flex items-center justify-between">
+                  <span>To view configured lines, generate carrier MMI codes, or simulate test calls, use the dedicated workspace.</span>
+                  <Link to="/phone">
+                    <Button variant="outline" size="sm" className="border-blue-700/50 text-blue-200 hover:bg-blue-950/40 text-xs shrink-0">
+                      Manage Phone Lines
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

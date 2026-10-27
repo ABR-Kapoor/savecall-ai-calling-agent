@@ -3,8 +3,8 @@ import { createAdminClient } from '@insforge/sdk';
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 const ins = createAdminClient({
-  baseUrl: process.env.VITE_INSFORGE_URL || 'https://ufmgh6q8.ap-southeast.insforge.app',
-  apiKey: process.env.INSFORGE_SERVICE_KEY || process.env.VITE_INSFORGE_ANON_KEY || 'ik_a401a725ebf5f66294d0042f7e2af2d0'
+  baseUrl: process.env.VITE_INSFORGE_URL,
+  apiKey: process.env.INSFORGE_SERVICE_KEY
 });
 
 async function main() {

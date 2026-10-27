@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { insforgeServer } from "./insforge/client.server";
 
@@ -9,12 +9,12 @@ import { insforgeServer } from "./insforge/client.server";
 /**
  * Helper to ensure a genuine Clerk user has a corresponding customer & baseline policy record in the database.
  */
-async function ensureCustomerFromClerk(
+const ensureCustomerFromClerk = createServerOnlyFn(async (
   tenantId: string,
   clerkUserId: string,
   userEmail?: string,
   userName?: string
-) {
+) => {
   try {
     const { data: existing } = await insforgeServer.database
       .from("customers")
@@ -83,13 +83,13 @@ async function ensureCustomerFromClerk(
     console.warn("ensureCustomerFromClerk notice:", err?.message);
   }
   return null;
-}
+});
 
 /**
  * Ensures user is also present in InsForge's global `users` table
  * for platform analytics and dashboard visibility.
  */
-async function ensureInsforgeUser(email?: string, displayName?: string) {
+const ensureInsforgeUser = createServerOnlyFn(async (email?: string, displayName?: string) => {
   if (!email) return null;
   try {
     const { data: existing } = await insforgeServer.database
@@ -119,32 +119,86 @@ async function ensureInsforgeUser(email?: string, displayName?: string) {
     console.warn("ensureInsforgeUser notice:", err?.message);
     return null;
   }
-}
+});
 
 /**
  * Resolves current tenant UUID safely to maintain strict tenant isolation.
  * Automatically provisions a fresh onboarding tenant for new users and syncs Clerk profile.
  */
-async function resolveCurrentTenantId(
+export const resolveCurrentTenantId = createServerOnlyFn(async (
   explicitTenantId?: string,
   clerkUserId?: string,
   userEmail?: string,
   userName?: string
-): Promise<string | null> {
-  if (explicitTenantId) return explicitTenantId;
+): Promise<string | null> => {
+  // 1. Verify server-side authenticated identity if within web request context
+  let authenticatedUserId: string | null = null;
+  let hasActiveRequestContext = false;
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const req = getRequest();
+    if (req) {
+      hasActiveRequestContext = true;
+      const { extractAuthUserFromRequest } = await import("@/lib/auth/clerk.server");
+      const auth = await extractAuthUserFromRequest(req);
+      if (auth?.userId) {
+        authenticatedUserId = auth.userId;
+      }
+    }
+  } catch {
+    // getRequest() throws if called outside of active TanStack Start server function request context
+  }
+
+  if (!authenticatedUserId && clerkUserId) {
+    try {
+      const { clerkClient } = await import("@/lib/auth/clerk.server");
+      const verifiedClerkUser = await clerkClient.users.getUser(clerkUserId).catch(() => null);
+      if (verifiedClerkUser?.id) {
+        authenticatedUserId = verifiedClerkUser.id;
+      }
+    } catch {
+      // Clerk backend verification failed
+    }
+  }
+
+  if (!authenticatedUserId) return null;
+
+  if (clerkUserId && clerkUserId !== authenticatedUserId) {
+    console.warn("[Security] Rejected Clerk identity mismatch");
+    return null;
+  }
+  clerkUserId = authenticatedUserId;
 
   if (clerkUserId) {
-    const { data: member } = await insforgeServer.database
+    const { data: memberships } = await insforgeServer.database
       .from("tenant_members")
       .select("tenant_id")
       .eq("clerk_user_id", clerkUserId)
-      .eq("status", "active")
-      .maybeSingle();
+      .eq("status", "active");
 
-    if (member?.tenant_id) {
-      // Auto-sync customer and policy from Clerk if not already present
-      await ensureCustomerFromClerk(member.tenant_id, clerkUserId, userEmail, userName);
-      return member.tenant_id;
+    if (memberships && memberships.length > 0) {
+      if (explicitTenantId) {
+        const hasAccess = memberships.some((m: { tenant_id: string }) => m.tenant_id === explicitTenantId);
+        if (!hasAccess) {
+          console.warn(
+            `[Security] Cross-tenant access blocked: user ${clerkUserId} requested tenant ${explicitTenantId} but belongs to [${memberships.map((m: { tenant_id: string }) => m.tenant_id).join(", ")}]`
+          );
+          return null;
+        }
+        return explicitTenantId;
+      }
+
+      const firstMembership = memberships[0];
+      if (memberships.length === 1 && firstMembership) {
+        const memberTenantId = firstMembership.tenant_id;
+        return memberTenantId;
+      }
+
+      // User belongs to multiple tenants and did not supply an explicit authorized tenant selection
+      console.warn(
+        `[Security] Ambiguous tenant membership: user ${clerkUserId} belongs to ${memberships.length} tenants. Explicit authorized tenant selection required.`
+      );
+      return null;
     }
 
     // New user signing up! Fetch user details directly from Clerk to register their organization
@@ -227,21 +281,13 @@ async function resolveCurrentTenantId(
         },
       ]);
 
-      // Auto-sync customer and policy from Clerk
-      await ensureCustomerFromClerk(newTenant.id, clerkUserId, finalEmail, finalName);
-
       return newTenant.id;
     }
   }
 
-  const { data: tenant } = await insforgeServer.database
-    .from("tenants")
-    .select("id")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return tenant?.id || null;
-}
+  // Never fall back to arbitrary tenant selection without authenticated membership
+  return null;
+});
 
 export const DashboardMetricsInput = z.object({
   tenantId: z.string().uuid().optional(),
@@ -273,24 +319,20 @@ export const getDashboardMetrics = createServerFn({ method: "GET", strict: false
         policiesRes,
         claimsRes,
         approvalsRes,
-        sessionsRes,
-        resolvedSessionsRes,
-        transfersRes,
-        leadsRes,
+        pendingApprovalsRes,
         recentApprovalsRes,
-        recentSessionsRes,
+        waConnRes,
+        waConversationsRes,
+        waTakeoverRes,
+        waMessagesRes,
+        waAiMessagesRes,
+        knowledgeSourcesRes,
+        approvedKnowledgeRes,
       ] = await Promise.all([
         insforgeServer.database.from("policies").select("id", { count: "exact" }).eq("tenant_id", tenantId),
         insforgeServer.database.from("claims").select("id", { count: "exact" }).eq("tenant_id", tenantId),
         insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-        insforgeServer.database.from("call_sessions").select("id", { count: "exact" }).eq("tenant_id", tenantId),
-        insforgeServer.database
-          .from("call_sessions")
-          .select("id", { count: "exact" })
-          .eq("tenant_id", tenantId)
-          .eq("status", "completed"),
-        insforgeServer.database.from("human_transfers").select("id", { count: "exact" }),
-        insforgeServer.database.from("follow_ups").select("id", { count: "exact" }),
+        insforgeServer.database.from("approval_requests").select("id", { count: "exact" }).eq("tenant_id", tenantId).eq("status", "pending"),
         insforgeServer.database
           .from("approval_requests")
           .select("id, request_type, status, created_at, payload")
@@ -298,37 +340,65 @@ export const getDashboardMetrics = createServerFn({ method: "GET", strict: false
           .order("created_at", { ascending: false })
           .limit(5),
         insforgeServer.database
-          .from("call_sessions")
-          .select("id, room_name, caller_name, started_at, duration_sec, status")
+          .from("whatsapp_connections")
+          .select("id, status, phone_number, updated_at, connected_at")
           .eq("tenant_id", tenantId)
-          .order("started_at", { ascending: false })
-          .limit(5),
+          .maybeSingle(),
+        insforgeServer.database.from("whatsapp_conversations").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("whatsapp_conversations").select("id", { count: "exact" }).eq("tenant_id", tenantId).eq("handoff_status", "human_takeover"),
+        insforgeServer.database.from("whatsapp_messages").select("id", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("whatsapp_messages").select("id", { count: "exact" }).eq("tenant_id", tenantId).eq("sender_type", "ai"),
+        insforgeServer.database.from("knowledge_sources").select("id, updated_at", { count: "exact" }).eq("tenant_id", tenantId),
+        insforgeServer.database.from("knowledge_sources").select("id", { count: "exact" }).eq("tenant_id", tenantId).eq("status", "approved"),
       ]);
 
-      const totalCalls = sessionsRes.count ?? (sessionsRes.data?.length || 0);
-      const resolvedCalls = resolvedSessionsRes.count ?? (resolvedSessionsRes.data?.length || 0);
-      const transfers = transfersRes.count ?? (transfersRes.data?.length || 0);
-      const leads = leadsRes.count ?? (leadsRes.data?.length || 0);
-      const automationRate =
-        totalCalls > 0 ? Math.min(100, Math.round(((resolvedCalls - transfers) / totalCalls) * 100)) : 0;
+      const totalConvs = waConversationsRes.count ?? (waConversationsRes.data?.length || 0);
+      const takeoverCount = waTakeoverRes.count ?? (waTakeoverRes.data?.length || 0);
+      const totalMsgs = waMessagesRes.count ?? (waMessagesRes.data?.length || 0);
+      const aiReplies = waAiMessagesRes.count ?? (waAiMessagesRes.data?.length || 0);
+      const totalKnowledge = knowledgeSourcesRes.count ?? (knowledgeSourcesRes.data?.length || 0);
+      const approvedKnowledge = approvedKnowledgeRes.count ?? (approvedKnowledgeRes.data?.length || 0);
+      const pendingKnowledge = Math.max(0, totalKnowledge - approvedKnowledge);
+      const pendingApprovals = pendingApprovalsRes.count ?? (pendingApprovalsRes.data?.length || 0);
+
+      // Automation rate calculated from AI replies over total conversations
+      const automationRate = totalConvs > 0 ? Math.min(100, Math.round(((totalConvs - takeoverCount) / totalConvs) * 100)) : 100;
 
       return {
-        totalCalls,
-        resolvedCalls,
-        transfers,
-        leads,
-        automationRate: Math.max(0, automationRate),
+        // WhatsApp Real Metrics
+        whatsappStatus: waConnRes.data?.status || "DISCONNECTED",
+        whatsappPhone: waConnRes.data?.phone_number || null,
+        whatsappLastEvent: waConnRes.data?.updated_at || waConnRes.data?.connected_at || null,
+        totalConversations: totalConvs,
+        takeoverCount,
+        totalMessages: totalMsgs,
+        aiRepliesCount: aiReplies,
+
+        // Knowledge Store Metrics
+        totalKnowledgeSources: totalKnowledge,
+        approvedKnowledgeCount: approvedKnowledge,
+        pendingKnowledgeCount: pendingKnowledge,
+
+        // Compliance & Records
         policiesCount: policiesRes.count ?? (policiesRes.data?.length || 0),
         claimsCount: claimsRes.count ?? (claimsRes.data?.length || 0),
-        approvalsCount: approvalsRes.count ?? (approvalsRes.data?.length || 0),
-        sessionsCount: totalCalls,
-        recentApprovals:
-          approvalsRes.count && approvalsRes.count > 0 ? (recentApprovalsRes.data ?? []) : [],
-        recentSessions: recentSessionsRes.data ?? [],
+        approvalsCount: pendingApprovals,
+        totalApprovalsHistorical: approvalsRes.count ?? (approvalsRes.data?.length || 0),
+        recentApprovals: recentApprovalsRes.data ?? [],
+
+        // Legacy compatibility
+        totalCalls: totalConvs,
+        resolvedCalls: totalConvs - takeoverCount,
+        transfers: takeoverCount,
+        leads: 0,
+        automationRate,
+        sessionsCount: totalConvs,
+        recentSessions: [],
       };
-    } catch (err: any) {
-      console.error("Dashboard metrics error:", err);
-      throw new Error(err.message || "Failed to load dashboard metrics");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to load dashboard metrics";
+      console.error("Dashboard metrics error:", errorMsg);
+      throw new Error(errorMsg);
     }
   });
 

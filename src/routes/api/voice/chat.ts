@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
-import { retrieveAgentKnowledge, generateGroundedAnswer } from "@/lib/rag/retrieval.server";
 
 // Security P0: Reject client-supplied 'system' roles to prevent prompt injection
 const ChatInput = z.object({
@@ -380,6 +379,7 @@ export const Route = createFileRoute("/api/voice/chat")({
             const ragStartTime = Date.now();
             try {
               // Vector search strictly scoped to tenant and agent
+              const { retrieveAgentKnowledge } = await import("@/lib/rag/retrieval.server");
               const chunks = await retrieveAgentKnowledge(
                 resolvedTenantId,
                 resolvedAgentId,
@@ -392,7 +392,7 @@ export const Route = createFileRoute("/api/voice/chat")({
               if (chunks.length > 0) {
                 // Chunks found above threshold: ground response concisely for spoken dialogue
                 isGrounded = true;
-                ragCitations = chunks.map((c) => ({
+                ragCitations = chunks.map((c: import("@/lib/rag/retrieval.server").RetrievedChunk) => ({
                   sourceId: c.sourceId,
                   sourceName: c.sourceName,
                   sourceType: c.sourceType,

@@ -13,11 +13,47 @@ export type AuthContext = {
 };
 
 /**
- * Extracts and verifies Clerk credentials from request headers.
+ * Extracts Clerk credentials from request headers (Authorization Bearer or __session cookie).
+ */
+export async function extractAuthToken(request: Request): Promise<string | null> {
+  const authHeader = request.headers.get("authorization") || "";
+  let token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) {
+    const cookieHeader = request.headers.get("cookie") || "";
+    const sessionMatch = cookieHeader.match(/(?:^|;\s*)__session=([^;]+)/);
+    const matchedToken = sessionMatch?.[1];
+    if (matchedToken) {
+      token = decodeURIComponent(matchedToken);
+    }
+  }
+  return token || null;
+}
+
+/**
+ * Safely extracts authenticated Clerk context from request if valid, or null.
+ */
+export async function extractAuthUserFromRequest(request: Request): Promise<AuthContext | null> {
+  try {
+    const token = await extractAuthToken(request);
+    if (!token) return null;
+    const verified = await verifyToken(token, { secretKey });
+    return {
+      userId: verified.sub,
+      sessionId: (verified as any).sid ?? null,
+      orgId: (verified as any).org_id ?? null,
+      orgRole: (verified as any).org_role ?? null,
+      token,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts and verifies Clerk credentials from request headers. Throws 401 if missing/invalid.
  */
 export async function requireAuthenticatedUser(request: Request): Promise<AuthContext> {
-  const authHeader = request.headers.get("authorization") || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const token = await extractAuthToken(request);
 
   if (!token) {
     throw new Error("401: Unauthorized - No authentication token provided");

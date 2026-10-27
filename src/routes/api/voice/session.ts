@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AccessToken } from "livekit-server-sdk";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 
@@ -31,7 +30,32 @@ export const Route = createFileRoute("/api/voice/session")({
 
           // 1. Resolve authorized tenant from database
           let tenant: any = null;
-          if (body.tenantId) {
+
+          if (body.clerkUserId) {
+            const { data: member } = await insforgeServer.database
+              .from("tenant_members")
+              .select("tenant_id")
+              .eq("clerk_user_id", body.clerkUserId)
+              .eq("status", "active")
+              .maybeSingle();
+
+            if (member?.tenant_id) {
+              if (body.tenantId && body.tenantId !== member.tenant_id) {
+                return new Response(
+                  JSON.stringify({ error: "Forbidden: cross-tenant voice session access denied" }),
+                  { status: 403, headers: { "Content-Type": "application/json" } }
+                );
+              }
+              const { data: memberTenant } = await insforgeServer.database
+                .from("tenants")
+                .select("id, name, slug, branding_config")
+                .eq("id", member.tenant_id)
+                .maybeSingle();
+              tenant = memberTenant;
+            }
+          }
+
+          if (!tenant && body.tenantId) {
             const { data } = await insforgeServer.database
               .from("tenants")
               .select("id, name, slug, branding_config")
@@ -353,6 +377,7 @@ export const Route = createFileRoute("/api/voice/session")({
           }
 
           // 4. Generate LiveKit Access Token with least-privilege grants and sanitized metadata (NO raw PII in JWT)
+          const { AccessToken } = await import("livekit-server-sdk");
           const at = new AccessToken(apiKey, apiSecret, {
             identity: `caller_${callSessionId.slice(0, 8)}`,
             name: customer.name,

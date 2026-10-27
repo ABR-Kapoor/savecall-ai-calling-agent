@@ -20,14 +20,18 @@ import { Route as AuthenticatedChangeRequestsRouteImport } from './routes/_authe
 import { Route as AuthenticatedClaimsRouteImport } from './routes/_authenticated/claims'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
+import { Route as AuthenticatedPhoneRouteImport } from './routes/_authenticated/phone'
 import { Route as AuthenticatedPoliciesRouteImport } from './routes/_authenticated/policies'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedTrainRouteImport } from './routes/_authenticated/train'
+import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
 import { Route as ApiAgentToolsRouteImport } from './routes/api/agent/tools'
 import { Route as ApiVoiceChatRouteImport } from './routes/api/voice/chat'
 import { Route as ApiVoiceEndRouteImport } from './routes/api/voice/end'
 import { Route as ApiVoiceSessionRouteImport } from './routes/api/voice/session'
 import { Route as ApiWebhooksClerkRouteImport } from './routes/api/webhooks/clerk'
+import { Route as ApiWebhooksTelephonyRouteImport } from './routes/api/webhooks/telephony'
+import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api/webhooks/whatsapp'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -84,6 +88,11 @@ const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPhoneRoute = AuthenticatedPhoneRouteImport.update({
+  id: '/phone',
+  path: '/phone',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPoliciesRoute = AuthenticatedPoliciesRouteImport.update({
   id: '/policies',
   path: '/policies',
@@ -97,6 +106,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedTrainRoute = AuthenticatedTrainRouteImport.update({
   id: '/train',
   path: '/train',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWhatsappRoute = AuthenticatedWhatsappRouteImport.update({
+  id: '/whatsapp',
+  path: '/whatsapp',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const ApiAgentToolsRoute = ApiAgentToolsRouteImport.update({
@@ -124,6 +138,16 @@ const ApiWebhooksClerkRoute = ApiWebhooksClerkRouteImport.update({
   path: '/api/webhooks/clerk',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksTelephonyRoute = ApiWebhooksTelephonyRouteImport.update({
+  id: '/api/webhooks/telephony',
+  path: '/api/webhooks/telephony',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
+  id: '/api/webhooks/whatsapp',
+  path: '/api/webhooks/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -136,14 +160,18 @@ export interface FileRoutesByFullPath {
   '/claims': typeof AuthenticatedClaimsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/phone': typeof AuthenticatedPhoneRoute
   '/policies': typeof AuthenticatedPoliciesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/train': typeof AuthenticatedTrainRoute
+  '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/api/agent/tools': typeof ApiAgentToolsRoute
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
+  '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -156,14 +184,18 @@ export interface FileRoutesByTo {
   '/claims': typeof AuthenticatedClaimsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/phone': typeof AuthenticatedPhoneRoute
   '/policies': typeof AuthenticatedPoliciesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/train': typeof AuthenticatedTrainRoute
+  '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/api/agent/tools': typeof ApiAgentToolsRoute
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
+  '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -178,14 +210,18 @@ export interface FileRoutesById {
   '/_authenticated/claims': typeof AuthenticatedClaimsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/phone': typeof AuthenticatedPhoneRoute
   '/_authenticated/policies': typeof AuthenticatedPoliciesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/train': typeof AuthenticatedTrainRoute
+  '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
   '/api/agent/tools': typeof ApiAgentToolsRoute
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
+  '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -200,14 +236,18 @@ export interface FileRouteTypes {
     | '/claims'
     | '/dashboard'
     | '/onboarding'
+    | '/phone'
     | '/policies'
     | '/settings'
     | '/train'
+    | '/whatsapp'
     | '/api/agent/tools'
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
     | '/api/webhooks/clerk'
+    | '/api/webhooks/telephony'
+    | '/api/webhooks/whatsapp'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -220,14 +260,18 @@ export interface FileRouteTypes {
     | '/claims'
     | '/dashboard'
     | '/onboarding'
+    | '/phone'
     | '/policies'
     | '/settings'
     | '/train'
+    | '/whatsapp'
     | '/api/agent/tools'
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
     | '/api/webhooks/clerk'
+    | '/api/webhooks/telephony'
+    | '/api/webhooks/whatsapp'
   id:
     | '__root__'
     | '/'
@@ -241,14 +285,18 @@ export interface FileRouteTypes {
     | '/_authenticated/claims'
     | '/_authenticated/dashboard'
     | '/_authenticated/onboarding'
+    | '/_authenticated/phone'
     | '/_authenticated/policies'
     | '/_authenticated/settings'
     | '/_authenticated/train'
+    | '/_authenticated/whatsapp'
     | '/api/agent/tools'
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
     | '/api/webhooks/clerk'
+    | '/api/webhooks/telephony'
+    | '/api/webhooks/whatsapp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -261,6 +309,8 @@ export interface RootRouteChildren {
   ApiVoiceEndRoute: typeof ApiVoiceEndRoute
   ApiVoiceSessionRoute: typeof ApiVoiceSessionRoute
   ApiWebhooksClerkRoute: typeof ApiWebhooksClerkRoute
+  ApiWebhooksTelephonyRoute: typeof ApiWebhooksTelephonyRoute
+  ApiWebhooksWhatsappRoute: typeof ApiWebhooksWhatsappRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -342,6 +392,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/phone': {
+      id: '/_authenticated/phone'
+      path: '/phone'
+      fullPath: '/phone'
+      preLoaderRoute: typeof AuthenticatedPhoneRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/policies': {
       id: '/_authenticated/policies'
       path: '/policies'
@@ -361,6 +418,13 @@ declare module '@tanstack/react-router' {
       path: '/train'
       fullPath: '/train'
       preLoaderRoute: typeof AuthenticatedTrainRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/whatsapp': {
+      id: '/_authenticated/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/whatsapp'
+      preLoaderRoute: typeof AuthenticatedWhatsappRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/api/agent/tools': {
@@ -398,6 +462,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksClerkRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/telephony': {
+      id: '/api/webhooks/telephony'
+      path: '/api/webhooks/telephony'
+      fullPath: '/api/webhooks/telephony'
+      preLoaderRoute: typeof ApiWebhooksTelephonyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/whatsapp': {
+      id: '/api/webhooks/whatsapp'
+      path: '/api/webhooks/whatsapp'
+      fullPath: '/api/webhooks/whatsapp'
+      preLoaderRoute: typeof ApiWebhooksWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -409,9 +487,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedClaimsRoute: typeof AuthenticatedClaimsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
+  AuthenticatedPhoneRoute: typeof AuthenticatedPhoneRoute
   AuthenticatedPoliciesRoute: typeof AuthenticatedPoliciesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTrainRoute: typeof AuthenticatedTrainRoute
+  AuthenticatedWhatsappRoute: typeof AuthenticatedWhatsappRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -422,9 +502,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedClaimsRoute: AuthenticatedClaimsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
+  AuthenticatedPhoneRoute: AuthenticatedPhoneRoute,
   AuthenticatedPoliciesRoute: AuthenticatedPoliciesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTrainRoute: AuthenticatedTrainRoute,
+  AuthenticatedWhatsappRoute: AuthenticatedWhatsappRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -440,13 +522,15 @@ const rootRouteChildren: RootRouteChildren = {
   ApiVoiceEndRoute: ApiVoiceEndRoute,
   ApiVoiceSessionRoute: ApiVoiceSessionRoute,
   ApiWebhooksClerkRoute: ApiWebhooksClerkRoute,
+  ApiWebhooksTelephonyRoute: ApiWebhooksTelephonyRoute,
+  ApiWebhooksWhatsappRoute: ApiWebhooksWhatsappRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
+import type { getRouter } from '../../../missed-call-maven/src/router.tsx'
+import type { startInstance } from '../../../missed-call-maven/src/start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true

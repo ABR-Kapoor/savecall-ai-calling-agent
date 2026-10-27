@@ -11,6 +11,7 @@ import {
   Sparkles,
   ShieldCheck,
   Mic,
+  MicOff,
   Volume2,
   FileText,
   Clock,
@@ -35,11 +36,73 @@ import { getTenantSettings, updateTenantSettings } from "@/lib/insurance.functio
 import { InsurCallLoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Guided Setup: InsurCall AI Voice Employee" }],
   }),
   component: OnboardingPage,
 });
+
+export type InterviewFieldKey =
+  | "businessDescription"
+  | "greeting"
+  | "languageTone"
+  | "escalation"
+  | "neverInvent";
+
+export interface InterviewAnswersMap {
+  businessDescription: string;
+  greeting: string;
+  languageTone: string;
+  escalation: string;
+  neverInvent: string;
+}
+
+export interface InterviewQuestion {
+  id: number;
+  question: string;
+  field: InterviewFieldKey;
+  hint: string;
+  example: string;
+}
+
+export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
+  {
+    id: 0,
+    question: "What is your company name, and what core insurance services or products do you provide?",
+    field: "businessDescription",
+    hint: "Speak or type your business focus (e.g. 'We are Apex Health Partners, providing health insurance and cashless claim assistance.')",
+    example: "We run a health & motor insurance agency helping individuals and families with policy issuance and cashless claims.",
+  },
+  {
+    id: 1,
+    question: "How would you like your receptionist to introduce itself when a customer calls?",
+    field: "greeting",
+    hint: "Your receptionist's opening sentence (e.g. 'Hello, welcome to Apex Health. I am Anya, how can I help you?')",
+    example: "Hello! Welcome to our office. I am Anya, your AI receptionist. How can I help you today?",
+  },
+  {
+    id: 2,
+    question: "What language and tone should your receptionist use with customers?",
+    field: "languageTone",
+    hint: "e.g. 'Empathetic and professional in Hinglish and English'",
+    example: "Warm and professional, speaking fluent Hinglish and English.",
+  },
+  {
+    id: 3,
+    question: "When a customer has an emergency or complex dispute, when should a human staff member take over?",
+    field: "escalation",
+    hint: "Define your team's escalation boundary",
+    example: "Immediately transfer complex claim disputes or emergency hospitalization cases to our claims desk.",
+  },
+  {
+    id: 4,
+    question: "What critical company rules, limitations, or coverage facts must the receptionist NEVER invent?",
+    field: "neverInvent",
+    hint: "Explicit boundaries (e.g. Never guarantee claim payout without adjuster approval; pre-existing waiting period is 24 months)",
+    example: "Never guarantee claim approval or promise payment amounts over the phone. Direct claim approval requires adjuster sign-off.",
+  },
+];
 
 interface OnboardingData {
   step: number;
@@ -181,6 +244,173 @@ function OnboardingPage() {
   const [isTestSessionActive, setIsTestSessionActive] = useState(false);
   const [testLog, setTestLog] = useState<{ sender: "user" | "agent"; text: string }[]>([]);
   const [testInput, setTestInput] = useState("");
+
+  // Step 2: "Build your receptionist by talking" conversational interview state
+  const [interviewMode, setInterviewMode] = useState<"voice" | "manual">("voice");
+  const [currentQIndex, setCurrentQIndex] = useState(0);
+  const [interviewAnswers, setInterviewAnswers] = useState<InterviewAnswersMap>({
+    businessDescription: "",
+    greeting: "",
+    languageTone: "",
+    escalation: "",
+    neverInvent: "",
+  });
+  const [interviewInput, setInterviewInput] = useState("");
+  const [isInterviewListening, setIsInterviewListening] = useState(false);
+  const [isSpeakingQuestion, setIsSpeakingQuestion] = useState(false);
+  const [interviewError, setInterviewError] = useState("");
+  const interviewRecognitionRef = useRef<any>(null);
+
+  // Speak question aloud via SpeechSynthesis
+  const speakInterviewQuestion = (text: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return;
+    }
+    window.speechSynthesis.cancel();
+    if (isSpeakingQuestion) {
+      setIsSpeakingQuestion(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    const voices = window.speechSynthesis.getVoices();
+    const chosenVoice =
+      voices.find((v) => v.lang.includes("en-IN") || v.name.includes("India")) ||
+      voices.find((v) => v.lang.startsWith("en"));
+    if (chosenVoice) {
+      utterance.voice = chosenVoice;
+    }
+    utterance.onstart = () => setIsSpeakingQuestion(true);
+    utterance.onend = () => setIsSpeakingQuestion(false);
+    utterance.onerror = () => setIsSpeakingQuestion(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Toggle speech recognition for answer
+  const toggleInterviewMic = () => {
+    if (typeof window === "undefined") return;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setInterviewError("Web Speech Recognition is not supported in this browser. You can type your response below.");
+      return;
+    }
+
+    if (isInterviewListening) {
+      if (interviewRecognitionRef.current) {
+        interviewRecognitionRef.current.stop();
+      }
+      setIsInterviewListening(false);
+      return;
+    }
+
+    setInterviewError("");
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = data.preferredLanguage === "Hindi" ? "hi-IN" : "en-IN";
+
+      recognition.onstart = () => {
+        setIsInterviewListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let transcript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setInterviewInput(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsInterviewListening(false);
+        if (event.error === "not-allowed") {
+          setInterviewError("Microphone permission denied. Please allow mic access or type your response.");
+        } else {
+          setInterviewError(`Voice recognition event: ${event.error}. You can continue typing.`);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsInterviewListening(false);
+      };
+
+      interviewRecognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      setIsInterviewListening(false);
+      setInterviewError("Could not initialize microphone. Please type your response.");
+    }
+  };
+
+  const handleNextInterviewQuestion = (skipSave = false) => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeakingQuestion(false);
+    }
+    if (isInterviewListening && interviewRecognitionRef.current) {
+      interviewRecognitionRef.current.stop();
+      setIsInterviewListening(false);
+    }
+
+    const currentQ = INTERVIEW_QUESTIONS[currentQIndex];
+    const val = interviewInput.trim();
+
+    if (!skipSave && val && currentQ) {
+      const updated = { ...interviewAnswers, [currentQ.field]: val };
+      setInterviewAnswers(updated);
+
+      if (currentQ.field === "businessDescription") {
+        setData((prev) => ({
+          ...prev,
+          coreBusinessKnowledge: val,
+        }));
+      } else if (currentQ.field === "greeting") {
+        setData((prev) => ({
+          ...prev,
+          agentGreeting: val,
+        }));
+      } else if (currentQ.field === "escalation") {
+        setData((prev) => ({
+          ...prev,
+          escalationBehavior: val,
+        }));
+      } else if (currentQ.field === "neverInvent") {
+        setData((prev) => ({
+          ...prev,
+          agentInstructions: `Strict Guidelines: ${val}. Answer policy coverage questions, initiate FNOL, and escalate to human adjusters when required.`,
+        }));
+      }
+    }
+
+    setInterviewInput("");
+    if (currentQIndex < INTERVIEW_QUESTIONS.length - 1) {
+      const nextIdx = currentQIndex + 1;
+      setCurrentQIndex(nextIdx);
+      const nextQ = INTERVIEW_QUESTIONS[nextIdx];
+      if (nextQ && interviewAnswers[nextQ.field]) {
+        setInterviewInput(interviewAnswers[nextQ.field] || "");
+      }
+    }
+  };
+
+  const handleApplySpokenConfiguration = () => {
+    const greetingAns = interviewAnswers.greeting || data.agentGreeting;
+    const escalationAns = interviewAnswers.escalation || data.escalationBehavior;
+    const rulesAns = interviewAnswers.neverInvent || "Do not invent coverage limits or promise claim payouts without adjuster approval.";
+    const bizAns = interviewAnswers.businessDescription || data.coreBusinessKnowledge;
+
+    setData((prev) => ({
+      ...prev,
+      agentGreeting: greetingAns,
+      escalationBehavior: escalationAns,
+      coreBusinessKnowledge: bizAns,
+      agentInstructions: `Immutable Safety Policy: ${rulesAns}. Business Scope: ${bizAns}. Escalation Rule: ${escalationAns}.`,
+    }));
+  };
 
   // Load saved state from server
   useEffect(() => {
@@ -655,99 +885,311 @@ function OnboardingPage() {
             </div>
           )}
 
-          {/* STEP 3: MEET YOUR ASSISTANT */}
+          {/* STEP 3: BUILD YOUR RECEPTIONIST BY TALKING */}
           {data.step === 2 && (
             <div className="space-y-6">
-              <div>
-                <h2 className="font-display text-xl font-bold text-slate-900">Meet Your Assistant</h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Configure your AI employee's identity, opening greeting, speaking style, and escalation boundaries.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-xl font-bold text-slate-900">
+                    Build your receptionist by talking
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Teach your AI receptionist how your agency works by answering quick guided questions by voice or text.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setInterviewMode("voice")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      interviewMode === "voice"
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Mic className="size-3.5 text-[#087F8C]" />
+                    Voice Interview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInterviewMode("manual")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      interviewMode === "manual"
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Sliders className="size-3.5" />
+                    Manual Form
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Assistant Name</label>
-                  <Input
-                    placeholder="e.g. Anya"
-                    value={data.agentName}
-                    onChange={(e) => updateField("agentName", e.target.value)}
-                    className="border-slate-200"
-                  />
-                </div>
+              {interviewMode === "voice" ? (
+                <div className="space-y-6">
+                  {/* Guided Interview Card */}
+                  <Card className="border-[#087F8C]/20 bg-[#FAF9F6] shadow-sm">
+                    <CardHeader className="pb-3 border-b border-slate-200/80">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-[#087F8C]/15 text-[#087F8C] border-[#087F8C]/30 text-xs">
+                            Question {currentQIndex + 1} of {INTERVIEW_QUESTIONS.length}
+                          </Badge>
+                          <span className="text-xs text-slate-500 font-medium">Conversational Configuration</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => speakInterviewQuestion(INTERVIEW_QUESTIONS[currentQIndex]?.question || "")}
+                          className="h-8 gap-1.5 text-xs text-[#087F8C] hover:bg-[#087F8C]/10"
+                        >
+                          <Volume2 className={`size-3.5 ${isSpeakingQuestion ? "animate-pulse text-amber-600" : ""}`} />
+                          {isSpeakingQuestion ? "Speaking..." : "Read Aloud"}
+                        </Button>
+                      </div>
+                      <CardTitle className="text-base font-bold text-slate-900 pt-2">
+                        {INTERVIEW_QUESTIONS[currentQIndex]?.question}
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-600">
+                        {INTERVIEW_QUESTIONS[currentQIndex]?.hint}
+                      </CardDescription>
+                    </CardHeader>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Voice & Speaking Style</label>
-                  <select
-                    value={data.voiceStyle}
-                    onChange={(e) => updateField("voiceStyle", e.target.value)}
-                    className="w-full h-10 px-3 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#087F8C]"
-                  >
-                    <option value="Warm & Reassuring">Warm & Reassuring</option>
-                    <option value="Clear & Professional">Clear & Professional</option>
-                    <option value="Empathetic Claims Specialist">Empathetic Claims Specialist</option>
-                  </select>
-                </div>
+                    <CardContent className="space-y-4 pt-4">
+                      {/* Voice Recording / Input Section */}
+                      <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <Button
+                          type="button"
+                          onClick={toggleInterviewMic}
+                          className={`w-full sm:w-auto px-5 h-11 gap-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                            isInterviewListening
+                              ? "bg-rose-600 hover:bg-rose-700 text-white animate-pulse"
+                              : "bg-[#087F8C] hover:bg-[#076C77] text-white"
+                          }`}
+                        >
+                          {isInterviewListening ? (
+                            <>
+                              <Square className="size-4 fill-white" /> Stop Recording
+                            </>
+                          ) : (
+                            <>
+                              <Mic className="size-4" /> Speak Answer
+                            </>
+                          )}
+                        </Button>
 
-                <div className="space-y-1.5 md:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Opening Greeting (What the caller hears first)
-                    </label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={toggleSpeechPreview}
-                      className="text-xs h-7 gap-1.5 border-[#087F8C] text-[#087F8C] hover:bg-[#E6F6F7]"
-                    >
-                      {isPlayingPreview ? (
-                        <>
-                          <Square className="size-3 text-rose-600 fill-rose-600" /> Stop Audio
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="size-3" /> Preview Voice
-                        </>
+                        <div className="text-xs text-slate-500 flex-1">
+                          {isInterviewListening ? (
+                            <span className="text-rose-600 font-semibold animate-pulse">
+                              Listening to your microphone... speak clearly.
+                            </span>
+                          ) : (
+                            <span>Click Speak Answer or type your response in the box below.</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {interviewError && (
+                        <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs flex items-center gap-2">
+                          <AlertCircle className="size-4 shrink-0 text-amber-600" />
+                          <span>{interviewError}</span>
+                        </div>
                       )}
-                    </Button>
-                  </div>
-                  <Textarea
-                    rows={3}
-                    value={data.agentGreeting}
-                    onChange={(e) => updateField("agentGreeting", e.target.value)}
-                    placeholder="Enter the opening greeting..."
-                    className="border-slate-200 text-xs"
-                  />
-                  {isPlayingPreview && (
-                    <div className="flex items-center gap-2 text-xs text-[#087F8C] font-mono animate-pulse">
-                      <span className="size-2 rounded-full bg-[#087F8C]" />
-                      Speaking configured greeting in real time...
-                    </div>
-                  )}
-                </div>
 
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Escalation & Transfer Rule
-                  </label>
-                  <select
-                    value={data.escalationBehavior}
-                    onChange={(e) => updateField("escalationBehavior", e.target.value)}
-                    className="w-full h-10 px-3 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#087F8C]"
-                  >
-                    <option value="Immediate transfer to human adjuster on disputes or high-value claims">
-                      Immediate transfer to human adjuster on disputes or high-value claims
-                    </option>
-                    <option value="Collect callback docket and send priority SMS/Email alert to staff">
-                      Collect callback docket and send priority SMS/Email alert to staff
-                    </option>
-                    <option value="Stage change request in Compliance Queue for dual-control sign-off">
-                      Stage change request in Compliance Queue for dual-control sign-off
-                    </option>
-                  </select>
+                      {/* Text Input / Live Transcript area */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-700">Your Answer / Spoken Transcript</label>
+                        <Textarea
+                          rows={3}
+                          value={interviewInput}
+                          onChange={(e) => setInterviewInput(e.target.value)}
+                          placeholder={INTERVIEW_QUESTIONS[currentQIndex]?.example}
+                          className="text-xs leading-relaxed border-slate-200 bg-white"
+                        />
+                      </div>
+
+                      {/* Question Navigation */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={currentQIndex === 0}
+                          onClick={() => {
+                            if (currentQIndex > 0) {
+                              const prevIdx = currentQIndex - 1;
+                              setCurrentQIndex(prevIdx);
+                              const prevQ = INTERVIEW_QUESTIONS[prevIdx];
+                              if (prevQ && interviewAnswers[prevQ.field]) {
+                                setInterviewInput(interviewAnswers[prevQ.field] || "");
+                              }
+                            }
+                          }}
+                          className="text-xs h-8 text-slate-600"
+                        >
+                          Previous
+                        </Button>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleNextInterviewQuestion(true)}
+                            className="text-xs h-8 border-slate-300"
+                          >
+                            Skip
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleNextInterviewQuestion(false)}
+                            className="text-xs h-8 bg-[#087F8C] hover:bg-[#076C77] text-white"
+                          >
+                            {currentQIndex === INTERVIEW_QUESTIONS.length - 1 ? "Save Response" : "Next Question"}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Live Generated Configuration Summary */}
+                  <Card className="border-border bg-card/60">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="size-4 text-[#087F8C]" />
+                          <CardTitle className="text-sm font-semibold">
+                            Generated Receptionist Configuration
+                          </CardTitle>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleApplySpokenConfiguration}
+                          className="h-8 gap-1.5 text-xs bg-[#087F8C] hover:bg-[#076C77] text-white font-semibold"
+                        >
+                          <Check className="size-3.5" /> Apply Configuration
+                        </Button>
+                      </div>
+                      <CardDescription className="text-xs">
+                        Derived in real time from your spoken or typed answers. Layered prompt design ensures immutable safety boundaries.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-xs">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1">
+                          <span className="font-semibold text-slate-900 block">Opening Greeting:</span>
+                          <p className="text-slate-600 italic">
+                            "{interviewAnswers.greeting || data.agentGreeting}"
+                          </p>
+                        </div>
+
+                        <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1">
+                          <span className="font-semibold text-slate-900 block">Escalation Boundary:</span>
+                          <p className="text-slate-600">
+                            {interviewAnswers.escalation || data.escalationBehavior}
+                          </p>
+                        </div>
+
+                        <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1 md:col-span-2">
+                          <span className="font-semibold text-slate-900 block">Immutable Safety & Prohibited Claims:</span>
+                          <p className="text-slate-600">
+                            {interviewAnswers.neverInvent || "Never guarantee claim payouts or promise coverage without authorized adjuster review."}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </div>
+              ) : (
+                /* Manual Form Mode */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">Assistant Name</label>
+                    <Input
+                      placeholder="e.g. Anya"
+                      value={data.agentName}
+                      onChange={(e) => updateField("agentName", e.target.value)}
+                      className="border-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">Voice & Speaking Style</label>
+                    <select
+                      value={data.voiceStyle}
+                      onChange={(e) => updateField("voiceStyle", e.target.value)}
+                      className="w-full h-10 px-3 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#087F8C]"
+                    >
+                      <option value="Warm & Reassuring">Warm & Reassuring</option>
+                      <option value="Clear & Professional">Clear & Professional</option>
+                      <option value="Empathetic Claims Specialist">Empathetic Claims Specialist</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Opening Greeting (What the caller hears first)
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={toggleSpeechPreview}
+                        className="text-xs h-7 gap-1.5 border-[#087F8C] text-[#087F8C] hover:bg-[#E6F6F7]"
+                      >
+                        {isPlayingPreview ? (
+                          <>
+                            <Square className="size-3 text-rose-600 fill-rose-600" /> Stop Audio
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="size-3" /> Preview Voice
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <Textarea
+                      rows={3}
+                      value={data.agentGreeting}
+                      onChange={(e) => updateField("agentGreeting", e.target.value)}
+                      placeholder="Enter the opening greeting..."
+                      className="border-slate-200 text-xs"
+                    />
+                    {isPlayingPreview && (
+                      <div className="flex items-center gap-2 text-xs text-[#087F8C] font-mono animate-pulse">
+                        <span className="size-2 rounded-full bg-[#087F8C]" />
+                        Speaking configured greeting in real time...
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Escalation & Transfer Rule
+                    </label>
+                    <select
+                      value={data.escalationBehavior}
+                      onChange={(e) => updateField("escalationBehavior", e.target.value)}
+                      className="w-full h-10 px-3 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#087F8C]"
+                    >
+                      <option value="Immediate transfer to human adjuster on disputes or high-value claims">
+                        Immediate transfer to human adjuster on disputes or high-value claims
+                      </option>
+                      <option value="Collect callback docket and send priority SMS/Email alert to staff">
+                        Collect callback docket and send priority SMS/Email alert to staff
+                      </option>
+                      <option value="Stage change request in Compliance Queue for dual-control sign-off">
+                        Stage change request in Compliance Queue for dual-control sign-off
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -890,21 +1332,30 @@ function OnboardingPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                <div className="rounded-2xl border border-blue-900/30 bg-blue-950/20 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <PhoneCall className="size-4 text-slate-500" />
-                      <span className="text-xs font-bold text-slate-700">
-                        Inbound Phone Numbers & SIP Trunk
+                      <PhoneCall className="size-4 text-blue-400" />
+                      <span className="text-xs font-bold text-white">
+                        Inbound Phone Number & Carrier Forwarding (Live Telephony)
                       </span>
                     </div>
-                    <Badge variant="outline" className="text-[10px] text-slate-500 border-slate-300">
-                      Configurable Later
+                    <Badge className="bg-blue-600 text-white text-[10px]">
+                      Recommended
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Phone numbers and carrier SIP integration can be linked at any time in Carrier Settings without disrupting your workspace.
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Connect your existing Airtel, Jio, Vi, or BSNL mobile number via automated carrier call forwarding. Keep your existing SIM card; your AI receptionist will answer when your line is busy or unanswered.
                   </p>
+                  <div className="pt-1 flex items-center gap-3">
+                    <Link
+                      to="/phone"
+                      target="_blank"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4"
+                    >
+                      Open Phone Onboarding Hub in new tab <ArrowRight className="size-3" />
+                    </Link>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5 pt-2">

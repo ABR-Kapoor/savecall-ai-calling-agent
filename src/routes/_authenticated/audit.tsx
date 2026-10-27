@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, ShieldAlert, AlertCircle, ShieldCheck, Eye, Terminal } from "lucide-react";
 import { getAuditLogs } from "@/lib/insurance.functions";
+import { useUser } from "@clerk/clerk-react";
 
 export const Route = createFileRoute("/_authenticated/audit")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Audit Trail: InsurCall Insurance AI" }],
   }),
@@ -18,6 +20,7 @@ export const Route = createFileRoute("/_authenticated/audit")({
 });
 
 function AuditLogsPage() {
+  const { user } = useUser();
   const [search, setSearch] = useState("");
   const [selectedPayload, setSelectedPayload] = useState<{
     action: string;
@@ -25,8 +28,9 @@ function AuditLogsPage() {
   } | null>(null);
 
   const { data: logs, isLoading, error } = useQuery({
-    queryKey: ["audit-logs-list"],
-    queryFn: () => getAuditLogs(),
+    queryKey: ["audit-logs-list", user?.id],
+    queryFn: () => getAuditLogs({ data: { clerkUserId: user?.id } }),
+    enabled: !!user?.id,
   });
 
   const filtered = (logs ?? []).filter((l: any) => {

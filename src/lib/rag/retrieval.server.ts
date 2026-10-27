@@ -6,10 +6,16 @@ import {
 import { insforgeServer } from "@/lib/insforge/client.server";
 
 const { Pool } = pg;
-const connectionString =
-  process.env["DATABASE_URL"] ||
-  "postgresql://postgres:0cd352b4c767620fc47fb453f8a5cf0f@ufmgh6q8.ap-southeast.database.insforge.app:5432/insforge?sslmode=require";
-const pool = new Pool({ connectionString });
+const pool = process.env["DATABASE_URL"]
+  ? new Pool({
+      connectionString: process.env["DATABASE_URL"],
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+      max: 5,
+      query_timeout: 10000,
+      statement_timeout: 10000,
+    })
+  : null;
 
 export interface Citation {
   sourceId: string;
@@ -30,7 +36,7 @@ export interface RetrievedChunk {
   pageNumber?: number | null | undefined;
   sheetName?: string | null | undefined;
   sectionHeading?: string | null | undefined;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   similarity: number;
 }
 
@@ -56,6 +62,7 @@ export async function retrieveAgentKnowledge(
   matchCount = 5
 ): Promise<RetrievedChunk[]> {
   const queryEmbedding = await generateSemanticEmbedding(query);
+  if (!pool) throw new Error("RAG retrieval is not configured: DATABASE_URL is required");
   const vecStr = `[${queryEmbedding.join(",")}]`;
 
   const sql = `
@@ -102,9 +109,9 @@ export async function retrieveAgentKnowledge(
       metadata: r.metadata || {},
       similarity: Number(r.similarity),
     }));
-  } catch (err: any) {
-    console.error("Vector search query error:", err);
-    return [];
+  } catch (err: unknown) {
+    console.error("Vector search query failed");
+    throw err;
   }
 }
 

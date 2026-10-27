@@ -4,11 +4,23 @@ import { ingestDocument } from "../src/lib/rag/ingestion.server.ts";
 import { retrieveAgentKnowledge, generateGroundedAnswer } from "../src/lib/rag/retrieval.server.ts";
 import { evaluateToolSecurity, TOOL_POLICIES } from "../src/lib/risk/risk-engine.ts";
 
+import fs from "node:fs";
+
+let connectionString = process.env["DATABASE_URL"];
+if (!connectionString && fs.existsSync(".env")) {
+  const envContent = fs.readFileSync(".env", "utf8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("DATABASE_URL=")) {
+      connectionString = trimmed.slice("DATABASE_URL=".length).trim();
+      process.env["DATABASE_URL"] = connectionString;
+      break;
+    }
+  }
+}
+if (!connectionString) throw new Error("DATABASE_URL must target an explicitly selected development database");
 const { Pool } = pg;
-const connectionString =
-  process.env["DATABASE_URL"] ||
-  "postgresql://postgres:0cd352b4c767620fc47fb453f8a5cf0f@ufmgh6q8.ap-southeast.database.insforge.app:5432/insforge?sslmode=require";
-const pool = new Pool({ connectionString });
+const pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
 
 async function runVoiceRagIntegrationTests() {
   console.log("==================================================================");

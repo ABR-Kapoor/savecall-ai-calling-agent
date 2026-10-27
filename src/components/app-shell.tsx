@@ -6,6 +6,7 @@ import {
   LogOut,
   Mic,
   PhoneCall,
+  PhoneForwarded,
   Settings,
   ShieldCheck,
   CheckSquare,
@@ -14,8 +15,8 @@ import {
   Sparkles,
   Radio,
   ExternalLink,
-  ChevronRight,
   Lock,
+  MessageSquare,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -26,24 +27,23 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getTenantSettings } from "@/lib/insurance.functions";
 
-const NAV_OPERATIONS = [
-  { to: "/dashboard", label: "Operations Overview", icon: LayoutDashboard },
-  { to: "/calls", label: "Live Calls & Transcripts", icon: PhoneCall },
-  { to: "/claims", label: "Claims Intake & FNOL", icon: ShieldCheck },
-  { to: "/policies", label: "Policy Portfolio", icon: FileText },
-  { to: "/change-requests", label: "Staff Approvals Queue", icon: CheckSquare },
+interface BrandingConfig {
+  plan?: string;
+  [key: string]: unknown;
+}
+
+const NAV_CORE = [
+  { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { to: "/whatsapp", label: "WhatsApp Inbox", icon: MessageSquare },
+  { to: "/agent", label: "AI Agent", icon: Bot },
+  { to: "/train", label: "Knowledge & Training", icon: BookOpen },
 ] as const;
 
-const NAV_INTELLIGENCE = [
-  { to: "/agent", label: "Insurance Voice Studio", icon: Bot },
-  { to: "/train", label: "Policy Knowledge Store", icon: BookOpen },
-  { to: "/voice", label: "Voice Call Simulator", icon: Mic },
-  { to: "/audit", label: "Audit & Compliance Log", icon: ShieldAlert },
-] as const;
-
-const NAV_CARRIER = [
-  { to: "/onboarding", label: "Carrier Setup", icon: Sparkles },
-  { to: "/settings", label: "Tenant & API Settings", icon: Settings },
+const NAV_GOVERNANCE = [
+  { to: "/change-requests", label: "Approvals & Handoffs", icon: CheckSquare },
+  { to: "/policies", label: "Insurance Records", icon: FileText },
+  { to: "/settings", label: "Settings & Security", icon: Settings },
+  { to: "/audit", label: "Activity & Audit", icon: ShieldAlert },
 ] as const;
 
 export function AppShell({
@@ -72,9 +72,9 @@ export function AppShell({
       }),
   });
 
-  const tenantConfig = (tenant?.branding_config as any) || {};
-  const companyName = tenant?.name || "InsurCall Carrier Operations";
-  const planRaw = tenantConfig.plan || "enterprise";
+  const tenantConfig = (tenant?.branding_config as BrandingConfig | null) || {};
+  const companyName = tenant?.name || "InsurCall Insurance Operations";
+  const planRaw = typeof tenantConfig.plan === "string" ? tenantConfig.plan : "enterprise";
   const planDisplay = planRaw.charAt(0).toUpperCase() + planRaw.slice(1);
 
   const signOut = async () => {
@@ -84,7 +84,7 @@ export function AppShell({
     window.location.href = "/";
   };
 
-  const allNav = [...NAV_OPERATIONS, ...NAV_INTELLIGENCE, ...NAV_CARRIER];
+  const allNav = [...NAV_CORE, ...NAV_GOVERNANCE];
 
   return (
     <div className="flex min-h-screen bg-[#FAF9F6] text-[#111827] antialiased font-sans">
@@ -114,13 +114,13 @@ export function AppShell({
 
         {/* Navigation Sections */}
         <div className="flex-1 space-y-5 overflow-hidden pr-1">
-          {/* Operations Section */}
+          {/* Core Platform Section */}
           <div className="space-y-1">
             <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
-              Operations
+              Core Platform
             </div>
             <nav className="space-y-0.5">
-              {NAV_OPERATIONS.map((item) => {
+              {NAV_CORE.map((item) => {
                 const isActive = path === item.to;
                 return (
                   <Link
@@ -139,38 +139,13 @@ export function AppShell({
             </nav>
           </div>
 
-          {/* Intelligence & Voice Section */}
+          {/* Operations & Governance */}
           <div className="space-y-1">
             <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
-              AI Voice & Knowledge
+              Operations & Governance
             </div>
             <nav className="space-y-0.5">
-              {NAV_INTELLIGENCE.map((item) => {
-                const isActive = path === item.to;
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-900",
-                      isActive && "bg-[#E6F6F7] text-[#087F8C] font-semibold border border-[#087F8C]/20 shadow-2xs",
-                    )}
-                  >
-                    <item.icon className={cn("size-4 shrink-0", isActive ? "text-[#087F8C]" : "text-slate-400")} />
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Carrier Administration */}
-          <div className="space-y-1">
-            <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
-              Carrier Governance
-            </div>
-            <nav className="space-y-0.5">
-              {NAV_CARRIER.map((item) => {
+              {NAV_GOVERNANCE.map((item) => {
                 const isActive = path === item.to;
                 return (
                   <Link
@@ -239,9 +214,9 @@ export function AppShell({
               variant="outline"
               className="h-8 rounded-full border-slate-200 text-xs font-mono text-slate-700 hover:text-black hover:bg-slate-100"
             >
-              <Link to="/voice">
-                <Mic className="size-3 mr-1.5 text-[#087F8C]" />
-                Test Voice Call
+              <Link to="/whatsapp">
+                <MessageSquare className="size-3 mr-1.5 text-[#087F8C]" />
+                WhatsApp Inbox
               </Link>
             </Button>
             <Button
@@ -249,9 +224,9 @@ export function AppShell({
               size="sm"
               className="h-8 rounded-full bg-[#172033] hover:bg-[#1F2937] text-white text-xs font-mono font-medium"
             >
-              <Link to="/claims">
-                <ShieldCheck className="size-3 mr-1.5 text-[#10A6AE]" />
-                New FNOL Intake
+              <Link to="/train">
+                <BookOpen className="size-3 mr-1.5 text-[#10A6AE]" />
+                Train Assistant
               </Link>
             </Button>
           </div>

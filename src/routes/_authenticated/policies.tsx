@@ -17,6 +17,7 @@ import { PolicySummaryCard, type PolicyRecord } from "@/components/insurance/pol
 import { getPolicyStatusPresentation } from "@/lib/insurance/status-presentation";
 
 export const Route = createFileRoute("/_authenticated/policies")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Policy Directory: InsurCall Insurance AI" }],
   }),

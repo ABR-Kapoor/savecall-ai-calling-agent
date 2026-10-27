@@ -10,8 +10,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ApprovalReviewCard, type ApprovalRequestRecord } from "@/components/insurance/approval-review-card";
 import { toast } from "sonner";
+import { useUser } from "@clerk/clerk-react";
 
 export const Route = createFileRoute("/_authenticated/change-requests")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Pending Approvals: InsurCall Insurance AI" }],
   }),
@@ -19,12 +21,14 @@ export const Route = createFileRoute("/_authenticated/change-requests")({
 });
 
 function ApprovalsPage() {
+  const { user } = useUser();
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
 
   const { data: requests, isLoading, error, refetch } = useQuery({
-    queryKey: ["approvals-list"],
-    queryFn: () => getApprovalRequests(),
+    queryKey: ["approvals-list", user?.id],
+    queryFn: () => getApprovalRequests({ data: { clerkUserId: user?.id } }),
+    enabled: !!user?.id,
   });
 
   const mutation = useMutation({

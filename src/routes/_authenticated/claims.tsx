@@ -19,6 +19,7 @@ import { getClaimStatusPresentation } from "@/lib/insurance/status-presentation"
 import { useUser } from "@clerk/clerk-react";
 
 export const Route = createFileRoute("/_authenticated/claims")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Claims Processing: InsurCall Insurance AI" }],
   }),

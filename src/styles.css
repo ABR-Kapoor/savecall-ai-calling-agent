@@ -3,8 +3,6 @@
 @source "../src";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 /*
  * Design system : SaveCall Bright Enterprise.
  * Clean canvas, crisp white cards, SaveCall cyan (#087E8B) accent.
@@ -121,40 +119,6 @@
   --sidebar-accent: #F1F4F9;
   --sidebar-accent-foreground: #087E8B;
   --sidebar-border: #E3E8EF;
-  --sidebar-ring: #087E8B;
-}
-
-.dark {
-  --background: oklch(0.16 0.014 265);
-  --foreground: oklch(0.965 0.006 260);
-  --card: oklch(0.205 0.016 264);
-  --card-foreground: oklch(0.965 0.006 260);
-  --popover: oklch(0.205 0.016 264);
-  --popover-foreground: oklch(0.965 0.006 260);
-  --primary: #087E8B;
-  --primary-foreground: #FFFFFF;
-  --secondary: oklch(0.27 0.02 264);
-  --secondary-foreground: oklch(0.95 0.006 260);
-  --muted: oklch(0.25 0.018 264);
-  --muted-foreground: oklch(0.7 0.02 262);
-  --accent: oklch(0.3 0.03 258);
-  --accent-foreground: oklch(0.96 0.006 260);
-  --destructive: oklch(0.62 0.2 24);
-  --destructive-foreground: oklch(0.98 0.005 260);
-  --success: oklch(0.72 0.16 158);
-  --success-foreground: oklch(0.18 0.03 158);
-  --warning: oklch(0.8 0.14 85);
-  --warning-foreground: oklch(0.2 0.03 85);
-  --border: oklch(0.31 0.018 264);
-  --input: oklch(0.31 0.018 264);
-  --ring: #087E8B;
-  --sidebar: oklch(0.185 0.015 265);
-  --sidebar-foreground: oklch(0.93 0.008 260);
-  --sidebar-primary: #087E8B;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: oklch(0.26 0.02 264);
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: oklch(0.29 0.018 264);
   --sidebar-ring: #087E8B;
 }
 

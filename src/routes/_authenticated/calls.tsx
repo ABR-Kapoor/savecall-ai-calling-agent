@@ -13,8 +13,10 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { getCallStatusPresentation } from "@/lib/insurance/status-presentation";
+import { useUser } from "@clerk/clerk-react";
 
 export const Route = createFileRoute("/_authenticated/calls")({
+  ssr: false,
   head: () => ({
     meta: [{ title: "Voice Sessions: InsurCall Insurance AI" }],
   }),
@@ -22,12 +24,14 @@ export const Route = createFileRoute("/_authenticated/calls")({
 });
 
 function VoiceSessionsPage() {
+  const { user } = useUser();
   const [search, setSearch] = useState("");
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
 
   const { data: sessions, isLoading, error, refetch } = useQuery({
-    queryKey: ["call-sessions-list"],
-    queryFn: () => getCallSessions(),
+    queryKey: ["call-sessions-list", user?.id],
+    queryFn: () => getCallSessions({ data: { clerkUserId: user?.id } }),
+    enabled: !!user?.id,
   });
 
   const filtered = (sessions ?? []).filter((s: any) => {
