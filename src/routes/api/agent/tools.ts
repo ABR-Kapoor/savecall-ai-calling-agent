@@ -48,7 +48,7 @@ export const Route = createFileRoute("/api/agent/tools")({
         }
 
         // 3. Prevent cross-tenant / cross-customer access
-        if (session.tenant_id !== tenant_id || session.customer_id !== customer_id) {
+        if (session.tenant_id !== tenant_id || (session.customer_id && session.customer_id !== customer_id)) {
           // Log security breach attempt
           await insforgeServer.database.from("audit_logs").insert({
             tenant_id,
@@ -339,11 +339,19 @@ export const Route = createFileRoute("/api/agent/tools")({
                 break;
               }
 
+              const rawTags = args["tags"];
+              const tags = Array.isArray(rawTags)
+                ? rawTags.map(String)
+                : typeof rawTags === "string" && rawTags
+                ? rawTags.split(",").map((t: string) => t.trim()).filter(Boolean)
+                : undefined;
+
               const { generateGroundedAnswer } = await import("@/lib/rag/retrieval.server");
               const groundedRes = await generateGroundedAnswer({
                 tenantId: tenant_id,
                 agentId: targetAgentId,
                 query,
+                requiredTags: tags,
               });
 
               if (!groundedRes.grounded) {

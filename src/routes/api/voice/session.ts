@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 
-const apiKey = process.env["LIVEKIT_API_KEY"] || "devkey";
-const apiSecret = process.env["LIVEKIT_API_SECRET"] || "secret";
-const defaultLivekitUrl = process.env["VITE_LIVEKIT_URL"] || "ws://127.0.0.1:7880";
+const apiKey = process.env["LIVEKIT_API_KEY"] || "APIymPvQM8U4NnC";
+const apiSecret = process.env["LIVEKIT_API_SECRET"] || "qRjnqu3ZZft5mW0lepkhWgZgondK9w8Qks0paoWfxKKA";
+const defaultLivekitUrl = process.env["LIVEKIT_URL"] || process.env["VITE_LIVEKIT_URL"] || "wss://insurcall-agent-11ucbvws.livekit.cloud";
 
 const SessionInput = z.object({
   tenantId: z.string().uuid().optional(),
@@ -84,8 +84,8 @@ export const Route = createFileRoute("/api/voice/session")({
                 plan: "Starter",
                 onboarding_completed: true,
                 agent_config: {
-                  name: "Anya",
-                  greeting: "Hello! Welcome to InsurCall assistance. How may I help you today?",
+                  name: "",
+                  greeting: "",
                 },
               },
             };
@@ -324,9 +324,9 @@ export const Route = createFileRoute("/api/voice/session")({
                   {
                     id: newAgentId,
                     tenant_id: tenantId,
-                    name: "Anya",
-                    greeting: "Hello! Welcome to InsurCall assistance. How may I help you today?",
-                    tone: "Professional",
+                    name: "",
+                    greeting: "",
+                    tone: "",
                     languages: ["English", "Hindi"],
                     voice: "en-IN-NeerjaNeural",
                     can_answer_questions: true,
@@ -400,14 +400,36 @@ export const Route = createFileRoute("/api/voice/session")({
 
           const token = await at.toJwt();
 
-          // Calculate reachable LiveKit URL for client
-          let livekitUrl = defaultLivekitUrl;
-          const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host");
-          if (hostHeader && defaultLivekitUrl.includes("127.0.0.1")) {
-            const hostIp = hostHeader.split(":")[0];
-            if (hostIp && hostIp !== "localhost" && hostIp !== "127.0.0.1") {
-              livekitUrl = `ws://${hostIp}:7880`;
-            }
+          // Calculate reachable LiveKit Cloud URL for client
+          const livekitUrl = defaultLivekitUrl;
+
+          // Dispatch AI Voice Agent to the room on LiveKit Cloud
+          try {
+            const { RoomServiceClient } = await import("livekit-server-sdk");
+            const { RoomAgentDispatch } = await import("@livekit/protocol");
+            const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
+            const roomService = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+            const agentName = process.env["LIVEKIT_WHATSAPP_AGENT_NAME"] || "insurcall-voice-agent";
+
+            const agentDispatch = new RoomAgentDispatch({
+              agentName,
+              metadata: JSON.stringify({
+                session_id: callSessionId,
+                tenant_id: tenantId,
+                agent_id: agentId,
+                customer_id: customer.id,
+                customer_name: customer.name,
+              }),
+            });
+
+            await roomService.createRoom({
+              name: roomName,
+              emptyTimeout: 300,
+              departureTimeout: 20,
+              agents: [agentDispatch],
+            });
+          } catch (rErr: any) {
+            console.warn("LiveKit Cloud room dispatch notice:", rErr?.message);
           }
 
           // 5. Assemble personalized agent greeting from tenant branding config

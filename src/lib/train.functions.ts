@@ -161,8 +161,20 @@ export const addManualKnowledgeFact = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sourceId = randomUUID();
     const itemId = randomUUID();
+    const chunkId = randomUUID();
 
-    // Create an approved manual fact entry
+    // 1. Resolve active agent for this tenant to establish agent isolation
+    const { data: agent } = await insforgeServer.database
+      .from("ai_agents")
+      .select("id")
+      .or(`tenant_id.eq.${data.businessId},business_id.eq.${data.businessId}`)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const targetAgentId = agent?.id;
+
+    // 2. Persist knowledge source with approved_for_rag flag
     const { error: srcErr } = await insforgeServer.database.from("knowledge_sources").insert([
       {
         id: sourceId,
@@ -172,6 +184,7 @@ export const addManualKnowledgeFact = createServerFn({ method: "POST" })
         name: data.question,
         source_uri: "manual://fact",
         status: "done",
+        approved_for_rag: true,
         metadata: {
           pages_found: 1,
           facts_found: 1,
@@ -182,6 +195,7 @@ export const addManualKnowledgeFact = createServerFn({ method: "POST" })
     ]);
     if (srcErr) throw new Error(srcErr.message);
 
+    // 3. Persist knowledge item for human review and audits
     const { error: itemErr } = await insforgeServer.database.from("knowledge_items").insert([
       {
         id: itemId,
@@ -195,6 +209,39 @@ export const addManualKnowledgeFact = createServerFn({ method: "POST" })
       },
     ]);
     if (itemErr) throw new Error(itemErr.message);
+
+    // 4. Generate genuine semantic vector embedding and insert into document_chunks
+    const { generateSemanticEmbedding, EMBEDDING_MODEL_VERSION } = await import("./rag/embeddings.server.ts");
+    const fullContent = `Q: ${data.question}\nA: ${data.answer}`;
+    const embedding = await generateSemanticEmbedding(fullContent);
+
+    const { error: chkErr } = await insforgeServer.database.from("document_chunks").insert([
+      {
+        id: chunkId,
+        tenant_id: data.businessId,
+        source_id: sourceId,
+        chunk_index: 0,
+        content: fullContent,
+        section_heading: data.category || "Approved Q&A",
+        metadata: { question: data.question, answer: data.answer, tags: data.tags },
+        embedding: `[${embedding.join(",")}]`,
+        embedding_model: EMBEDDING_MODEL_VERSION,
+      },
+    ]);
+    if (chkErr) console.warn("Notice inserting fact chunk:", chkErr.message);
+
+    // 5. Explicitly link source to active agent in agent_knowledge_sources
+    if (targetAgentId) {
+      try {
+        await insforgeServer.database.from("agent_knowledge_sources").insert([
+          {
+            tenant_id: data.businessId,
+            agent_id: targetAgentId,
+            source_id: sourceId,
+          },
+        ]);
+      } catch (_) {}
+    }
 
     return { ok: true, sourceId, itemId };
   });
@@ -210,8 +257,8 @@ export const updateSourceTags = createServerFn({ method: "POST" })
 
     if (fetchErr || !source) throw new Error("Knowledge source not found.");
 
-    const meta = (source.metadata as any) || {};
-    meta.tags = data.tags;
+    const meta = (source.metadata as Record<string, unknown> | null) || {};
+    meta["tags"] = data.tags;
 
     const { error: updateErr } = await insforgeServer.database
       .from("knowledge_sources")
@@ -222,6 +269,26 @@ export const updateSourceTags = createServerFn({ method: "POST" })
       .eq("id", data.sourceId);
 
     if (updateErr) throw new Error(updateErr.message);
+
+    // Also update document_chunks metadata with new tags
+    try {
+      const { data: chunks } = await insforgeServer.database
+        .from("document_chunks")
+        .select("id, metadata")
+        .eq("source_id", data.sourceId);
+
+      if (chunks && chunks.length > 0) {
+        for (const ch of chunks) {
+          const chMeta = (ch.metadata as Record<string, unknown> | null) || {};
+          chMeta["tags"] = data.tags;
+          await insforgeServer.database
+            .from("document_chunks")
+            .update({ metadata: chMeta })
+            .eq("id", ch.id);
+        }
+      }
+    } catch (_) {}
+
     return { ok: true };
   });
 
@@ -266,58 +333,213 @@ export const updateFactApproval = createServerFn({ method: "POST" })
 
 const IngestFileInput = z.object({
   tenantId: z.string().uuid(),
-  agentId: z.string().uuid(),
+  agentId: z.string().uuid().optional(),
   fileName: z.string(),
   fileBase64: z.string(),
   fileType: z.enum(["pdf", "docx", "txt", "md", "csv", "xlsx"]),
+  tags: z.array(z.string()).optional(),
 });
 
 export const ingestKnowledgeFile = createServerFn({ method: "POST" })
   .validator((input: unknown) => IngestFileInput.parse(input))
   .handler(async ({ data }) => {
-    const { ingestDocument } = await import("./rag/ingestion.server");
+    const { ingestDocument } = await import("./rag/ingestion.server.ts");
+    let targetAgentId = data.agentId;
+    if (!targetAgentId) {
+      const { data: agent } = await insforgeServer.database
+        .from("ai_agents")
+        .select("id")
+        .or(`tenant_id.eq.${data.tenantId},business_id.eq.${data.tenantId}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetAgentId = agent?.id;
+    }
+    if (!targetAgentId) {
+      const { data: createdAgent } = await insforgeServer.database
+        .from("ai_agents")
+        .insert([
+          {
+            tenant_id: data.tenantId,
+            name: "AI Assistant",
+            greeting: "Hello! Welcome to our agency assistance. How may I help you today?",
+            tone: "Professional",
+            role: "AI Receptionist & Support Specialist",
+            deployment_mode: "test",
+          },
+        ])
+        .select("id")
+        .maybeSingle();
+      targetAgentId = createdAgent?.id;
+    }
+    if (!targetAgentId) throw new Error("Could not initialize AI agent for this workspace.");
+
+    // Auto-infer initial domain tags if not explicitly supplied
+    const fileNameLower = data.fileName.toLowerCase();
+    const inferredTags: string[] = [...(data.tags || [])];
+    if (fileNameLower.includes("life")) inferredTags.push("Life");
+    if (fileNameLower.includes("motor") || fileNameLower.includes("car") || fileNameLower.includes("vehicle")) inferredTags.push("Motor");
+    if (fileNameLower.includes("health") || fileNameLower.includes("mediclaim")) inferredTags.push("Health");
+    if (fileNameLower.includes("home") || fileNameLower.includes("property") || fileNameLower.includes("fire")) inferredTags.push("Property");
+    if (fileNameLower.includes("claim") || fileNameLower.includes("fnol")) inferredTags.push("Claims", "FNOL");
+    if (!inferredTags.includes("Customer-safe")) inferredTags.push("Customer-safe");
+    const uniqueTags = Array.from(new Set(inferredTags));
+
     const buffer = Buffer.from(data.fileBase64, "base64");
-    return ingestDocument({
+    const result = await ingestDocument({
       tenantId: data.tenantId,
-      agentId: data.agentId,
+      agentId: targetAgentId,
       sourceName: data.fileName,
       sourceType: data.fileType,
       fileBuffer: buffer,
     });
+
+    if (result.status === "failed") {
+      throw new Error(result.error || "Failed to process and index document.");
+    }
+
+    // Attach initial tags to newly created knowledge source and chunks
+    if (result.sourceId && uniqueTags.length > 0) {
+      try {
+        const { data: createdSource } = await insforgeServer.database
+          .from("knowledge_sources")
+          .select("metadata")
+          .eq("id", result.sourceId)
+          .maybeSingle();
+
+        const meta = (createdSource?.metadata as Record<string, unknown> | null) || {};
+        meta["tags"] = uniqueTags;
+        await insforgeServer.database
+          .from("knowledge_sources")
+          .update({ metadata: meta })
+          .eq("id", result.sourceId);
+
+        const { data: chunks } = await insforgeServer.database
+          .from("document_chunks")
+          .select("id, metadata")
+          .eq("source_id", result.sourceId);
+
+        if (chunks && chunks.length > 0) {
+          for (const ch of chunks) {
+            const chMeta = (ch.metadata as Record<string, unknown> | null) || {};
+            chMeta["tags"] = uniqueTags;
+            await insforgeServer.database
+              .from("document_chunks")
+              .update({ metadata: chMeta })
+              .eq("id", ch.id);
+          }
+        }
+      } catch (_) {}
+    }
+
+    return result;
   });
 
 const IngestApprovedUrlInput = z.object({
   tenantId: z.string().uuid(),
-  agentId: z.string().uuid(),
+  agentId: z.string().uuid().optional(),
   url: z.string().url(),
 });
 
 export const ingestApprovedUrl = createServerFn({ method: "POST" })
   .validator((input: unknown) => IngestApprovedUrlInput.parse(input))
   .handler(async ({ data }) => {
-    const { ingestDocument } = await import("./rag/ingestion.server");
+    const { ingestDocument } = await import("./rag/ingestion.server.ts");
+    let targetAgentId = data.agentId;
+    if (!targetAgentId) {
+      const { data: agent } = await insforgeServer.database
+        .from("ai_agents")
+        .select("id")
+        .or(`tenant_id.eq.${data.tenantId},business_id.eq.${data.tenantId}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetAgentId = agent?.id;
+    }
+    if (!targetAgentId) throw new Error("No active AI agent found for this tenant.");
+
     return ingestDocument({
       tenantId: data.tenantId,
-      agentId: data.agentId,
+      agentId: targetAgentId,
       sourceName: data.url,
       sourceType: "url",
       sourceUri: data.url,
     });
   });
 
+const TenantKnowledgeInput = z.object({
+  businessId: z.string().uuid(),
+});
+
+export const getKnowledgeSources = createServerFn({ method: "GET" })
+  .validator((input: unknown) => TenantKnowledgeInput.parse(input))
+  .handler(async ({ data }) => {
+    const { data: sources, error } = await insforgeServer.database
+      .from("knowledge_sources")
+      .select("id, type, name, source_uri, status, metadata, created_at, updated_at")
+      .or(`tenant_id.eq.${data.businessId},business_id.eq.${data.businessId}`)
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return sources ?? [];
+  });
+
+export const getKnowledgeItems = createServerFn({ method: "GET" })
+  .validator((input: unknown) => TenantKnowledgeInput.parse(input))
+  .handler(async ({ data }) => {
+    const { data: items, error } = await insforgeServer.database
+      .from("knowledge_items")
+      .select("id, question, answer, category, approved, source_id, created_at")
+      .or(`tenant_id.eq.${data.businessId},business_id.eq.${data.businessId}`)
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return items ?? [];
+  });
+
 const QueryGroundedInput = z.object({
   tenantId: z.string().uuid(),
-  agentId: z.string().uuid(),
+  agentId: z.string().uuid().optional(),
   query: z.string().min(2),
+  tags: z.array(z.string()).optional(),
 });
 
 export const queryKnowledgeGrounded = createServerFn({ method: "POST" })
   .validator((input: unknown) => QueryGroundedInput.parse(input))
   .handler(async ({ data }) => {
-    const { generateGroundedAnswer } = await import("./rag/retrieval.server");
-    return generateGroundedAnswer({
+    let targetAgentId = data.agentId;
+    if (!targetAgentId) {
+      const { data: agent } = await insforgeServer.database
+        .from("ai_agents")
+        .select("id")
+        .or(`tenant_id.eq.${data.tenantId},business_id.eq.${data.tenantId}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetAgentId = agent?.id;
+    }
+    if (!targetAgentId) throw new Error("No active agent configured for this tenant.");
+
+    const { retrieveAgentKnowledge, generateGroundedAnswer } = await import("./rag/retrieval.server.ts");
+    const chunks = await retrieveAgentKnowledge(data.tenantId, targetAgentId, data.query, 0.2, 5, data.tags);
+    const answerResult = await generateGroundedAnswer({
       tenantId: data.tenantId,
-      agentId: data.agentId,
+      agentId: targetAgentId,
       query: data.query,
+      requiredTags: data.tags,
     });
+
+    return {
+      chunks: chunks.map((c) => ({
+        id: c.id,
+        sourceId: c.sourceId,
+        sourceName: c.sourceName,
+        sourceType: c.sourceType,
+        content: c.content,
+        similarity: c.similarity,
+        sectionHeading: c.sectionHeading || undefined,
+        pageNumber: c.pageNumber || undefined,
+      })),
+      answerResult,
+    };
   });

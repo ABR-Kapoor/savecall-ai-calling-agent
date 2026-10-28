@@ -151,11 +151,17 @@ async def entrypoint(ctx: JobContext):
         return json.dumps(res)
 
     @llm.function_tool
-    async def search_policy_docs(query: str) -> str:
-        """Search verified policy documents and underwriting guidelines to answer customer questions."""
+    async def search_policy_docs(query: str, tags: str = "") -> str:
+        """Search verified policy documents and underwriting guidelines to answer customer questions.
+        Args:
+            query: The specific customer question or policy coverage topic.
+            tags: Optional domain tag or comma-separated tags to filter documents (e.g. 'Life', 'Motor', 'Health', 'Claims', 'FNOL', 'Customer-safe').
+        """
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
         res = await execute_remote_tool(session_id, tenant_id, customer_id, "search_policy_docs", {
             "query": query,
             "agent_id": agent_id,
+            "tags": tag_list,
         })
         return json.dumps(res)
 

@@ -81,14 +81,12 @@ export const Route = createFileRoute("/api/webhooks/clerk")({
                         preferred_language: "English",
                       },
                       agent_config: {
-                        name: "Anya",
-                        voice_style: "Warm & Reassuring",
-                        greeting:
-                          "Hello! Thank you for calling our office. I am Anya, your AI insurance assistant. How can I assist you with your policy, coverage, or claim inquiry today?",
-                        supported_languages: ["English", "Hindi", "Hinglish"],
-                        tone: "Warm & Professional",
-                        instructions:
-                          "Help policyholders with coverage, claims intake, and status verification. Escalate high-risk changes to staff.",
+                        name: "",
+                        voice_style: "",
+                        greeting: "",
+                        supported_languages: [],
+                        tone: "",
+                        instructions: "",
                       },
                       supported_workflows: [
                         "policy_enquiries",

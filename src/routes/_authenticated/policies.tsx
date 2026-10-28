@@ -92,7 +92,7 @@ function PoliciesPage() {
             />
           </div>
 
-          <div className="text-xs text-muted-foreground self-center sm:self-auto font-mono">
+          <div className="text-xs text-slate-500 font-medium self-center sm:self-auto">
             Showing {filtered.length} of {policies?.length || 0} policies
           </div>
         </div>
@@ -106,15 +106,15 @@ function PoliciesPage() {
         )}
 
         {/* Desktop Responsive Table + Mobile Card View */}
-        <Card className="border border-border bg-card shadow-xs">
-          <CardHeader className="pb-3 border-b border-border/60">
+        <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+          <CardHeader className="pb-3 border-b border-slate-100">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base font-semibold text-foreground">
-                  Active & Scoped Policies
+                <CardTitle className="text-sm font-bold text-slate-900">
+                  Verified Policy Records
                 </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground">
-                  InsForge Row Level Security ensures queries remain strictly isolated to this carrier workspace
+                <CardDescription className="text-xs text-slate-500 mt-0.5">
+                  Policy coverage and beneficiary records verified for customer lookup and claims assistance.
                 </CardDescription>
               </div>
             </div>

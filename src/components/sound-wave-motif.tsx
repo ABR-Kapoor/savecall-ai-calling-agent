@@ -64,44 +64,44 @@ export function SoundWaveMotif({
           <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-[#087F8C]/20 via-[#10A6AE] to-[#087F8C]/20" />
 
           <div className="relative z-10 flex flex-col items-center">
-            <div className="size-10 rounded-full border-2 border-[#10A6AE] bg-[#172033] flex items-center justify-center text-xs font-mono font-bold text-[#10A6AE] shadow-[0_0_15px_rgba(16,166,174,0.3)]">
+            <div className="size-10 rounded-full border-2 border-[#10A6AE] bg-white flex items-center justify-center text-xs font-mono font-bold text-[#087E8B] shadow-[0_0_15px_rgba(8,127,140,0.18)]">
               01
             </div>
-            <span className="mt-2 text-[11px] font-mono tracking-wider text-slate-300 uppercase">Incoming Call</span>
+            <span className="mt-2 text-[11px] font-mono tracking-wider text-slate-600 uppercase">Incoming Call</span>
           </div>
 
-          <div className="relative z-10 hidden sm:flex items-center gap-1 bg-[#172033] px-3 py-1 rounded-full border border-[#087F8C]/40">
+          <div className="relative z-10 hidden sm:flex items-center gap-1 bg-white px-3 py-1 rounded-full border border-[#087F8C]/30">
             {[12, 22, 16, 26, 14].map((h, i) => (
               <span
                 key={i}
-                className="w-1 bg-[#10A6AE] rounded-full"
+                className="w-1 bg-[#087F8C] rounded-full"
                 style={{ height: `${h}px` }}
               />
             ))}
           </div>
 
           <div className="relative z-10 flex flex-col items-center">
-            <div className="size-10 rounded-full border-2 border-[#087F8C] bg-[#172033] flex items-center justify-center text-xs font-mono font-bold text-white shadow-[0_0_15px_rgba(8,127,140,0.4)]">
+            <div className="size-10 rounded-full border-2 border-[#087E8B] bg-white flex items-center justify-center text-xs font-mono font-bold text-[#087E8B] shadow-[0_0_15px_rgba(8,127,140,0.3)]">
               02
             </div>
-            <span className="mt-2 text-[11px] font-mono tracking-wider text-slate-300 uppercase">Anya Receptionist</span>
+            <span className="mt-2 text-[11px] font-mono tracking-wider text-slate-600 uppercase">AI Receptionist</span>
           </div>
 
-          <div className="relative z-10 hidden sm:flex items-center gap-1 bg-[#172033] px-3 py-1 rounded-full border border-[#087F8C]/40">
+          <div className="relative z-10 hidden sm:flex items-center gap-1 bg-white px-3 py-1 rounded-full border border-[#087F8C]/30">
             {[14, 26, 18, 22, 12].map((h, i) => (
               <span
                 key={i}
-                className="w-1 bg-[#10A6AE] rounded-full"
+                className="w-1 bg-[#087F8C] rounded-full"
                 style={{ height: `${h}px` }}
               />
             ))}
           </div>
 
           <div className="relative z-10 flex flex-col items-center">
-            <div className="size-10 rounded-full border-2 border-emerald-400 bg-[#172033] flex items-center justify-center text-xs font-mono font-bold text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)]">
+            <div className="size-10 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center text-xs font-mono font-bold text-emerald-700 shadow-[0_0_15px_rgba(16,185,129,0.25)]">
               03
             </div>
-            <span className="mt-2 text-[11px] font-mono tracking-wider text-slate-300 uppercase">Booked & Verified</span>
+            <span className="mt-2 text-[11px] font-mono tracking-wider text-slate-600 uppercase">Booked & Verified</span>
           </div>
         </div>
       </div>

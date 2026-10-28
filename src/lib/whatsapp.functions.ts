@@ -9,6 +9,8 @@ import crypto from "node:crypto";
 import { insforgeServer } from "@/lib/insforge/client.server";
 import { resolveCurrentTenantId } from "@/lib/insurance.functions";
 import { defaultOpenWAAdapter } from "@/lib/whatsapp/openwa-adapter";
+import { evaluateOutboundWhatsAppGate } from "@/lib/whatsapp/outbound-guard.server";
+import { parseWhatsAppIdentity, cleanWhatsAppPhone } from "@/lib/whatsapp/identity";
 import type {
   WhatsAppConnectionRecord,
   WhatsAppConversationRecord,
@@ -498,6 +500,18 @@ export const sendWhatsAppTestMessage = createServerFn({ method: "POST", strict: 
     const idempotencyKey = `test_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
     const now = new Date().toISOString();
 
+    const gateDecision = evaluateOutboundWhatsAppGate({
+      tenantId,
+      chatId,
+      recipientPhone: `+${cleanDigits}`,
+      messageType: "test_message",
+      fromMe: false,
+    });
+
+    if (!gateDecision.allowed) {
+      throw new Error(`Outbound safety gate rejected message: ${gateDecision.reason}`);
+    }
+
     const sendRes = await defaultOpenWAAdapter.sendTextMessage(
       conn.provider_session_id,
       {
@@ -611,7 +625,18 @@ export const getWhatsAppConversations = createServerFn({ method: "GET", strict: 
       .limit(pageSize);
 
     if (error) throw new Error(error.message);
-    return (conversations || []) as WhatsAppConversationRecord[];
+    const mapped = ((conversations || []) as WhatsAppConversationRecord[]).map((c) => {
+      const parsed = parseWhatsAppIdentity(c.chat_id);
+      let phone = c.customer_phone;
+      if (!phone || phone.includes("@lid")) {
+        phone = parsed.phone;
+      }
+      return {
+        ...c,
+        customer_phone: phone,
+      };
+    });
+    return mapped;
   });
 
 const ConversationMessagesInput = z.object({
@@ -704,6 +729,18 @@ export const sendWhatsAppChatMessage = createServerFn({ method: "POST", strict: 
 
     if (!conn || !conn.provider_session_id) {
       throw new Error("Active WhatsApp connection not found");
+    }
+
+    const gateDecision = evaluateOutboundWhatsAppGate({
+      tenantId,
+      chatId: conv.chat_id,
+      recipientPhone: conv.customer_phone,
+      messageType: "staff_reply",
+      fromMe: false,
+    });
+
+    if (!gateDecision.allowed) {
+      throw new Error(`Outbound safety gate rejected send: ${gateDecision.reason}`);
     }
 
     const idempotencyKey = `staff_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;

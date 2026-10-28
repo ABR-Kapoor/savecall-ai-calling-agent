@@ -46,9 +46,9 @@ async function main() {
             preferred_language: 'English'
           },
           agent_config: {
-            name: 'Anya',
+            name: `${orgName} Assistant`,
             voice_style: 'Warm & Reassuring',
-            greeting: 'Hello! Thank you for calling our office. I am Anya, your AI insurance assistant. How can I assist you with your policy, coverage, or claim inquiry today?',
+            greeting: `Hello! Thank you for calling ${orgName}. How can I assist you with your policy, coverage, or claim inquiry today?`,
             supported_languages: ['English', 'Hindi', 'Hinglish'],
             tone: 'Warm & Professional',
             instructions: 'Help policyholders with coverage, claims intake, and status verification. Escalate high-risk changes to staff.'

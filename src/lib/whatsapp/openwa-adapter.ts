@@ -128,10 +128,17 @@ export class OpenWAAdapter implements IWhatsAppProvider {
     }
   }
 
+  private isEmbeddedMode(): boolean {
+    return process.env["USE_EMBEDDED_WHATSAPP_ENGINE"] === "true";
+  }
+
   /**
    * Health check to confirm OpenWA gateway readiness
    */
   async checkHealth(): Promise<{ healthy: boolean; status: string; version?: string }> {
+    if (this.isEmbeddedMode()) {
+      return (await getEmbeddedEngine()).checkHealth();
+    }
     try {
       let res: { status?: string; version?: string } | undefined;
       try {
@@ -151,8 +158,11 @@ export class OpenWAAdapter implements IWhatsAppProvider {
         version: res?.version || "v0.25.0",
       };
     } catch {
-      // Graceful fallback to native embedded Baileys engine
-      return (await getEmbeddedEngine()).checkHealth();
+      return {
+        healthy: false,
+        status: "UNREACHABLE",
+        version: "v0.25.0-standalone",
+      };
     }
   }
 
@@ -182,15 +192,14 @@ export class OpenWAAdapter implements IWhatsAppProvider {
    * Simulate a successful QR scan (development testing)
    */
   async simulatePairing(sessionId: string): Promise<OpenWASessionResponse> {
-    try {
-      const raw = await this.request<unknown>(`/api/sessions/${sessionId}/simulate-scan`, {
-        method: "POST",
-        timeoutMs: 3000,
-      });
-      return this.unwrapSession(raw, sessionId, sessionId);
-    } catch {
+    if (this.isEmbeddedMode()) {
       return (await getEmbeddedEngine()).simulatePairing(sessionId);
     }
+    const raw = await this.request<unknown>(`/api/sessions/${sessionId}/simulate-scan`, {
+      method: "POST",
+      timeoutMs: 3000,
+    });
+    return this.unwrapSession(raw, sessionId, sessionId);
   }
 
   /**
@@ -198,53 +207,40 @@ export class OpenWAAdapter implements IWhatsAppProvider {
    */
   async createSession(name: string, customId?: string): Promise<OpenWASessionResponse> {
     const fallbackId = customId || name;
-    try {
-      const payload: { name: string; id?: string } = { name };
-      if (customId) {
-        payload.id = customId;
-      }
-      const raw = await this.request<unknown>("/api/sessions", {
-        method: "POST",
-        body: payload,
-        timeoutMs: 3000,
-      });
-      return this.unwrapSession(raw, fallbackId, name);
-    } catch {
+    if (this.isEmbeddedMode()) {
       return (await getEmbeddedEngine()).createSession(name, customId);
     }
+    const payload: { name: string; id?: string } = { name };
+    if (customId) {
+      payload.id = customId;
+    }
+    const raw = await this.request<unknown>("/api/sessions", {
+      method: "POST",
+      body: payload,
+      timeoutMs: 3000,
+    });
+    return this.unwrapSession(raw, fallbackId, name);
   }
 
   /**
    * Start WhatsApp engine for session
    */
   async startSession(sessionId: string): Promise<OpenWASessionResponse> {
-    try {
-      const raw = await this.request<unknown>(
-        `/api/sessions/${encodeURIComponent(sessionId)}/start`,
-        { method: "POST", timeoutMs: 3000 }
-      );
-      return this.unwrapSession(raw, sessionId, sessionId);
-    } catch {
+    if (this.isEmbeddedMode()) {
       return (await getEmbeddedEngine()).startSession(sessionId);
     }
+    const raw = await this.request<unknown>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/start`,
+      { method: "POST", timeoutMs: 3000 }
+    );
+    return this.unwrapSession(raw, sessionId, sessionId);
   }
 
   /**
    * Retrieve active QR code from engine
    */
   async getQrCode(sessionId: string): Promise<OpenWAQrResponse> {
-    try {
-      const res = await this.request<OpenWAQrResponse>(
-        `/api/sessions/${encodeURIComponent(sessionId)}/qr`,
-        { method: "GET", timeoutMs: 3000 }
-      );
-      return {
-        qr: res.qr,
-        raw: res.raw || `2@wa-token-for-${sessionId}`,
-        status: res.status || "SCAN_QR_CODE",
-        success: true,
-      };
-    } catch {
+    if (this.isEmbeddedMode()) {
       const res = await (await getEmbeddedEngine()).getQrCode(sessionId);
       return {
         qr: res.qr,
@@ -253,50 +249,58 @@ export class OpenWAAdapter implements IWhatsAppProvider {
         success: true,
       };
     }
+    const res = await this.request<OpenWAQrResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/qr`,
+      { method: "GET", timeoutMs: 3000 }
+    );
+    return {
+      qr: res.qr,
+      raw: res.raw || `2@wa-token-for-${sessionId}`,
+      status: res.status || "SCAN_QR_CODE",
+      success: true,
+    };
   }
 
   /**
    * Fetch current session details
    */
   async getSession(sessionId: string): Promise<OpenWASessionResponse> {
-    try {
-      const raw = await this.request<unknown>(
-        `/api/sessions/${encodeURIComponent(sessionId)}`,
-        { method: "GET", timeoutMs: 3000 }
-      );
-      return this.unwrapSession(raw, sessionId, sessionId);
-    } catch {
+    if (this.isEmbeddedMode()) {
       return (await getEmbeddedEngine()).getSession(sessionId);
     }
+    const raw = await this.request<unknown>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "GET", timeoutMs: 3000 }
+    );
+    return this.unwrapSession(raw, sessionId, sessionId);
   }
 
   /**
    * Stop session and disconnect
    */
   async stopSession(sessionId: string): Promise<{ success: boolean; status: string }> {
-    try {
-      const res = await this.request<OpenWASessionResponse>(
-        `/api/sessions/${encodeURIComponent(sessionId)}/stop`,
-        { method: "POST", timeoutMs: 3000 }
-      );
-      return { success: true, status: res.status || "disconnected" };
-    } catch {
+    if (this.isEmbeddedMode()) {
       return (await getEmbeddedEngine()).stopSession(sessionId);
     }
+    const res = await this.request<OpenWASessionResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/stop`,
+      { method: "POST", timeoutMs: 3000 }
+    );
+    return { success: true, status: res.status || "disconnected" };
   }
 
   /**
    * Delete session and clear stored credentials
    */
   async deleteSession(sessionId: string): Promise<void> {
-    try {
-      await this.request<void>(
-        `/api/sessions/${encodeURIComponent(sessionId)}`,
-        { method: "DELETE", timeoutMs: 3000 }
-      );
-    } catch {
+    if (this.isEmbeddedMode()) {
       await (await getEmbeddedEngine()).deleteSession(sessionId);
+      return;
     }
+    await this.request<void>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE", timeoutMs: 3000 }
+    );
   }
 
   /**
@@ -312,30 +316,7 @@ export class OpenWAAdapter implements IWhatsAppProvider {
         ? { chatId: paramsOrChatId, text: text || "" }
         : paramsOrChatId;
 
-    try {
-      const headers: Record<string, string> = {};
-      if (params.idempotencyKey) {
-        headers["Idempotency-Key"] = params.idempotencyKey;
-      }
-
-      const res = await this.request<OpenWASendTextResponse>(
-        `/api/sessions/${encodeURIComponent(sessionId)}/messages/send-text`,
-        {
-          method: "POST",
-          headers,
-          body: {
-            chatId: params.chatId,
-            text: params.text,
-          },
-          timeoutMs: 8000,
-        }
-      );
-      return {
-        messageId: res.messageId,
-        timestamp: res.timestamp || Date.now(),
-        success: true,
-      };
-    } catch {
+    if (this.isEmbeddedMode()) {
       const res = await (await getEmbeddedEngine()).sendTextMessage(sessionId, params);
       return {
         messageId: res.messageId,
@@ -343,6 +324,29 @@ export class OpenWAAdapter implements IWhatsAppProvider {
         success: true,
       };
     }
+
+    const headers: Record<string, string> = {};
+    if (params.idempotencyKey) {
+      headers["Idempotency-Key"] = params.idempotencyKey;
+    }
+
+    const res = await this.request<OpenWASendTextResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages/send-text`,
+      {
+        method: "POST",
+        headers,
+        body: {
+          chatId: params.chatId,
+          text: params.text,
+        },
+        timeoutMs: 8000,
+      }
+    );
+    return {
+      messageId: res.messageId,
+      timestamp: res.timestamp || Date.now(),
+      success: true,
+    };
   }
 
   /**

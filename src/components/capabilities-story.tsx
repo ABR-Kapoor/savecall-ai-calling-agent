@@ -47,7 +47,7 @@ export function CapabilitiesStory() {
                 Make conversations feel natural.
               </h3>
               <p className="text-sm leading-relaxed text-[#475467]">
-                Callers speak in everyday English, Hindi, or conversational Hinglish. Anya listens, recognizes intent in realtime, and responds politely with natural intonation.
+                Callers speak in everyday English, Hindi, or conversational Hinglish. Your AI assistant listens, recognizes intent in realtime, and responds politely with natural intonation.
               </p>
               <ul className="space-y-2 pt-2 text-xs text-[#344054]">
                 <li className="flex items-center gap-2">
@@ -85,7 +85,7 @@ export function CapabilitiesStory() {
                   </div>
                   <div className="rounded-xl bg-[#E6F6F7]/70 border border-[#087F8C]/20 p-3">
                     <span className="font-mono text-[10px] text-[#087F8C] uppercase tracking-wider block mb-1">
-                      Anya (Voice Assistant)
+                      AI Assistant (Voice)
                     </span>
                     <p className="text-slate-900 font-medium">
                       "Namaste! Policy number 90214 par cashless claim actively processed ho chuka hai. Main aapko summary SMS par bhej rahi hoon."

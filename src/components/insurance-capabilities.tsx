@@ -55,7 +55,7 @@ export function InsuranceCapabilities() {
             onClick={() => setActiveTab("fnol")}
             className={`px-4 py-2 rounded-xl text-xs font-mono tracking-wider uppercase transition-all cursor-pointer ${
               activeTab === "fnol"
-                ? "bg-[#111827] text-white shadow-xs font-bold"
+                ? "bg-[#087E8B] hover:bg-[#066772] text-white shadow-xs font-bold"
                 : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
             }`}
           >
@@ -66,7 +66,7 @@ export function InsuranceCapabilities() {
             onClick={() => setActiveTab("policy")}
             className={`px-4 py-2 rounded-xl text-xs font-mono tracking-wider uppercase transition-all cursor-pointer ${
               activeTab === "policy"
-                ? "bg-[#111827] text-white shadow-xs font-bold"
+                ? "bg-[#087E8B] hover:bg-[#066772] text-white shadow-xs font-bold"
                 : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
             }`}
           >
@@ -77,7 +77,7 @@ export function InsuranceCapabilities() {
             onClick={() => setActiveTab("status")}
             className={`px-4 py-2 rounded-xl text-xs font-mono tracking-wider uppercase transition-all cursor-pointer ${
               activeTab === "status"
-                ? "bg-[#111827] text-white shadow-xs font-bold"
+                ? "bg-[#087E8B] hover:bg-[#066772] text-white shadow-xs font-bold"
                 : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
             }`}
           >
@@ -88,7 +88,7 @@ export function InsuranceCapabilities() {
             onClick={() => setActiveTab("renewal")}
             className={`px-4 py-2 rounded-xl text-xs font-mono tracking-wider uppercase transition-all cursor-pointer ${
               activeTab === "renewal"
-                ? "bg-[#111827] text-white shadow-xs font-bold"
+                ? "bg-[#087E8B] hover:bg-[#066772] text-white shadow-xs font-bold"
                 : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
             }`}
           >
@@ -99,7 +99,7 @@ export function InsuranceCapabilities() {
             onClick={() => setActiveTab("escalation")}
             className={`px-4 py-2 rounded-xl text-xs font-mono tracking-wider uppercase transition-all cursor-pointer ${
               activeTab === "escalation"
-                ? "bg-[#111827] text-white shadow-xs font-bold"
+                ? "bg-[#087E8B] hover:bg-[#066772] text-white shadow-xs font-bold"
                 : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
             }`}
           >
@@ -120,7 +120,7 @@ export function InsuranceCapabilities() {
                   First Notice of Loss: Structured Intake
                 </h3>
                 <p className="text-sm leading-relaxed text-[#475467]">
-                  When a policyholder calls in distress after an incident, Anya gathers mandatory details patiently without missing critical regulatory fields.
+                  When a policyholder calls in distress after an incident, your AI assistant gathers mandatory details patiently without missing critical regulatory fields.
                 </p>
                 <ul className="space-y-2.5 text-xs text-slate-700">
                   <li className="flex items-center gap-2">
@@ -280,7 +280,7 @@ export function InsuranceCapabilities() {
                       s.status === "completed"
                         ? "bg-emerald-50/60 border-emerald-200 text-emerald-950"
                         : s.status === "active"
-                        ? "bg-[#172033] text-white border-[#10A6AE] shadow-md"
+                        ? "bg-[#E6F5F6] text-[#087E8B] border-[#087E8B]/40 shadow-md"
                         : "bg-slate-50 border-slate-200 text-slate-500 opacity-60"
                     }`}
                   >
@@ -315,7 +315,7 @@ export function InsuranceCapabilities() {
                   High-consequence modifications (such as changing nominees, reducing deductibles, or updating insured address) are queued for licensed agent review.
                 </p>
                 <div className="pt-2">
-                  <Button asChild size="sm" className="bg-[#111827] text-white text-xs font-mono rounded-xl">
+                  <Button asChild size="sm" className="bg-[#087E8B] hover:bg-[#066772] text-white text-xs font-mono rounded-xl">
                     <Link to="/change-requests">VIEW CHANGE REQUEST QUEUE</Link>
                   </Button>
                 </div>

@@ -1,211 +1,84 @@
-import React, { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  PhoneCall,
-  PhoneOff,
-  Mic,
-  Volume2,
-  CheckCircle2,
-  Clock,
-  ShieldCheck,
-  FileText,
-  AlertCircle,
-  ArrowRight,
-  UserCheck,
-} from "lucide-react";
+import { ArrowRight, Check, FileText, Mic, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { SoundWaveMotif } from "@/components/sound-wave-motif";
 
+const callSteps = [
+  { number: "01", title: "Understand the request", detail: "Policy question or claim intake", icon: FileText },
+  { number: "02", title: "Use approved information", detail: "Keep the answer grounded", icon: ShieldCheck },
+  { number: "03", title: "Route the next step", detail: "Bring a person in when needed", icon: UserRoundCheck },
+];
+
+/** Honest overview of the real voice demo and the workflow it is built to support. */
 export function InsuranceHeroPanel() {
-  const [callState, setCallState] = useState<"idle" | "connecting" | "live" | "completed">("live");
-  const [callTimer, setCallTimer] = useState(38);
-
-  useEffect(() => {
-    let interval: any;
-    if (callState === "live") {
-      interval = setInterval(() => {
-        setCallTimer((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [callState]);
-
-  const toggleCall = () => {
-    if (callState === "live") {
-      setCallState("completed");
-    } else {
-      setCallState("connecting");
-      setTimeout(() => {
-        setCallState("live");
-        setCallTimer(0);
-      }, 700);
-    }
-  };
-
-  const formatTimer = (s: number) => {
-    const mins = Math.floor(s / 60).toString().padStart(2, "0");
-    const secs = (s % 60).toString().padStart(2, "0");
-    return `${mins}:${secs}`;
-  };
-
   return (
-    <div className="relative rounded-[32px] border border-slate-200/90 bg-white shadow-[0_24px_55px_-12px_rgba(8,127,140,0.16)] overflow-hidden transition-all duration-300 hover:shadow-[0_28px_65px_-10px_rgba(8,127,140,0.22)]">
-      {/* Top Header Bar */}
-      <div className="flex items-center justify-between border-b border-slate-100 bg-[#FAF9F6] px-5 py-3.5">
-        <div className="flex items-center gap-2.5">
-          <span className="relative flex size-2.5">
-            {callState === "live" && (
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            )}
-            <span
-              className={`relative inline-flex size-2.5 rounded-full ${
-                callState === "live"
-                  ? "bg-emerald-500"
-                  : callState === "connecting"
-                  ? "bg-amber-500 animate-pulse"
-                  : "bg-slate-400"
-              }`}
-            />
+    <section
+      aria-label="InsurCall voice demo"
+      className="overflow-hidden rounded-[1.5rem] border border-[#D5E0DB] bg-white shadow-[0_28px_80px_-42px_rgba(20,43,45,0.48)]"
+    >
+      <div className="relative isolate overflow-hidden bg-[#123B3D] px-6 pb-6 pt-5 text-white sm:px-7 sm:pb-7 sm:pt-6">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_92%_8%,rgba(104,187,158,0.26),transparent_38%),linear-gradient(115deg,#123B3D_10%,#174947_100%)]" />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-28 -z-10 size-64 rounded-full border border-white/[0.08]" />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-4 -top-16 -z-10 size-40 rounded-full border border-white/[0.08]" />
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#B5D8CB]">
+            <span className="grid size-6 place-items-center rounded-md bg-white/10"><Mic className="size-3.5" /></span>
+            InsurCall voice
           </span>
-          <span className="font-mono text-[11px] font-bold tracking-wider uppercase text-slate-800">
-            {callState === "live"
-              ? "Live Insurance Call"
-              : callState === "connecting"
-              ? "Connecting Carrier Line"
-              : "Call Completed"}
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/10 px-2.5 py-1.5 text-[9px] font-medium uppercase tracking-[0.1em] text-white/75">
+            <span className="size-1.5 rounded-full bg-[#8BD7B7]" /> Browser demo
           </span>
         </div>
 
-        <Badge
-          variant="outline"
-          className="border-[#087F8C]/30 bg-[#E6F6F7] text-[10px] font-mono tracking-wider text-[#087F8C] uppercase font-semibold"
-        >
-          Interactive Simulation
-        </Badge>
-      </div>
-
-      <div className="p-6 space-y-4">
-        {/* Caller, Policy & Assistant Context */}
-        <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-100 bg-[#FAF9F6] p-3.5 text-xs">
-          <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
-              Policyholder
-            </span>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="size-2 rounded-full bg-slate-400" />
-              <span className="font-bold text-slate-900">Vikramaditya Sen</span>
-            </div>
-            <div className="font-mono text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-              <span>POL-MOT-2024-8842</span>
-            </div>
-          </div>
-
-          <div className="border-l border-slate-200/80 pl-3">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
-              AI Operations Voice
-            </span>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="size-2 rounded-full bg-[#087F8C]" />
-              <span className="font-bold text-[#087F8C]">Anya (Claims Specialist)</span>
-            </div>
-            <span className="text-[10px] font-mono text-slate-500">English + Hindi</span>
-          </div>
+        <div className="mt-7 max-w-sm">
+          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-white/55">A voice experience for insurance</p>
+          <h2 className="mt-2 font-display text-[1.6rem] font-semibold leading-[1.12] tracking-[-0.035em] text-white sm:text-[1.85rem]">
+            Start with a question. Leave with a next step.
+          </h2>
         </div>
 
-        {/* Real-time Audio Waveform & Status */}
-        <div className="flex items-center justify-between px-2 py-0.5">
-          <div className="flex items-center gap-2">
-            <Volume2 className="size-4 text-[#087F8C]" />
-            <SoundWaveMotif variant="bar-pulse" active={callState === "live"} />
-          </div>
-          <div className="flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full">
-            <Clock className="size-3 text-slate-500" />
-            <span>{callState === "live" ? formatTimer(callTimer) : "01:14"}</span>
-          </div>
+        <div aria-hidden="true" className="mt-6 flex h-9 items-center gap-[3px] opacity-75">
+          {[9, 14, 20, 12, 27, 17, 31, 13, 22, 34, 16, 25, 12, 29, 18, 33, 13, 23, 10, 19, 29, 14, 21, 9, 16, 25, 12, 20, 8, 14, 23, 11, 17, 8, 13, 20, 10, 15, 7, 12].map((height, index) => (
+            <span key={index} className="w-[3px] shrink-0 rounded-full bg-[#91D6B7]" style={{ height: `${height}px` }} />
+          ))}
         </div>
-
-        {/* Illustrative Verbatim Transcript */}
-        <div className="space-y-2.5 rounded-2xl border border-slate-100 bg-white p-4 text-xs shadow-xs">
-          <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 flex items-center justify-between">
-            <span>Illustrative Dialogue</span>
-            <span className="text-emerald-700 font-semibold flex items-center gap-1">
-              <UserCheck className="size-3" /> Identity OTP Verified
-            </span>
-          </div>
-
-          <div className="space-y-2 pt-1">
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 shrink-0 mt-0.5">
-                Policyholder:
-              </span>
-              <p className="text-[11.5px] leading-relaxed text-slate-700 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-                "I submitted my motor claim last week. Can you check what happens next?"
-              </p>
-            </div>
-
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#087F8C] shrink-0 mt-0.5">
-                InsurCall:
-              </span>
-              <p className="text-[11.5px] leading-relaxed text-slate-900 bg-[#E6F6F7]/70 px-3 py-1.5 rounded-xl border border-[#087F8C]/20">
-                "I can help check the available claim status. I will first verify the relevant policy or claim reference."
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Structured Workflow Tracking Output */}
-        <div className="rounded-2xl border border-slate-200/90 bg-[#FAF9F6] p-3 text-[11px] space-y-1.5">
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="font-mono text-[10px] uppercase tracking-wider">Detected Intent:</span>
-            <span className="font-semibold text-slate-900">Motor Claim Status Enquiry</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="font-mono text-[10px] uppercase tracking-wider">Claim Reference:</span>
-            <span className="font-mono font-semibold text-[#087F8C]">CLM-2026-0914</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="font-mono text-[10px] uppercase tracking-wider">Workflow Stage:</span>
-            <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/70">
-              Surveyor Assessment Completed
-            </span>
-          </div>
-        </div>
-
-        {/* Action Controls */}
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={toggleCall}
-            className="h-11 rounded-xl text-xs font-mono tracking-wider border-slate-200 text-slate-700 hover:text-black hover:bg-slate-100 cursor-pointer"
-          >
-            {callState === "live" ? (
-              <>
-                <PhoneOff className="size-3.5 mr-1.5 text-rose-600" />
-                END CALL
-              </>
-            ) : (
-              <>
-                <PhoneCall className="size-3.5 mr-1.5 text-[#087F8C]" />
-                RESTART CALL
-              </>
-            )}
-          </Button>
-
-          <Button
-            asChild
-            className="h-11 rounded-xl text-xs font-mono tracking-wider bg-[#087F8C] hover:bg-[#076C77] text-white shadow-xs"
-          >
-            <Link to="/voice">
-              <Mic className="size-3.5 mr-1.5 text-[#10A6AE]" />
-              LAUNCH SIMULATOR
-              <ArrowRight className="size-3 ml-1" />
-            </Link>
-          </Button>
+        <div className="mt-2 flex items-center justify-between text-[9px] font-medium uppercase tracking-[0.13em] text-white/45">
+          <span>Voice in</span><span>Structured follow-through</span>
         </div>
       </div>
-    </div>
+
+      <div className="bg-[linear-gradient(180deg,#FCFDFC_0%,#F8FAF8_100%)] px-5 py-5 sm:px-7 sm:py-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#71807A]">What the call supports</p>
+          <span className="text-[10px] font-medium text-[#89958F]">A guided live demo</span>
+        </div>
+
+        <ol className="relative space-y-1 before:absolute before:bottom-5 before:left-[15px] before:top-5 before:w-px before:bg-[#DCE6E0]">
+          {callSteps.map(({ number, title, detail, icon: Icon }) => (
+            <li key={number} className="relative flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-200 hover:bg-white">
+              <span className="relative z-10 grid size-[30px] shrink-0 place-items-center rounded-full border border-[#DCE6E0] bg-[#F8FAF8] text-[#43806D]">
+                <Icon className="size-3.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-[#30423D]">{title}</span>
+                <span className="mt-0.5 block text-[11px] text-[#78867F]">{detail}</span>
+              </span>
+              <span className="font-mono text-[9px] text-[#A8B2AC]">{number}</span>
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-4 flex flex-col gap-3 border-t border-[#E5EBE7] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2 text-[10px] leading-relaxed text-[#7E8B85]">
+            <Mic className="mt-0.5 size-3.5 shrink-0 text-[#528271]" />
+            <span>Your browser will ask before microphone access.</span>
+          </div>
+          <Button asChild className="h-10 shrink-0 rounded-xl bg-[#087F8C] px-4 text-xs font-semibold text-white shadow-[0_7px_18px_-9px_rgba(8,127,140,0.75)] transition-all hover:-translate-y-0.5 hover:bg-[#076C77] hover:shadow-[0_11px_22px_-10px_rgba(8,127,140,0.75)] active:translate-y-0">
+            <Link to="/voice">Start voice demo <ArrowRight className="ml-2 size-3.5" /></Link>
+          </Button>
+        </div>
+        <p className="mt-3 text-[10px] text-[#A0AAA4]">Live voice session · You control when it starts</p>
+      </div>
+    </section>
   );
 }

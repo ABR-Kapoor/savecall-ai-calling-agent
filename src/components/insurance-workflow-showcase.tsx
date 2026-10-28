@@ -147,44 +147,36 @@ export function InsuranceWorkflowShowcase() {
                 onClick={() => setSelectedStep(step)}
                 className={`group relative rounded-2xl border p-5 cursor-pointer transition-all flex flex-col justify-between ${
                   isSelected
-                    ? "bg-[#172033] text-white border-[#10A6AE] shadow-lg scale-[1.02]"
+                    ? "bg-[#E6F5F6] border-[#087E8B]/50 text-[#111827] shadow-lg scale-[1.02]"
                     : "bg-[#FAF9F6] border-slate-200/90 text-slate-800 hover:border-[#087F8C]/50 hover:bg-white hover:shadow-md"
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span
-                      className={`font-mono text-xs font-bold ${
-                        isSelected ? "text-[#10A6AE]" : "text-[#087F8C]"
-                      }`}
-                    >
+                    <span className="font-mono text-xs font-bold text-[#087E8B]">
                       {step.stepNumber}
                     </span>
                     <Info
                       className={`size-3.5 transition-opacity ${
-                        isSelected ? "text-white opacity-90" : "text-slate-400 opacity-60 group-hover:opacity-100"
+                        isSelected ? "text-[#087E8B] opacity-80" : "text-slate-400 opacity-60 group-hover:opacity-100"
                       }`}
                     />
                   </div>
-                  <h3
-                    className={`font-display text-sm font-bold leading-tight ${
-                      isSelected ? "text-white" : "text-[#111827]"
-                    }`}
-                  >
+                  <h3 className="font-display text-sm font-bold leading-tight text-[#111827]">
                     {step.name}
                   </h3>
                   <p
                     className={`mt-2 text-[11px] leading-relaxed line-clamp-3 ${
-                      isSelected ? "text-slate-300" : "text-[#667085]"
+                      isSelected ? "text-slate-600" : "text-[#667085]"
                     }`}
                   >
                     {step.shortDesc}
                   </p>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-200/40 flex items-center gap-1 font-mono text-[10px]">
-                  <span className={isSelected ? "text-[#10A6AE]" : "text-[#087F8C]"}>Inspect Details</span>
-                  <ArrowRight className={`size-2.5 ${isSelected ? "text-[#10A6AE]" : "text-[#087F8C]"}`} />
+                <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center gap-1 font-mono text-[10px]">
+                  <span className="text-[#087E8B]">Inspect Details</span>
+                  <ArrowRight className="size-2.5 text-[#087E8B]" />
                 </div>
               </div>
             );
@@ -193,7 +185,7 @@ export function InsuranceWorkflowShowcase() {
 
         {/* Selected Step Detail Panel */}
         {selectedStep && (
-          <div className="mt-8 rounded-3xl border border-slate-200 bg-[#FAF9F6] p-6 sm:p-8 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
               <div className="flex items-center gap-3">
                 <span className="font-mono text-xs font-bold bg-[#087F8C] text-white px-2.5 py-1 rounded-lg">

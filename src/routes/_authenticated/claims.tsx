@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Search, ShieldAlert, Calendar, FileText, User, ArrowRight } from "lucide-react";
+import { Search, ShieldAlert, Calendar, FileText, User, ArrowRight, CheckCircle2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getClaims } from "@/lib/insurance.functions";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -41,6 +41,14 @@ function ClaimsPage() {
       }),
   });
 
+  const totalClaims = claims?.length || 0;
+  const inReviewCount = (claims ?? []).filter((c: any) =>
+    ["submitted", "under_review", "pending", "in_progress"].includes(String(c.status || "").toLowerCase())
+  ).length;
+  const settledCount = (claims ?? []).filter((c: any) =>
+    ["approved", "settled", "paid"].includes(String(c.status || "").toLowerCase())
+  ).length;
+
   const filtered = (claims ?? []).filter((c: any) => {
     const q = search.toLowerCase();
     const custName = c.customers?.name?.toLowerCase() ?? "";
@@ -52,9 +60,69 @@ function ClaimsPage() {
   return (
     <AppShell
       title="Claims Processing"
-      subtitle="First Notice of Loss (FNOL) filings and status evaluations registered via voice receptionist"
+      subtitle="First Notice of Loss (FNOL) filings, incident intake, and active claim evaluations"
     >
       <div className="space-y-6">
+        {/* Executive Summary Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="border border-slate-200 bg-white p-4 shadow-xs rounded-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Registered Filings
+                </span>
+                <span className="text-2xl font-bold text-slate-900 mt-1 block">
+                  {totalClaims}
+                </span>
+                <span className="text-[11px] text-slate-400 mt-0.5 block">
+                  Total FNOL records
+                </span>
+              </div>
+              <div className="grid size-10 place-items-center rounded-xl bg-slate-50 text-slate-600 border border-slate-200">
+                <FileText className="size-5" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="border border-slate-200 bg-white p-4 shadow-xs rounded-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Under Evaluation
+                </span>
+                <span className="text-2xl font-bold text-amber-700 mt-1 block">
+                  {inReviewCount}
+                </span>
+                <span className="text-[11px] text-amber-600 mt-0.5 block">
+                  Survey & assessment active
+                </span>
+              </div>
+              <div className="grid size-10 place-items-center rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
+                <Clock className="size-5" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="border border-slate-200 bg-white p-4 shadow-xs rounded-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Settled / Approved
+                </span>
+                <span className="text-2xl font-bold text-emerald-700 mt-1 block">
+                  {settledCount}
+                </span>
+                <span className="text-[11px] text-emerald-600 mt-0.5 block">
+                  Resolved claim dossiers
+                </span>
+              </div>
+              <div className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
+                <CheckCircle2 className="size-5" />
+              </div>
+            </div>
+          </Card>
+        </div>
+
         {/* Search Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="relative w-full max-w-sm">
@@ -67,7 +135,7 @@ function ClaimsPage() {
             />
           </div>
 
-          <div className="text-xs text-muted-foreground self-center sm:self-auto font-mono">
+          <div className="text-xs text-muted-foreground self-center sm:self-auto font-medium">
             Showing {filtered.length} of {claims?.length || 0} claims
           </div>
         </div>

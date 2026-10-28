@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,76 +11,104 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Building,
+  Building2,
   UserCheck,
   ShieldCheck,
   RefreshCw,
   CheckCircle2,
   Lock,
-  Cpu,
-  Radio,
-  Sparkles,
   MessageSquare,
-  BookOpen,
-  Volume2,
-  Wand2,
-  Plus,
-  Zap,
+  Sparkles,
   Bot,
-  FileCheck,
   Check,
   Save,
-  PhoneForwarded,
   ArrowRight,
+  Clock,
+  Shield,
+  HelpCircle,
+  Smartphone,
+  ExternalLink,
+  Activity,
+  Server,
+  Wifi,
+  AlertTriangle,
+  Headphones,
+  PhoneCall,
+  Radio,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   getTenantSettings,
   updateTenantSettings,
   syncClerkUser,
   getCallerProfile,
   updateSubscriptionPlan,
+  getSystemDiagnostics,
 } from "@/lib/insurance.functions";
+import {
+  getWhatsAppCallingStatus,
+  updateWhatsAppCallingSettings,
+  validateCallingSetupServerFn,
+} from "@/lib/whatsapp-calling.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
   head: () => ({
-    meta: [{ title: "Settings & Agent Studio: InsurCall Insurance AI" }],
+    meta: [{ title: "Settings & Workspace: InsurCall Insurance AI" }],
   }),
   component: SettingsPage,
 });
 
-const DEFAULT_KNOWLEDGE_BASE = `COMPANY: SafeLife Insurance Co. Ltd.
-HOTLINE: +91 800 555 0199 (24/7 Toll-Free)
-CLAIMS EMAIL: claims@safelife.com
+interface BrandingConfig {
+  plan?: string;
+  support_email?: string;
+  support_phone?: string;
+  business_hours?: string;
+  supported_lines?: string[];
+  agent_config?: {
+    agent_name?: string;
+    tone?: string;
+    language?: string;
+    greeting?: string;
+    voice_id?: string;
+    system_prompt?: string;
+    knowledge_base?: string;
+    last_trained_at?: string;
+    [key: string]: unknown;
+  };
+  organization_details?: {
+    agency_name?: string;
+    business_type?: string;
+    contact_name?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    lines_of_insurance?: string[];
+    preferred_language?: string;
+    [key: string]: unknown;
+  };
+  call_handling?: {
+    working_hours?: string;
+    emergency_hotline?: string;
+    after_hours_route?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
 
-POLICY COVERAGES:
-1. Comprehensive Health Shield:
-   - Up to ₹15,00,000 sum insured.
-   - Covers inpatient hospitalization, day care procedures, and pre/post-hospitalization (60/90 days).
-   - Cashless claim approved within 2 hours at over 8,500+ network hospitals.
-
-2. Motor Secure Drive:
-   - Zero-depreciation bumper-to-bumper car & two-wheeler protection.
-   - Free 24/7 roadside towing, flat tire assistance, and key replacement.
-   - Spot claim settlement up to ₹50,000 via mobile inspection video.
-
-3. Term Life Protection:
-   - ₹50,00,000 to ₹2 Crore guaranteed financial payout for designated nominee.
-   - Terminal illness acceleration benefit included at zero extra cost.
-
-CASHLESS CLAIM PROCEDURES:
-- Present SafeLife health card or Customer ID at the hospital TPA insurance desk.
-- Pre-authorization request processed in under 120 minutes.
-- Original discharge summary and pharmacy bills required for reimbursement within 7 days.
-
-SECURITY & VERIFICATION RULES:
-- Read-only actions (policy status, balance due date, claim payout status) are verified directly via caller's authenticated profile.
-- High-risk operations (changing policy nominee, changing registered phone/email, policy surrender) strictly require a 6-digit email OTP.`;
+const DEFAULT_SUPPORTED_LINES = [
+  "Health & Medical",
+  "Motor & Commercial Vehicle",
+  "Term & Life",
+  "Property & Home",
+  "Commercial & Fleet",
+];
 
 function SettingsPage() {
   const { user } = useUser();
   const queryClient = useQueryClient();
+  const isInitialized = useRef(false);
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ["tenant-settings", user?.id],
@@ -106,114 +134,156 @@ function SettingsPage() {
     enabled: !!user,
   });
 
-  // Organization settings
+  const {
+    data: diagnostics,
+    isLoading: isDiagLoading,
+    isRefetching: isDiagRefetching,
+    refetch: refetchDiag,
+  } = useQuery({
+    queryKey: ["system-diagnostics", tenant?.id, user?.id],
+    queryFn: () =>
+      getSystemDiagnostics({
+        data: {
+          tenantId: tenant?.id,
+          clerkUserId: user?.id,
+        },
+      }),
+    enabled: !!tenant?.id,
+  });
+
+  // Organization state (strictly from user database records)
   const [name, setName] = useState("");
   const [supportEmail, setSupportEmail] = useState("");
   const [supportPhone, setSupportPhone] = useState("");
+  const [businessHours, setBusinessHours] = useState("");
+  const [supportedLines, setSupportedLines] = useState<string[]>(DEFAULT_SUPPORTED_LINES);
 
-  // ElevenLabs-style Agent Studio settings
-  const [agentName, setAgentName] = useState("InsurCall AI Assistant");
-  const [tone, setTone] = useState("Professional & Empathetic");
-  const [language, setLanguage] = useState("Bilingual / Hinglish");
-  const [voiceId, setVoiceId] = useState("en-IN-NeerjaNeural");
-  const [greeting, setGreeting] = useState(
-    "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you with your insurance policies or claims today?"
-  );
-  const [systemPrompt, setSystemPrompt] = useState(
-    "You are InsurCall AI, a trusted, empathetic voice assistant for insurance policyholders. Always verify details carefully, provide concise answers, and enforce OTP for sensitive changes."
-  );
-  const [knowledgeBase, setKnowledgeBase] = useState(DEFAULT_KNOWLEDGE_BASE);
-  const [isTraining, setIsTraining] = useState(false);
-  const [lastTrained, setLastTrained] = useState<string | null>(null);
+  // Assistant persona (strictly from user database records)
+  const [agentName, setAgentName] = useState("");
+  const [tone, setTone] = useState("");
+  const [language, setLanguage] = useState("");
+  const [greeting, setGreeting] = useState("");
 
   useEffect(() => {
-    if (tenant) {
-      setName(tenant.name || "SafeLife Insurance Co. Ltd.");
-      const bCfg = (tenant.branding_config as any) || {};
-      setSupportEmail(bCfg.support_email || "claims@safelife.com");
-      setSupportPhone(bCfg.support_phone || "+91 800 555 0199");
+    if (tenant && !isInitialized.current) {
+      isInitialized.current = true;
+      setName(tenant.name || "");
+      const bCfg = (tenant.branding_config as BrandingConfig | null) || {};
+      const org = bCfg.organization_details || {};
+      const call = bCfg.call_handling || {};
+
+      setSupportEmail(bCfg.support_email || org.contact_email || "");
+      setSupportPhone(bCfg.support_phone || org.contact_phone || "");
+
+      const hours =
+        (typeof bCfg.business_hours === "string" && bCfg.business_hours) ||
+        (typeof call.working_hours === "string" && call.working_hours) ||
+        "";
+      setBusinessHours(hours);
+
+      const lines =
+        (Array.isArray(bCfg.supported_lines) && bCfg.supported_lines.length > 0 ? bCfg.supported_lines : null) ||
+        (Array.isArray(org.lines_of_insurance) && org.lines_of_insurance.length > 0 ? org.lines_of_insurance : null) ||
+        DEFAULT_SUPPORTED_LINES;
+      setSupportedLines(lines);
 
       const aCfg = bCfg.agent_config || {};
-      if (aCfg.agent_name) setAgentName(aCfg.agent_name);
-      if (aCfg.tone) setTone(aCfg.tone);
-      if (aCfg.language) setLanguage(aCfg.language);
-      if (aCfg.voice_id) setVoiceId(aCfg.voice_id);
-      if (aCfg.greeting) setGreeting(aCfg.greeting);
-      if (aCfg.system_prompt) setSystemPrompt(aCfg.system_prompt);
-      if (aCfg.knowledge_base) setKnowledgeBase(aCfg.knowledge_base);
-      if (aCfg.last_trained_at) setLastTrained(aCfg.last_trained_at);
+      const rawAgent = aCfg as Record<string, unknown>;
+      if (typeof aCfg.agent_name === "string" && aCfg.agent_name) {
+        setAgentName(aCfg.agent_name);
+      } else if (typeof rawAgent["name"] === "string" && rawAgent["name"]) {
+        setAgentName(rawAgent["name"]);
+      } else {
+        setAgentName("");
+      }
+
+      if (typeof aCfg.tone === "string") {
+        setTone(aCfg.tone);
+      } else {
+        setTone("");
+      }
+
+      if (typeof aCfg.language === "string") {
+        setLanguage(aCfg.language);
+      } else {
+        setLanguage("");
+      }
+
+      if (typeof aCfg.greeting === "string") {
+        setGreeting(aCfg.greeting);
+      } else {
+        setGreeting("");
+      }
     }
   }, [tenant]);
 
-  // Save full settings and agent configuration
+  const toggleLine = (line: string) => {
+    setSupportedLines((prev) =>
+      prev.includes(line) ? prev.filter((l) => l !== line) : [...prev, line]
+    );
+  };
+
+  // Save updated settings
   const updateMutation = useMutation({
-    mutationFn: async (customAgentConfig?: any) => {
-      const existingBrd = (tenant?.branding_config as any) || {};
-      const updatedAgentConfig = customAgentConfig || {
-        agent_name: agentName,
-        tone,
-        language,
-        voice_id: voiceId,
-        greeting,
-        system_prompt: systemPrompt,
-        knowledge_base: knowledgeBase,
-        last_trained_at: new Date().toISOString(),
+    mutationFn: async () => {
+      const existingBrd = (tenant?.branding_config as BrandingConfig | null) || {};
+      const existingOrg = existingBrd.organization_details || {};
+      const existingCall = existingBrd.call_handling || {};
+      const existingAgent = existingBrd.agent_config || {};
+
+      const cleanName = name.trim();
+      const updatedAgentConfig = {
+        ...existingAgent,
+        name: agentName.trim() || cleanName,
+        agent_name: agentName.trim() || cleanName,
+        tone: tone.trim(),
+        language: language.trim(),
+        greeting: greeting.trim(),
+        last_updated_at: new Date().toISOString(),
+      };
+
+      const updatedBranding = {
+        ...existingBrd,
+        support_email: supportEmail.trim(),
+        support_phone: supportPhone.trim(),
+        business_hours: businessHours.trim(),
+        supported_lines: supportedLines,
+        organization_details: {
+          ...existingOrg,
+          agency_name: cleanName,
+          contact_email: supportEmail.trim(),
+          contact_phone: supportPhone.trim(),
+          lines_of_insurance: supportedLines,
+        },
+        call_handling: {
+          ...existingCall,
+          working_hours: businessHours.trim(),
+        },
+        agent_config: updatedAgentConfig,
       };
 
       return updateTenantSettings({
         data: {
           tenantId: tenant?.id,
           clerkUserId: user?.id,
-          name,
-          slug: tenant?.slug || "safelife",
-          branding_config: {
-            ...existingBrd,
-            support_email: supportEmail,
-            support_phone: supportPhone,
-            agent_config: updatedAgentConfig,
-          },
+          name: cleanName,
+          slug: tenant?.slug || "insurcall",
+          branding_config: updatedBranding,
         },
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
       queryClient.invalidateQueries({ queryKey: ["my-tenant"] });
+      queryClient.invalidateQueries({ queryKey: ["caller-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["agent-studio"] });
+      toast.success("Settings saved and synced across your workspace.");
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to save configuration");
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to save configuration";
+      toast.error(msg);
     },
   });
-
-  // ElevenLabs Quick Train trigger
-  const handleQuickTrain = async () => {
-    setIsTraining(true);
-    const toastId = toast.loading("Training voice agent on company knowledge base...");
-
-    try {
-      const now = new Date().toISOString();
-      const updatedAgentConfig = {
-        agent_name: agentName,
-        tone,
-        language,
-        voice_id: voiceId,
-        greeting,
-        system_prompt: systemPrompt,
-        knowledge_base: knowledgeBase,
-        last_trained_at: now,
-      };
-
-      await updateMutation.mutateAsync(updatedAgentConfig);
-      setLastTrained(now);
-
-      setTimeout(() => {
-        setIsTraining(false);
-        toast.success("Voice model trained and live on all phone calls!", { id: toastId });
-      }, 1000);
-    } catch (e: any) {
-      setIsTraining(false);
-      toast.error(e.message || "Failed to train agent", { id: toastId });
-    }
-  };
 
   const syncMutation = useMutation({
     mutationFn: () =>
@@ -227,10 +297,11 @@ function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["caller-profile"] });
       queryClient.invalidateQueries({ queryKey: ["policies-list"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
-      toast.success(`Successfully fetched & synced ${res.syncedCount} Clerk user(s) with database`);
+      toast.success(`Successfully verified and synced ${res.syncedCount} staff account(s).`);
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to sync Clerk users");
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to sync staff profile";
+      toast.error(msg);
     },
   });
 
@@ -239,387 +310,235 @@ function SettingsPage() {
       updateSubscriptionPlan({ data: { plan } }),
     onSuccess: (_, plan) => {
       queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
-      toast.success(`Switched to ${plan.toUpperCase()} Tier (Development Mode Activated)`);
+      toast.success(`Switched workspace to ${plan.toUpperCase()} tier.`);
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to update subscription tier");
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to update plan tier";
+      toast.error(msg);
     },
   });
 
-  const appendKnowledgeTemplate = (text: string) => {
-    setKnowledgeBase((prev) => `${prev.trim()}\n\n${text}`);
-    toast.info("Added snippet to Company Knowledge Base");
-  };
+  const currentPlan = ((tenant?.branding_config as BrandingConfig | null)?.plan as string) || "starter";
+
+  const { data: waCallingStatus } = useQuery({
+    queryKey: ["settings-wa-calling-status", user?.id],
+    queryFn: () => getWhatsAppCallingStatus({ data: { clerkUserId: user?.id } }),
+    enabled: !!user?.id,
+  });
+
+  const updateCallingSettingsMutation = useMutation({
+    mutationFn: (vars: {
+      callingEnabled?: boolean;
+      inboundCallingEnabled?: boolean;
+      outboundCallingEnabled?: boolean;
+      metaPhoneNumberId?: string;
+      displayName?: string;
+    }) =>
+      updateWhatsAppCallingSettings({
+        data: {
+          clerkUserId: user?.id,
+          ...vars,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings-wa-calling-status"] });
+      toast.success("WhatsApp Calling settings updated");
+    },
+    onError: (err: any) => {
+      toast.error("Failed to update calling settings", { description: err.message });
+    },
+  });
 
   return (
     <AppShell
-      title="Settings & Agent Studio"
-      subtitle="ElevenLabs-style Voice Agent builder, company knowledge training, and Clerk identity mapping"
+      title="Settings & Workspace"
+      subtitle="Manage your insurance agency profile, staff identity, WhatsApp assistant persona, calling channels, and plan allowances"
     >
       <div className="max-w-5xl space-y-6">
-        <Tabs defaultValue="agent-builder" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 bg-muted/50 p-1 rounded-xl">
-            <TabsTrigger value="agent-builder" className="flex items-center gap-2 text-xs font-semibold">
-              <Bot className="h-4 w-4 text-primary" />
-              Assistant Studio
+        <Tabs defaultValue="organization" className="w-full">
+          {/* Top Navigation Tabs */}
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+            <TabsTrigger
+              value="organization"
+              className="flex items-center gap-2 text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-2xs transition-all"
+            >
+              <Building2 className="size-4 text-[#087F8C]" />
+              Agency Profile
             </TabsTrigger>
-            <TabsTrigger value="telephony" className="flex items-center gap-2 text-xs font-semibold">
-              <PhoneForwarded className="h-4 w-4 text-blue-400" />
-              Phone & Telephony
+            <TabsTrigger
+              value="calling"
+              className="flex items-center gap-2 text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-2xs transition-all"
+            >
+              <Headphones className="size-4 text-emerald-600" />
+              WhatsApp Calling
             </TabsTrigger>
-            <TabsTrigger value="organization" className="flex items-center gap-2 text-xs font-semibold">
-              <Building className="h-4 w-4 text-amber-500" />
-              Company Profile
+            <TabsTrigger
+              value="assistant"
+              className="flex items-center gap-2 text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-2xs transition-all"
+            >
+              <Bot className="size-4 text-[#087F8C]" />
+              Assistant Persona
             </TabsTrigger>
-            <TabsTrigger value="clerk-sync" className="flex items-center gap-2 text-xs font-semibold">
-              <UserCheck className="h-4 w-4 text-emerald-600" />
-              Caller Identity
+            <TabsTrigger
+              value="security"
+              className="flex items-center gap-2 text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-2xs transition-all"
+            >
+              <ShieldCheck className="size-4 text-emerald-600" />
+              Staff & Governance
             </TabsTrigger>
-            <TabsTrigger value="billing-plans" className="flex items-center gap-2 text-xs font-semibold">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Plans & Allowance
+            <TabsTrigger
+              value="billing"
+              className="flex items-center gap-2 text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-2xs transition-all"
+            >
+              <Sparkles className="size-4 text-amber-500" />
+              Plan & Quotas
+            </TabsTrigger>
+            <TabsTrigger
+              value="diagnostics"
+              className="flex items-center gap-2 text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-2xs transition-all"
+            >
+              <Activity className="size-4 text-[#087F8C]" />
+              System Diagnostics
             </TabsTrigger>
           </TabsList>
 
           {/* ===============================================================
-              TAB 1: ELEVENLABS-STYLE AGENT STUDIO & QUICK TRAIN
+              TAB 1: AGENCY PROFILE
              =============================================================== */}
-          <TabsContent value="agent-builder" className="space-y-6 pt-4">
-            {/* Agent Header Banner */}
-            <Card className="border-border/80 bg-card/90 shadow-md">
-              <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="size-12 shrink-0 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center p-1.5 shadow-inner">
-                    <img
-                      src="/06_app_icon_rounded_safe_area_transparent.png"
-                      alt="Agent Avatar"
-                      className="size-full object-contain"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-bold text-foreground font-display">{agentName}</h2>
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
-                        Active & Ready
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Intelligent AI Voice Receptionist • Low-Latency Neural Speech • Retrieval-Grounded Grounding
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                  {lastTrained && (
-                    <span className="text-[11px] text-muted-foreground font-mono hidden md:inline">
-                      Synced: {new Date(lastTrained).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  )}
-                  <Button
-                    onClick={handleQuickTrain}
-                    disabled={isTraining || isLoading}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-sm gap-2 h-10 px-4 rounded-xl transition-all active:scale-95"
-                  >
-                    <Zap className={`h-4 w-4 ${isTraining ? "animate-spin" : ""}`} />
-                    {isTraining ? "Syncing Receptionist..." : "Save & Sync Receptionist"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Persona & Voice Selection Grid */}
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Agent Identity & Voice */}
-              <Card className="border-border/60 bg-card/60">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="h-4 w-4 text-primary" />
-                    <CardTitle className="text-sm font-semibold">Voice & Persona</CardTitle>
-                  </div>
-                  <CardDescription className="text-xs">
-                    Configure the speech timbre, tone, and pacing of your voice agent.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Agent Name</Label>
-                    <Input
-                      value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
-                      placeholder="e.g. InsurCall AI Receptionist"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Tone & Demeanor</Label>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {[
-                        "Professional & Empathetic",
-                        "Concise & Direct",
-                        "Friendly Advisor",
-                        "Strict Compliance",
-                      ].map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setTone(t)}
-                          className={`p-2 rounded-xl text-left border transition-all text-xs font-medium ${
-                            tone === t
-                              ? "bg-primary/20 border-primary text-primary-foreground"
-                              : "bg-muted/40 border-border text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Voice Selection</Label>
-                      <select
-                        value={voiceId}
-                        onChange={(e) => setVoiceId(e.target.value)}
-                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      >
-                        <option value="en-IN-NeerjaNeural">Neerja (Natural Expressive - India)</option>
-                        <option value="en-IN-PrabhatNeural">Prabhat (Professional Clear - India)</option>
-                        <option value="hi-IN-SwaraNeural">Swara (Bilingual Hindi/English - India)</option>
-                        <option value="hi-IN-MadhurNeural">Madhur (Bilingual Hindi/English - India)</option>
-                        <option value="en-US-JennyNeural">Jenny (Conversational - US)</option>
-                        <option value="en-US-GuyNeural">Guy (Executive - US)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Language Mode</Label>
-                      <select
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
-                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      >
-                        <option value="Bilingual / Hinglish">Bilingual (Hinglish & English)</option>
-                        <option value="English (India)">English (Indian Accent)</option>
-                        <option value="Hindi (हिन्दी)">Hindi (हिन्दी)</option>
-                        <option value="English (US / Global)">English (Global)</option>
-                      </select>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* First Message / Spoken Greeting */}
-              <Card className="border-border/60 bg-card/60 flex flex-col justify-between">
-                <div>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4 text-emerald-400" />
-                      <CardTitle className="text-sm font-semibold">First Spoken Greeting</CardTitle>
-                    </div>
-                    <CardDescription className="text-xs">
-                      What the voice agent speaks instantly as soon as the phone call connects.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Textarea
-                        value={greeting}
-                        onChange={(e) => setGreeting(e.target.value)}
-                        rows={3}
-                        className="text-xs leading-relaxed"
-                        placeholder="Hello {{customer_name}}! Welcome to {{company_name}}..."
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground">Dynamic variables:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge
-                          variant="outline"
-                          onClick={() => setGreeting((prev) => `${prev} {{customer_name}}`)}
-                          className="cursor-pointer text-[10px] hover:border-primary text-foreground"
-                        >
-                          + {"{{customer_name}}"}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          onClick={() => setGreeting((prev) => `${prev} {{company_name}}`)}
-                          className="cursor-pointer text-[10px] hover:border-primary text-foreground"
-                        >
-                          + {"{{company_name}}"}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </div>
-
-                <div className="p-4 pt-0">
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-400 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>Greeting is synthesized immediately when inbound telephony or test call connects.</span>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            {/* Company Knowledge Base (Retrieval Grounding Data) */}
-            <Card className="border-border/60 bg-card/60">
-              <CardHeader className="pb-3">
+          <TabsContent value="organization" className="space-y-6 pt-3">
+            <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-4 border-b border-slate-100">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-primary" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-8 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#087F8C]">
+                      <Building2 className="size-4.5" />
+                    </div>
                     <div>
-                      <CardTitle className="text-base font-semibold">
-                        Company Knowledge & Guidelines (Retrieval-Grounded Store)
+                      <CardTitle className="text-sm font-bold text-slate-900">
+                        Agency Identity & Contact Channels
                       </CardTitle>
-                      <CardDescription className="text-xs">
-                        Add your insurance company's exact rules, coverage policies, hospital networks, and FAQs. The AI receptionist retrieves and cites these verified guidelines dynamically during customer calls.
+                      <CardDescription className="text-xs text-slate-500 mt-0.5">
+                        These official details are introduced to policyholders during WhatsApp conversations.
                       </CardDescription>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={handleQuickTrain}
-                      disabled={isTraining}
-                      size="sm"
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs gap-1.5"
-                    >
-                      <Zap className="h-3.5 w-3.5" />
-                      Save & Sync
-                    </Button>
-                  </div>
+                  <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-semibold">
+                    Active Workspace
+                  </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Quick Snippet Buttons */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground mr-1">Insert Templates:</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      appendKnowledgeTemplate(
-                        `NETWORK HOSPITALS:\n- City Care Hospital (Cashless ID: HOS-001) - 24/7 Emergency\n- Apollo MedCenter (Cashless ID: HOS-002) - Multi-specialty\n- Fortis Healthcare (Cashless ID: HOS-003) - Cardiology & Oncology`
-                      )
-                    }
-                    className="text-[11px] bg-muted/60 hover:bg-muted border border-border text-foreground px-2.5 py-1 rounded-full transition-all"
-                  >
-                    + Hospital Network
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      appendKnowledgeTemplate(
-                        `CLAIM SETTLEMENT SLA:\n- Cashless authorization approved within 2 hours of hospital request.\n- Reimbursement claims settled in bank account within 5 business days.\n- Required: Discharge summary, final hospital bill, medical prescriptions.`
-                      )
-                    }
-                    className="text-[11px] bg-muted/60 hover:bg-muted border border-border text-foreground px-2.5 py-1 rounded-full transition-all"
-                  >
-                    + Claim Settlement SLA
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      appendKnowledgeTemplate(
-                        `POLICY EXCLUSIONS:\n- Pre-existing diseases covered after 24-month waiting period.\n- Cosmetic surgeries and self-inflicted injuries are not covered under health plans.\n- Drink-and-drive vehicle accidents are strictly excluded from motor claims.`
-                      )
-                    }
-                    className="text-[11px] bg-muted/60 hover:bg-muted border border-border text-foreground px-2.5 py-1 rounded-full transition-all"
-                  >
-                    + Policy Exclusions FAQ
-                  </button>
-                </div>
 
-                <div className="space-y-1.5">
-                  <Textarea
-                    value={knowledgeBase}
-                    onChange={(e) => setKnowledgeBase(e.target.value)}
-                    rows={12}
-                    className="font-mono text-xs leading-relaxed bg-background/80"
-                    placeholder="Enter your company's product guidelines, FAQs, hospital tie-ups..."
-                  />
-                  <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1">
-                    <span>Retrieved dynamically at inference time with exact source grounding. No unauthorized hallucinated coverage.</span>
-                    <span className="font-mono">{knowledgeBase.length} characters</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex justify-end">
-                  <Button
-                    onClick={handleQuickTrain}
-                    disabled={isTraining || isLoading}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs gap-2"
-                  >
-                    <Save className="h-4 w-4" />
-                    Save & Sync Receptionist Knowledge
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ===============================================================
-              TAB 2: COMPANY CARRIER PROFILE
-             =============================================================== */}
-          <TabsContent value="organization" className="space-y-6 pt-4">
-            <Card className="border-border/60 bg-card/60">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Building className="h-5 w-5 text-cyan-400" />
-                    <CardTitle className="text-base font-semibold">Insurance Carrier Profile</CardTitle>
-                  </div>
-                  <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">Active Tenant</Badge>
-                </div>
-                <CardDescription className="text-xs">
-                  Primary organization identifier and contact channels for automated AI communications.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-6 space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Carrier Name</Label>
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Organization / Agency Name
+                    </Label>
                     <Input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. SafeLife Insurance Co. Ltd."
+                      placeholder="Enter organization legal name"
                       disabled={isLoading}
+                      className="text-xs bg-white border-slate-200 rounded-xl"
                     />
                   </div>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Tenant Identifier / Slug</Label>
-                    <Input value={tenant?.slug || "safelife"} disabled className="font-mono bg-muted/30" />
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Workspace Identifier
+                    </Label>
+                    <Input
+                      value={tenant?.slug || ""}
+                      disabled
+                      placeholder="Unassigned"
+                      className="text-xs bg-slate-50 border-slate-200 text-slate-500 rounded-xl"
+                    />
                   </div>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Support & Claims Hotline</Label>
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Customer Support & Claims Phone
+                    </Label>
                     <Input
                       value={supportPhone}
                       onChange={(e) => setSupportPhone(e.target.value)}
-                      placeholder="+91 800 555 0199"
+                      placeholder="e.g. +91 98765 43210"
                       disabled={isLoading}
+                      className="text-xs bg-white border-slate-200 rounded-xl"
                     />
                   </div>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Claims Email</Label>
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Official Claims & Inquiries Email
+                    </Label>
                     <Input
                       value={supportEmail}
                       onChange={(e) => setSupportEmail(e.target.value)}
-                      placeholder="claims@safelife.com"
+                      placeholder="e.g. claims@youragency.com"
                       disabled={isLoading}
+                      className="text-xs bg-white border-slate-200 rounded-xl"
                     />
                   </div>
                 </div>
-                <div className="pt-2 flex justify-end">
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Official Support Operating Hours
+                  </Label>
+                  <Input
+                    value={businessHours}
+                    onChange={(e) => setBusinessHours(e.target.value)}
+                    placeholder="e.g. Monday - Friday, 9:00 AM - 6:00 PM"
+                    disabled={isLoading}
+                    className="text-xs bg-white border-slate-200 rounded-xl"
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    When customers reach out outside these hours, the assistant will inform them of your emergency hotline and next available business day.
+                  </p>
+                </div>
+
+                {/* Supported Lines */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700 block">
+                      Supported Lines of Insurance
+                    </Label>
+                    <span className="text-[10px] text-slate-400">Click to toggle active lines</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {DEFAULT_SUPPORTED_LINES.map((line) => {
+                      const isSelected = supportedLines.includes(line);
+                      return (
+                        <button
+                          key={line}
+                          type="button"
+                          onClick={() => toggleLine(line)}
+                          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                            isSelected
+                              ? "border-teal-300 bg-teal-50 text-[#087F8C] font-semibold shadow-2xs"
+                              : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300"
+                          }`}
+                        >
+                          <Check className={`size-3 ${isSelected ? "text-[#087F8C]" : "opacity-0"}`} />
+                          {line}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+                  <p className="text-xs text-slate-400">
+                    Changes apply immediately to your active tenant.
+                  </p>
                   <Button
-                    onClick={() => {
-                      updateMutation.mutate(undefined);
-                      toast.success("Carrier details saved successfully");
-                    }}
+                    onClick={() => updateMutation.mutate()}
                     disabled={updateMutation.isPending || isLoading}
-                    className="bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium"
+                    className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium rounded-xl shadow-2xs gap-1.5"
                   >
-                    {updateMutation.isPending ? "Saving..." : "Save Carrier Details"}
+                    <Save className="size-3.5" />
+                    {updateMutation.isPending ? "Saving Changes..." : "Save Agency Details"}
                   </Button>
                 </div>
               </CardContent>
@@ -627,92 +546,255 @@ function SettingsPage() {
           </TabsContent>
 
           {/* ===============================================================
-              TAB 3: CLERK IDENTITY & POLICIES (DYNAMIC USER DATA)
+              TAB 2: ASSISTANT PERSONA
              =============================================================== */}
-          <TabsContent value="clerk-sync" className="space-y-6 pt-4">
-            <Card className="border-border/60 bg-card/60">
-              <CardHeader>
+          <TabsContent value="assistant" className="space-y-6 pt-3">
+            <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-4 border-b border-slate-100">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <UserCheck className="h-5 w-5 text-emerald-400" />
-                    <CardTitle className="text-base font-semibold">Connected Clerk Identity</CardTitle>
-                  </div>
-                  <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 gap-1 text-[11px]">
-                    <CheckCircle2 className="h-3 w-3" /> Synchronized with DB
-                  </Badge>
-                </div>
-                <CardDescription className="text-xs">
-                  Authenticated policyholder details retrieved live from Clerk and mapped to InsForge PostgreSQL.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2 text-xs">
-                  <div className="rounded-lg border border-border/50 bg-background/50 p-3 space-y-1">
-                    <span className="text-muted-foreground font-medium">Clerk User ID</span>
-                    <p className="font-mono text-foreground font-semibold">
-                      {user?.id || "Signed In User"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/50 bg-background/50 p-3 space-y-1">
-                    <span className="text-muted-foreground font-medium">Primary Email</span>
-                    <p className="text-foreground font-semibold">
-                      {user?.primaryEmailAddress?.emailAddress || "user@example.com"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/50 bg-background/50 p-3 space-y-1">
-                    <span className="text-muted-foreground font-medium">Policyholder Name</span>
-                    <p className="text-cyan-400 font-semibold">
-                      {user?.fullName ||
-                        `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
-                        callerProfile?.customer?.name ||
-                        "Active Policyholder"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/50 bg-background/50 p-3 space-y-1">
-                    <span className="text-muted-foreground font-medium">Active Policy Mapping</span>
-                    <p className="text-emerald-400 font-semibold font-mono">
-                      {callerProfile?.customer?.customer_number || "CUST-VERIFIED"}: {" "}
-                      {callerProfile?.policiesCount ?? 3} Active Policies
-                    </p>
-                  </div>
-                </div>
-
-                {/* Policies List for this User */}
-                {callerProfile?.policies && callerProfile.policies.length > 0 && (
-                  <div className="rounded-xl border border-border/60 bg-background/40 p-3 space-y-2">
-                    <span className="text-[11px] font-semibold text-slate-300">
-                      Policies Linked to this Account:
-                    </span>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {callerProfile.policies.map((p: any) => (
-                        <div
-                          key={p.id}
-                          className="rounded-lg border border-slate-800 bg-slate-900/60 p-2 text-[11px]"
-                        >
-                          <div className="font-mono text-cyan-400 font-semibold">{p.policy_number}</div>
-                          <div className="text-slate-400 capitalize">{p.policy_type} Policy</div>
-                          <Badge variant="outline" className="text-[9px] border-emerald-500/30 text-emerald-400 mt-1">
-                            {p.status}
-                          </Badge>
-                        </div>
-                      ))}
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-8 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#087F8C]">
+                      <Bot className="size-4.5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">
+                        WhatsApp Assistant Personality
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500 mt-0.5">
+                        Define how your AI assistant introduces itself and speaks with WhatsApp policyholders.
+                      </CardDescription>
                     </div>
                   </div>
-                )}
+                  <Link to="/agent">
+                    <Button variant="outline" size="sm" className="text-xs gap-1.5 border-slate-200 rounded-xl">
+                      <span>Open Advanced Studio</span>
+                      <ExternalLink className="size-3 text-slate-400" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
 
-                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    Sync all Clerk users and policyholder associations with InsForge PostgreSQL.
+              <CardContent className="p-6 space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Assistant Display Name
+                    </Label>
+                    <Input
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      placeholder="Enter assistant display name"
+                      className="text-xs bg-white border-slate-200 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Primary Language
+                    </Label>
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs text-slate-800 shadow-2xs focus:outline-none focus:ring-1 focus:ring-[#087F8C]"
+                    >
+                      <option value="">Select language...</option>
+                      <option value="Bilingual (Hinglish & English)">Bilingual (Hinglish & English)</option>
+                      <option value="English (India)">English (Indian Formal)</option>
+                      <option value="Hindi (हिन्दी)">Hindi (शुद्ध हिन्दी)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-slate-700 block">
+                    Communication Tone & Demeanor
+                  </Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {[
+                      { title: "Professional & Empathetic", desc: "Warm, reassuring, clear" },
+                      { title: "Friendly Advisor", desc: "Approachable, conversational" },
+                      { title: "Concise & Direct", desc: "Bullet points, quick answers" },
+                      { title: "Strict Compliance", desc: "Formal, regulatory focus" },
+                    ].map((item) => (
+                      <button
+                        key={item.title}
+                        type="button"
+                        onClick={() => setTone(item.title)}
+                        className={`p-3 rounded-xl text-left border transition-all ${
+                          tone === item.title
+                            ? "border-[#087F8C] bg-teal-50/60 text-[#087F8C] shadow-2xs"
+                            : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300 hover:bg-slate-100/60"
+                        }`}
+                      >
+                        <span className="block text-xs font-bold">{item.title}</span>
+                        <span className="block text-[10px] text-slate-400 mt-0.5">{item.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Initial Greeting Message
+                    </Label>
+                    <span className="text-[11px] text-slate-400">
+                      Sent when a customer initiates a new conversation
+                    </span>
+                  </div>
+                  <Textarea
+                    value={greeting}
+                    onChange={(e) => setGreeting(e.target.value)}
+                    rows={3}
+                    className="text-xs bg-white border-slate-200 rounded-xl leading-relaxed"
+                    placeholder="Enter initial greeting message for customers..."
+                  />
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400">
+                    <span>Available variables:</span>
+                    <button
+                      type="button"
+                      onClick={() => setGreeting((prev) => `${prev} {{customer_name}}`)}
+                      className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium"
+                    >
+                      + {"{{customer_name}}"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGreeting((prev) => `${prev} {{company_name}}`)}
+                      className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium"
+                    >
+                      + {"{{company_name}}"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+                  <span className="text-xs text-slate-500">
+                    For full prompt instructions and guardrail testing, visit the Agent Studio.
+                  </span>
+                  <Button
+                    onClick={() => updateMutation.mutate()}
+                    disabled={updateMutation.isPending}
+                    className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium rounded-xl shadow-2xs gap-1.5"
+                  >
+                    <Save className="size-3.5" />
+                    Save Personality Settings
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ===============================================================
+              TAB 3: STAFF & GOVERNANCE
+             =============================================================== */}
+          <TabsContent value="security" className="space-y-6 pt-3">
+            <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-4 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
+                      <ShieldCheck className="size-4.5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">
+                        Staff Identity & Security Controls
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500 mt-0.5">
+                        Authenticated credentials and active guardrails protecting your organization.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200 text-xs gap-1 font-semibold">
+                    <CheckCircle2 className="size-3.5" /> Isolated Tenant
+                  </Badge>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 space-y-5">
+                <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
+                    <span className="text-slate-400 font-medium block text-[11px]">Authenticated Staff Member</span>
+                    <p className="text-slate-900 font-bold text-sm">
+                      {user?.fullName || "Staff Adjuster"}
+                    </p>
+                    <p className="text-slate-500 text-[11px]">
+                      {user?.primaryEmailAddress?.emailAddress || "adjuster@insurcall.ai"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
+                    <span className="text-slate-400 font-medium block text-[11px]">Database Tenant Access</span>
+                    <p className="text-slate-900 font-bold text-sm">
+                      {tenant?.name || "Verified Organization"}
+                    </p>
+                    <p className="text-emerald-700 font-medium text-[11px] flex items-center gap-1">
+                      <CheckCircle2 className="size-3" /> PostgreSQL Row-Level Security Enforced
+                    </p>
+                  </div>
+                </div>
+
+                {/* Safety & Compliance Feature Grid */}
+                <div className="space-y-2 pt-2">
+                  <h4 className="text-xs font-bold text-slate-900">
+                    Active Production Guardrails
+                  </h4>
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-emerald-600" />
+                        <span className="font-semibold text-xs text-slate-800">Dual-Control Approvals</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 pl-6">
+                        Policy cancellations, nominee modifications, and claims payouts require human sign-off in the Approvals queue.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-emerald-600" />
+                        <span className="font-semibold text-xs text-slate-800">Opt-Out & Privacy Enforcement</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 pl-6">
+                        Customer STOP and UNSUBSCRIBE messages immediately pause automated replies under DPDP and Meta policies.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-emerald-600" />
+                        <span className="font-semibold text-xs text-slate-800">Grounded Source Traceability</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 pl-6">
+                        The assistant cites only approved insurance policy clauses. Unverified coverage inquiries are escalated.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-emerald-600" />
+                        <span className="font-semibold text-xs text-slate-800">Cryptographic Webhook Signatures</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 pl-6">
+                        Incoming messages are verified with HMAC-SHA256 signatures to ensure authenticity before persistence.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+                  <span className="text-xs text-slate-400">
+                    Staff memberships are synced with Clerk identity.
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => syncMutation.mutate()}
                     disabled={syncMutation.isPending}
-                    className="gap-2 text-xs"
+                    className="gap-2 text-xs border-slate-200 rounded-xl font-medium"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-                    {syncMutation.isPending ? "Syncing..." : "Re-sync from Clerk"}
+                    <RefreshCw className={`size-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                    {syncMutation.isPending ? "Syncing..." : "Re-sync Staff Profile"}
                   </Button>
                 </div>
               </CardContent>
@@ -720,247 +802,491 @@ function SettingsPage() {
           </TabsContent>
 
           {/* ===============================================================
-              TAB 4: PLANS & HONEST FREE-TRIAL ALLOWANCE
+              TAB 4: PLAN & ALLOWANCE
              =============================================================== */}
-          <TabsContent value="billing-plans" className="space-y-6 pt-4">
-            {/* Real Usage Card */}
-            <Card className="border border-border bg-card shadow-xs">
-              <CardHeader className="pb-3">
+          <TabsContent value="billing" className="space-y-6 pt-3">
+            {/* Usage Summary Card */}
+            <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
-                        Free Starter Tier
+                      <Badge className="bg-teal-50 text-[#087F8C] border-teal-200 text-xs font-semibold capitalize">
+                        {currentPlan} Plan
                       </Badge>
-                      <span className="text-xs text-muted-foreground">Active Workspace</span>
+                      <span className="text-xs text-slate-500 font-medium">Active Workspace</span>
                     </div>
-                    <CardTitle className="font-display text-lg font-bold text-foreground">
-                      Voice Allowance & Testing Limits
+                    <CardTitle className="text-sm font-bold text-slate-900 mt-1">
+                      WhatsApp Messaging & Knowledge Capacity
                     </CardTitle>
                   </div>
-                  <span className="text-xl font-bold font-mono text-primary">12 / 15 mins</span>
+                  <span className="text-sm font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-xl">
+                    Unlimited Testing Tier
+                  </span>
                 </div>
-                <CardDescription className="text-xs text-muted-foreground mt-1">
-                  InsurCall includes 15 free voice testing minutes in your browser. Real SIP trunking and dedicated business phone lines require an active concurrency plan.
+                <CardDescription className="text-xs text-slate-500 mt-1">
+                  InsurCall is configured for live WhatsApp Multi-Device synchronization and pgvector retrieval grounding.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-border">
-                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: "80%" }} />
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>80% utilized (3 minutes remaining)</span>
-                  <span>Resets on the 1st of every month</span>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3 text-xs">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
+                    <span className="text-slate-400 font-medium text-[11px] block">WhatsApp Sockets</span>
+                    <span className="text-sm font-bold text-slate-900 block">1 Active Multi-Device</span>
+                    <span className="text-[10px] text-slate-500">Live on port 2785</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
+                    <span className="text-slate-400 font-medium text-[11px] block">Retrieval Pipeline</span>
+                    <span className="text-sm font-bold text-slate-900 block">PostgreSQL pgvector</span>
+                    <span className="text-[10px] text-emerald-700 font-medium">1536-dim embeddings</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
+                    <span className="text-slate-400 font-medium text-[11px] block">Outbound Hard-Block</span>
+                    <span className="text-sm font-bold text-slate-900 block">Enabled (Safe Mode)</span>
+                    <span className="text-[10px] text-slate-500">Zero accidental replies</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Honest Plan Tiers */}
-            {(() => {
-              const currentPlan = ((tenant?.branding_config as any)?.plan as string) || "starter";
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-                  {/* Free Starter */}
-                  <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-xs transition-all ${currentPlan === "starter" ? "border-primary bg-primary/5" : "border-border bg-card"}`}>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-display text-base font-bold text-foreground">Free Starter</h3>
-                        {currentPlan === "starter" && (
-                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px]">
-                            Current Plan
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-display text-2xl font-bold text-foreground">₹0</span>
-                        <span className="text-xs text-muted-foreground">/ month</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Perfect for evaluating real-time conversational WebRTC audio and testing knowledge base Q&A.
-                      </p>
-                      <ul className="space-y-2 pt-2 text-xs text-foreground">
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-primary shrink-0" /> 15 live audio minutes / month
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-primary shrink-0" /> 1 AI Voice Assistant Persona
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-primary shrink-0" /> Ground-truth knowledge Q&A
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-primary shrink-0" /> Human approval queue
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div className="pt-6">
-                      <Button
-                        variant={currentPlan === "starter" ? "outline" : "default"}
-                        size="sm"
-                        className="w-full text-xs font-medium"
-                        disabled={currentPlan === "starter" || planMutation.isPending}
-                        onClick={() => planMutation.mutate("starter")}
-                      >
-                        {currentPlan === "starter" ? "Currently Active" : "Switch to Free Starter (Dev)"}
-                      </Button>
-                    </div>
+            {/* Plan Tier Selection */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+              {/* Starter */}
+              <div
+                className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-2xs transition-all ${
+                  currentPlan === "starter"
+                    ? "border-[#087F8C] bg-teal-50/30"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">Starter Tier</h3>
+                    {currentPlan === "starter" && (
+                      <Badge className="bg-[#087F8C] text-white text-[10px] font-semibold">
+                        Active
+                      </Badge>
+                    )}
                   </div>
-
-                  {/* Growth */}
-                  <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-xs transition-all ${currentPlan === "growth" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-display text-base font-bold text-foreground">Growth</h3>
-                        {currentPlan === "growth" ? (
-                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px]">
-                            Current Plan
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-primary border-primary/20">
-                            Popular
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-display text-2xl font-bold text-foreground">₹2,499</span>
-                        <span className="text-xs text-muted-foreground">/ month ($29)</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        For local agencies, clinics, and businesses that need real telephone number integration.
-                      </p>
-                      <ul className="space-y-2 pt-2 text-xs text-foreground">
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> 300 minutes included
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> 1 Dedicated phone number (SIP)
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> Multi-lingual Hindi + English
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> Custom PDF & document uploads
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div className="pt-6">
-                      <Button
-                        variant={currentPlan === "growth" ? "outline" : "default"}
-                        size="sm"
-                        className="w-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
-                        disabled={currentPlan === "growth" || planMutation.isPending}
-                        onClick={() => planMutation.mutate("growth")}
-                      >
-                        {currentPlan === "growth" ? "Currently Active" : "Activate Growth (Dev)"}
-                      </Button>
-                    </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-slate-900">₹0</span>
+                    <span className="text-xs text-slate-500">/ month</span>
                   </div>
-
-                  {/* Business */}
-                  <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-xs transition-all ${currentPlan === "business" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-display text-base font-bold text-foreground">Business</h3>
-                        {currentPlan === "business" ? (
-                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px]">
-                            Current Plan
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-foreground border-border">
-                            Scale
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-display text-2xl font-bold text-foreground">₹7,999</span>
-                        <span className="text-xs text-muted-foreground">/ month ($99)</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        For high-volume contact centers requiring concurrency, CRM sync, and custom tool actions.
-                      </p>
-                      <ul className="space-y-2 pt-2 text-xs text-foreground">
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> 1,500 minutes included
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> Unlimited concurrent voice lines
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="size-4 text-emerald-600 shrink-0" /> Custom CRM webhooks & tools
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div className="pt-6">
-                      <Button
-                        variant={currentPlan === "business" ? "outline" : "default"}
-                        size="sm"
-                        className="w-full text-xs font-medium"
-                        disabled={currentPlan === "business" || planMutation.isPending}
-                        onClick={() => planMutation.mutate("business")}
-                      >
-                        {currentPlan === "business" ? "Currently Active" : "Activate Business (Dev)"}
-                      </Button>
-                    </div>
-                  </div>
+                  <p className="text-xs text-slate-500">
+                    For testing WhatsApp connectivity and grounded Q&A with your team.
+                  </p>
+                  <ul className="space-y-2 pt-2 text-xs text-slate-700">
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-[#087F8C] shrink-0" /> WhatsApp Multi-Device session
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-[#087F8C] shrink-0" /> Grounded vector retrieval
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-[#087F8C] shrink-0" /> Human approval queue
+                    </li>
+                  </ul>
                 </div>
-              );
-            })()}
+
+                <div className="pt-5">
+                  <Button
+                    variant={currentPlan === "starter" ? "outline" : "default"}
+                    size="sm"
+                    className="w-full text-xs font-medium rounded-xl"
+                    disabled={currentPlan === "starter" || planMutation.isPending}
+                    onClick={() => planMutation.mutate("starter")}
+                  >
+                    {currentPlan === "starter" ? "Current Tier" : "Select Starter"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Growth */}
+              <div
+                className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-2xs transition-all ${
+                  currentPlan === "growth"
+                    ? "border-[#087F8C] bg-teal-50/30"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">Growth Tier</h3>
+                    {currentPlan === "growth" ? (
+                      <Badge className="bg-[#087F8C] text-white text-[10px] font-semibold">
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] text-[#087F8C] border-teal-200 bg-teal-50 font-semibold">
+                        Popular
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-slate-900">₹2,499</span>
+                    <span className="text-xs text-slate-500">/ month</span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    For established agencies needing full policy automation and contact sync.
+                  </p>
+                  <ul className="space-y-2 pt-2 text-xs text-slate-700">
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-emerald-600 shrink-0" /> High-volume conversation sync
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-emerald-600 shrink-0" /> Policy document PDF ingestion
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-emerald-600 shrink-0" /> Multi-staff human takeover
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-5">
+                  <Button
+                    variant={currentPlan === "growth" ? "outline" : "default"}
+                    size="sm"
+                    className="w-full text-xs font-medium bg-[#087F8C] hover:bg-[#076C77] text-white rounded-xl shadow-2xs"
+                    disabled={currentPlan === "growth" || planMutation.isPending}
+                    onClick={() => planMutation.mutate("growth")}
+                  >
+                    {currentPlan === "growth" ? "Current Tier" : "Select Growth"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Enterprise */}
+              <div
+                className={`rounded-2xl border-2 p-5 flex flex-col justify-between shadow-2xs transition-all ${
+                  currentPlan === "enterprise" || currentPlan === "business"
+                    ? "border-[#087F8C] bg-teal-50/30"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">Enterprise</h3>
+                    {currentPlan === "enterprise" || currentPlan === "business" ? (
+                      <Badge className="bg-[#087F8C] text-white text-[10px] font-semibold">
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-200 font-semibold">
+                        Custom
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-slate-900">Custom</span>
+                    <span className="text-xs text-slate-500">SLA & Scale</span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    For multi-branch brokerages and insurers requiring dedicated API access.
+                  </p>
+                  <ul className="space-y-2 pt-2 text-xs text-slate-700">
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-emerald-600 shrink-0" /> Meta Official Cloud API adapter
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-emerald-600 shrink-0" /> Custom core-system integrations
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="size-3.5 text-emerald-600 shrink-0" /> Dedicated SLA & compliance support
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-5">
+                  <Button
+                    variant={currentPlan === "enterprise" || currentPlan === "business" ? "outline" : "default"}
+                    size="sm"
+                    className="w-full text-xs font-medium rounded-xl"
+                    disabled={currentPlan === "enterprise" || currentPlan === "business" || planMutation.isPending}
+                    onClick={() => planMutation.mutate("enterprise")}
+                  >
+                    {currentPlan === "enterprise" || currentPlan === "business" ? "Current Tier" : "Select Enterprise"}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </TabsContent>
 
           {/* ===============================================================
-              TAB 5: PHONE & TELEPHONY ONBOARDING
+              TAB 5: SYSTEM DIAGNOSTICS (Restricted Technical Infrastructure)
              =============================================================== */}
-          <TabsContent value="telephony" className="space-y-6 pt-4">
-            <Card className="border-blue-900/40 bg-zinc-950/70 shadow-lg">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                      <PhoneForwarded className="w-5 h-5 text-blue-400" />
-                      Inbound & Outbound Calling Configuration
+          <TabsContent value="diagnostics" className="space-y-6 pt-3">
+            <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#087F8C]">
+                    <Activity className="size-4.5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-sm font-bold text-slate-900">
+                      Infrastructure Diagnostics & Integration Health
                     </CardTitle>
-                    <CardDescription className="text-xs text-zinc-400">
-                      Manage cellular carrier forwarding, enterprise SIP trunks, routing DIDs, and live agent test calls.
+                    <CardDescription className="text-xs text-slate-500 mt-0.5">
+                      Truthful runtime checks for databases, WebRTC voice servers, WhatsApp gateway, and RAG retrieval pipelines.
                     </CardDescription>
                   </div>
-                  <Link to="/phone">
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs">
-                      Open Phone Hub
-                      <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                    </Button>
-                  </Link>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => refetchDiag()}
+                  disabled={isDiagLoading || isDiagRefetching}
+                  className="text-xs h-8 rounded-xl border-slate-200 font-medium gap-1.5 shrink-0"
+                >
+                  <RefreshCw className={`size-3.5 ${isDiagLoading || isDiagRefetching ? "animate-spin" : ""}`} />
+                  Run Diagnostics Probe
+                </Button>
+              </CardHeader>
+
+              <CardContent className="pt-5 space-y-4">
+                {isDiagLoading && !diagnostics ? (
+                  <div className="p-8 text-center text-xs text-slate-500 space-y-2">
+                    <RefreshCw className="size-5 animate-spin mx-auto text-[#087F8C]" />
+                    <p>Probing platform components and services...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(diagnostics?.items ?? []).map((item) => {
+                      const statusBadge =
+                        item.status === "connected" ? (
+                          <Badge variant="outline" className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border-emerald-200 rounded-full">
+                            Connected
+                          </Badge>
+                        ) : item.status === "degraded" ? (
+                          <Badge variant="outline" className="text-[10px] font-semibold text-amber-800 bg-amber-50 border-amber-200 rounded-full">
+                            Degraded
+                          </Badge>
+                        ) : item.status === "unavailable" ? (
+                          <Badge variant="outline" className="text-[10px] font-semibold text-rose-800 bg-rose-50 border-rose-200 rounded-full">
+                            Unavailable
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] font-semibold text-slate-600 bg-slate-100 border-slate-200 rounded-full">
+                            Not Configured
+                          </Badge>
+                        );
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-2xl border border-slate-100 bg-[#FAF9F6] p-4 text-xs space-y-2.5"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-xs">{item.name}</span>
+                              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-500 font-semibold">
+                                {item.category}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {item.latencyMs !== undefined && (
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  {item.latencyMs}ms
+                                </span>
+                              )}
+                              {statusBadge}
+                            </div>
+                          </div>
+
+                          <p className="text-slate-700 text-xs leading-relaxed">
+                            {item.summary}
+                          </p>
+
+                          {item.details && Object.keys(item.details).length > 0 && (
+                            <div className="rounded-xl border border-slate-200/70 bg-white p-2.5 text-[11px] font-mono space-y-1 text-slate-600">
+                              {Object.entries(item.details).map(([k, v]) => (
+                                <div key={k} className="flex items-center justify-between py-0.5 border-b border-slate-50 last:border-0">
+                                  <span className="text-slate-400 capitalize">{k.replace(/([A-Z])/g, " $1")}:</span>
+                                  <span className="font-semibold text-slate-800 truncate max-w-xs">{String(v)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-0.5 text-[10px] text-slate-400 font-mono">
+                            <span>Diagnostic ID: {item.id}</span>
+                            <span>Checked: {new Date(item.lastCheckedAt).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ===============================================================
+              TAB: WHATSAPP BUSINESS CALLING CHANNELS
+             =============================================================== */}
+          <TabsContent value="calling" className="space-y-6 pt-3">
+            <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-4 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
+                      <Headphones className="size-4.5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-slate-900">
+                        WhatsApp Business Calling (LiveKit Cloud)
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500">
+                        Official Meta WhatsApp Cloud API and LiveKit Cloud Telephony Connector configuration
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge
+                    variant={waCallingStatus?.connection?.status === "CONNECTED" ? "default" : "secondary"}
+                    className={waCallingStatus?.connection?.status === "CONNECTED" ? "bg-emerald-600 text-white" : ""}
+                  >
+                    {waCallingStatus?.connection?.status || "NOT_CONFIGURED"}
+                  </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4 text-xs text-zinc-300">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                    <div className="font-semibold text-white">1. Mobile Call Forwarding</div>
-                    <p className="text-zinc-400 text-[11px]">
-                      Keep your existing mobile phone and SIM. Uses carrier MMI codes (*67*, *401*) on Airtel, Jio, Vi, and BSNL.
+
+              <CardContent className="p-6 space-y-6">
+                {/* Meta Configuration Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">WhatsApp Business Phone Number ID</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={waCallingStatus?.connection?.meta_phone_number_id || process.env["WHATSAPP_BUSINESS_PHONE_NUMBER_ID"] || "Not configured"}
+                        className="font-mono text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      From Meta Developer Console &rarr; WhatsApp &rarr; API Setup.
                     </p>
                   </div>
-                  <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                    <div className="font-semibold text-white">2. Enterprise SIP Trunking</div>
-                    <p className="text-zinc-400 text-[11px]">
-                      Connect Tata Tele Smartflo, Exotel, Twilio, or FreePBX via secure SIP URI and authenticated credentials.
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                    <div className="font-semibold text-white">3. Dedicated Virtual DIDs</div>
-                    <p className="text-zinc-400 text-[11px]">
-                      Provision landline numbers (+91-11, +91-22, +91-80) or 1800 Toll Free with business GSTIN KYC under DoT regulations.
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">LiveKit Cloud Telephony Project</Label>
+                    <Input
+                      readOnly
+                      value={waCallingStatus?.validation?.details?.livekitUrlHost || "Configured in LIVEKIT_URL"}
+                      className="font-mono text-xs bg-slate-50 border-slate-200"
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      LiveKit Cloud URL with native WhatsApp Connector bridge.
                     </p>
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-lg bg-blue-950/20 border border-blue-900/30 text-blue-300 flex items-center justify-between">
-                  <span>To view configured lines, generate carrier MMI codes, or simulate test calls, use the dedicated workspace.</span>
+                {/* Features & Controls */}
+                <div className="pt-4 border-t border-slate-100 space-y-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Channel Permissions & Inbound Reception
+                  </h4>
+
+                  <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200/80 bg-slate-50/50">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Inbound Call Reception</p>
+                      <p className="text-[11px] text-slate-500">
+                        Allow customers to initiate two-way voice calls to your business number on WhatsApp.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={waCallingStatus?.inboundEnabled}
+                      onCheckedChange={(checked) =>
+                        updateCallingSettingsMutation.mutate({
+                          callingEnabled: true,
+                          inboundCallingEnabled: checked,
+                        })
+                      }
+                      disabled={updateCallingSettingsMutation.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200/80 bg-slate-50/50">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-slate-900">Outbound Staff Dialing</p>
+                        {waCallingStatus?.testMode && (
+                          <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 border-amber-200">
+                            Restricted to Test Allowlist
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Allow authorized staff to initiate outbound voice calls to verified policyholders.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={waCallingStatus?.outboundEnabled}
+                      onCheckedChange={(checked) =>
+                        updateCallingSettingsMutation.mutate({
+                          callingEnabled: true,
+                          outboundCallingEnabled: checked,
+                        })
+                      }
+                      disabled={updateCallingSettingsMutation.isPending}
+                    />
+                  </div>
+                </div>
+
+                {/* Public Webhook Callback URL */}
+                <div className="pt-4 border-t border-slate-100 space-y-2">
+                  <Label className="text-xs font-semibold text-slate-700">Public Meta Webhook Callback URL</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={waCallingStatus?.webhookUrl || "https://app.insurcall.ai/api/webhooks/meta-whatsapp"}
+                      className="font-mono text-xs bg-slate-50 border-slate-200"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(waCallingStatus?.webhookUrl || "");
+                        toast.success("Copied webhook URL");
+                      }}
+                    >
+                      <Copy className="size-3.5 mr-1" />
+                      Copy URL
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Missing Configuration Notice if applicable */}
+                {waCallingStatus?.validation?.missingVariables && waCallingStatus.validation.missingVariables.length > 0 && (
+                  <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900">
+                    <div className="flex items-center gap-2 font-bold mb-1">
+                      <AlertTriangle className="size-4 text-amber-600" />
+                      <span>Pending Environment Settings</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 mb-2">
+                      The following environment variable names must be populated on the server for full calling operation:
+                    </p>
+                    <ul className="list-disc pl-5 font-mono text-[10px] space-y-0.5">
+                      {waCallingStatus.validation.missingVariables.map((v: string) => (
+                        <li key={v}>{v}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Links to Calling Onboarding and Call History */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <Link to="/phone">
-                    <Button variant="outline" size="sm" className="border-blue-700/50 text-blue-200 hover:bg-blue-950/40 text-xs shrink-0">
-                      Manage Phone Lines
+                    <Button variant="outline" size="sm" className="text-xs gap-1.5 text-primary">
+                      <Headphones className="size-3.5" />
+                      Open WhatsApp Calling Dashboard
+                    </Button>
+                  </Link>
+
+                  <Link to="/calls">
+                    <Button size="sm" className="bg-[#087F8C] hover:bg-[#076d78] text-white text-xs gap-1.5">
+                      <PhoneCall className="size-3.5" />
+                      View Call Registry
                     </Button>
                   </Link>
                 </div>

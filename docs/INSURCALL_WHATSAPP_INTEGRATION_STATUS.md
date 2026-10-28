@@ -87,7 +87,7 @@ Prior to this fix, the `/whatsapp` interface displayed generated contacts ("Aara
 | **Gateway Reachable** | TRUE | HTTP 200 on `http://127.0.0.1:2785/api/health` |
 | **Baileys Socket Open** | TRUE | Active WebSocket connection to WhatsApp MD servers |
 | **Session Status** | `ready` | Gateway session map and database status |
-| **Authenticated Phone** | `+919770075755` | Verified JID from Baileys credentials |
+| **Authenticated Phone** | `+91**********` | Verified JID from Baileys credentials |
 | **Account Name** | `<Kapoor:Abeer>` | Real business account display name |
 | **History Sync Status** | `completed` | Baileys `messaging-history.set` event stream |
 | **Synced Chats** | 3,980+ chats | Actual WhatsApp chats synced to gateway |
@@ -120,7 +120,7 @@ Prior to this fix, the `/whatsapp` interface displayed generated contacts ("Aara
 ### 6.1 Integration Pipeline Verification (`scratch/test-baileys-sync-pipeline.mjs`)
 Passed all 8 tests with zero errors:
 1. Table schema: `is_demo` exists.
-2. WhatsApp connection verified: `insurcall-a0000000`, phone `+919770075755`.
+2. WhatsApp connection verified: `insurcall-a0000000`, phone `+91**********`.
 3. Gateway diagnostics endpoint: returns truthful runtime state.
 4. Real history-sync: ingested chats, contacts, and messages.
 5. Idempotency: repeated history batch caused zero duplicate messages or chats.

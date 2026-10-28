@@ -50,15 +50,15 @@ function AuditLogsPage() {
   return (
     <AppShell
       title="Compliance & Security Audit Trail"
-      subtitle="Immutable cryptographic log of AI voice agent operations, policy access, and risk enforcement actions"
+      subtitle="Comprehensive audit trail of customer conversations, policy access, dual-control approvals, and security events"
     >
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
           <div className="relative w-full max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               placeholder="Search action, target resource, or actor..."
-              className="pl-8 text-xs bg-background"
+              className="pl-8 text-xs bg-white border-slate-200 rounded-xl"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -66,34 +66,34 @@ function AuditLogsPage() {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>Failed to load audit logs: {error.message}</span>
           </div>
         )}
 
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader className="p-4 sm:p-6 pb-4">
-            <CardTitle className="text-base font-semibold">Security Event Log</CardTitle>
-            <CardDescription className="text-xs">
-              Every tool execution by the voice agent and human officer review is captured in real-time.
+        <Card className="border border-slate-200/90 bg-white shadow-xs rounded-2xl">
+          <CardHeader className="p-4 sm:p-6 pb-4 border-b border-slate-100">
+            <CardTitle className="text-sm font-bold text-slate-900">Security & Operational Event Log</CardTitle>
+            <CardDescription className="text-xs text-slate-500 mt-0.5">
+              Every customer interaction, staff approval, and policy record access is captured with timestamps and actor provenance.
             </CardDescription>
           </CardHeader>
 
           <CardContent className="p-0">
             {isLoading ? (
-              <div className="flex justify-center p-8 text-xs text-muted-foreground">
+              <div className="flex justify-center p-8 text-xs text-slate-500">
                 <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  <span className="h-3 w-3 rounded-full border-2 border-[#087F8C] border-t-transparent animate-spin" />
                   Loading audit trail from database...
                 </span>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground space-y-3">
-                <ShieldCheck className="h-10 w-10 text-muted-foreground/40" />
-                <p className="text-sm font-medium">No audit events recorded yet</p>
-                <p className="text-xs max-w-sm">
-                  Voice operations, OTP challenges, and officer policy actions will automatically record tamper-evident entries here.
+              <div className="flex flex-col items-center justify-center p-12 text-center text-slate-500 space-y-3">
+                <ShieldCheck className="h-10 w-10 text-slate-300" />
+                <p className="text-sm font-semibold text-slate-800">No audit events recorded yet</p>
+                <p className="text-xs max-w-sm text-slate-500 leading-relaxed">
+                  Customer interactions, dual-control approvals, and staff policy updates will automatically record entries here.
                 </p>
               </div>
             ) : (
@@ -192,31 +192,35 @@ function AuditLogsPage() {
 
         {/* Payload Modal */}
         {selectedPayload && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <Card className="w-full max-w-lg border-border bg-card shadow-2xl">
-              <CardHeader className="pb-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+            <Card className="w-full max-w-lg border border-slate-200 bg-white shadow-xl rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold">
-                    Payload Details: {selectedPayload.action}
+                  <CardTitle className="text-sm font-bold text-slate-900">
+                    Event Payload: {selectedPayload.action}
                   </CardTitle>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0"
+                    className="h-7 w-7 p-0 rounded-lg text-slate-400 hover:text-slate-900"
                     onClick={() => setSelectedPayload(null)}
                   >
                     ✕
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <pre className="max-h-72 overflow-y-auto rounded-lg border border-border/80 bg-background/80 p-4 font-mono text-[11px] leading-relaxed text-cyan-300">
+              <CardContent className="p-5 space-y-4">
+                <pre className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs leading-relaxed text-slate-800">
                   {typeof selectedPayload.payload === "string"
                     ? selectedPayload.payload
                     : JSON.stringify(selectedPayload.payload, null, 2)}
                 </pre>
                 <div className="flex justify-end">
-                  <Button size="sm" onClick={() => setSelectedPayload(null)}>
+                  <Button
+                    size="sm"
+                    className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium rounded-xl px-4"
+                    onClick={() => setSelectedPayload(null)}
+                  >
                     Close
                   </Button>
                 </div>

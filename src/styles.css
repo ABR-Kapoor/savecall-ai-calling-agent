@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -127,6 +127,14 @@
     border-color: var(--color-border);
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
+  section[id] {
+    scroll-margin-top: 96px;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
@@ -139,6 +147,44 @@
   h4 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
+  }
+}
+
+/*
+ * InsurCall landing page display face. Scoped under the `.landing` root so the
+ * marketing typography upgrades without drifting into operational console screens.
+ */
+.landing h1,
+.landing h2,
+.landing h3,
+.landing h4 {
+  font-family: "Sora", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+ * Landing hero entrance choreography: gentle rise-in for hero copy.
+ * Respects prefers-reduced-motion.
+ */
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-rise {
+  animation: landing-rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-rise {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 

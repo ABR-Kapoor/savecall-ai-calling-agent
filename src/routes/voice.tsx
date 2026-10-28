@@ -319,6 +319,7 @@ function VoiceCallPage() {
     agentConfig?: any;
     customer: { id: string | null; name: string; customerNumber: string | null; tenantId?: string; isVerified?: boolean };
     micStream?: MediaStream | null | undefined;
+    skipMic: boolean;
   } | null>(null);
 
   const startVoiceCall = useCallback(
@@ -375,7 +376,7 @@ function VoiceCallPage() {
           "Valued Policyholder";
 
         const sessionAbort = new AbortController();
-        const sessionTimeout = setTimeout(() => sessionAbort.abort(), 10000);
+        const sessionTimeout = setTimeout(() => sessionAbort.abort(), 12000);
 
         const res = await fetch("/api/voice/session", {
           method: "POST",
@@ -399,12 +400,11 @@ function VoiceCallPage() {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
-        const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
-        const wsProto = isHttps ? "wss:" : "ws:";
+        // Always prioritize the official LiveKit Cloud WebSocket URL from server or env
         const resolvedLivekitUrl =
-          typeof window !== "undefined"
-            ? `${wsProto}//${window.location.host}`
-            : data.livekitUrl;
+          data.livekitUrl ||
+          (typeof window !== "undefined" && (window as any).__LIVEKIT_URL__) ||
+          "wss://insurcall-agent-11ucbvws.livekit.cloud";
 
         setSession({
           token: data.token,
@@ -416,6 +416,7 @@ function VoiceCallPage() {
           greeting: data.greeting,
           agentConfig: data.agentConfig,
           micStream: mediaStream,
+          skipMic,
         });
       } catch (err: any) {
         PhoneAudioFX.stopRinging();
@@ -537,7 +538,7 @@ function VoiceCallPage() {
             serverUrl={session.livekitUrl}
             token={session.token}
             connect={true}
-            audio={true}
+            audio={!session.skipMic}
             video={false}
             onConnected={() => {
               PhoneAudioFX.stopRinging();

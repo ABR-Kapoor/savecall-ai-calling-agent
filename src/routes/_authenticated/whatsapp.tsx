@@ -1316,61 +1316,61 @@ function WhatsAppManagementPage() {
         {activeTab === "automations" && (
           <div className="space-y-6">
             {/* Visual Automation Architecture Card */}
-            <Card className="bg-gradient-to-r from-slate-900 via-slate-800 to-[#084C61] text-white border-0 shadow-md overflow-hidden">
-              <CardHeader className="pb-3">
+            <Card className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+              <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="text-lg font-bold flex items-center gap-2 text-white">
-                      <Workflow className="w-5 h-5 text-amber-400" />
+                    <CardTitle className="text-base font-bold flex items-center gap-2 text-slate-900">
+                      <Workflow className="w-4 h-4 text-[#087E8B]" />
                       InsurCall Intelligent Automation Pipeline
                     </CardTitle>
-                    <CardDescription className="text-slate-300 text-xs">
-                      How WhatsApp chat and incoming phone calls are automatically processed and answered 24/7.
+                    <CardDescription className="text-slate-500 text-xs">
+                      How WhatsApp chat inquiries and inbound calls are safely processed and answered 24/7.
                     </CardDescription>
                   </div>
-                  <Badge className="bg-amber-400 text-slate-900 font-semibold text-xs border-0">
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold text-xs">
                     Active Pipeline
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="pt-2 pb-6">
+              <CardContent className="pt-4 pb-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 bg-white/10 rounded-lg border border-white/10 space-y-1">
-                    <div className="text-amber-300 font-semibold flex items-center gap-1.5">
-                      <PhoneCall className="w-3.5 h-3.5" />
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                    <div className="text-amber-800 font-semibold flex items-center gap-1.5">
+                      <PhoneCall className="w-3.5 h-3.5 text-amber-600" />
                       1. Inbound Ingress
                     </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                    <p className="text-slate-600 text-[11px] leading-relaxed">
                       Customer sends a WhatsApp message or attempts a WhatsApp voice call.
                     </p>
                   </div>
 
-                  <div className="p-3 bg-white/10 rounded-lg border border-white/10 space-y-1">
-                    <div className="text-emerald-300 font-semibold flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5" />
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                    <div className="text-emerald-800 font-semibold flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                       2. Security &amp; Routing
                     </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                    <p className="text-slate-600 text-[11px] leading-relaxed">
                       HMAC verification, deduplication, and loop-prevention check (fromMe: false).
                     </p>
                   </div>
 
-                  <div className="p-3 bg-white/10 rounded-lg border border-white/10 space-y-1">
-                    <div className="text-cyan-300 font-semibold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                    <div className="text-cyan-900 font-semibold flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-[#087E8B]" />
                       3. RAG Grounding
                     </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                    <p className="text-slate-600 text-[11px] leading-relaxed">
                       Vector search over carrier policies. Strict abstention if similarity &lt; 0.40.
                     </p>
                   </div>
 
-                  <div className="p-3 bg-white/10 rounded-lg border border-white/10 space-y-1">
-                    <div className="text-indigo-300 font-semibold flex items-center gap-1.5">
-                      <Bot className="w-3.5 h-3.5" />
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                    <div className="text-indigo-900 font-semibold flex items-center gap-1.5">
+                      <Bot className="w-3.5 h-3.5 text-indigo-600" />
                       4. Auto-Fulfillment
                     </div>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                    <p className="text-slate-600 text-[11px] leading-relaxed">
                       Immediate grounded reply or call rejection with automated hotline textback.
                     </p>
                   </div>

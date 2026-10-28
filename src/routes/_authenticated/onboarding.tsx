@@ -78,8 +78,8 @@ export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
     id: 1,
     question: "How would you like your receptionist to introduce itself when a customer calls?",
     field: "greeting",
-    hint: "Your receptionist's opening sentence (e.g. 'Hello, welcome to Apex Health. I am Anya, how can I help you?')",
-    example: "Hello! Welcome to our office. I am Anya, your AI receptionist. How can I help you today?",
+    hint: "Your receptionist's opening sentence (e.g. 'Hello, welcome to our office. How can I assist you with your policy today?')",
+    example: "Hello! Welcome to our office. How can I help you with your insurance policy today?",
   },
   {
     id: 2,
@@ -130,20 +130,18 @@ interface OnboardingData {
 const DEFAULT_ONBOARDING: OnboardingData = {
   step: 0,
   organizationName: "",
-  businessType: "Agency / Brokerage",
+  businessType: "",
   contactName: "",
   contactPhone: "",
   contactEmail: "",
-  linesOfInsurance: ["Health Insurance", "Motor / Auto"],
-  preferredLanguage: "English",
-  agentName: "Anya",
-  voiceStyle: "Warm & Reassuring",
-  agentGreeting:
-    "Hello! Thank you for calling our office. I am Anya, your AI insurance assistant. How can I assist you with your policy, coverage, or claim inquiry today?",
-  supportedLanguages: ["English", "Hindi", "Hinglish"],
-  agentInstructions:
-    "Answer policy coverage questions, initiate accident First Notice of Loss (FNOL), check claim status, and escalate high-risk changes to staff adjusters.",
-  escalationBehavior: "Immediate transfer to human adjuster on disputes or high-value claims",
+  linesOfInsurance: [],
+  preferredLanguage: "",
+  agentName: "",
+  voiceStyle: "",
+  agentGreeting: "",
+  supportedLanguages: [],
+  agentInstructions: "",
+  escalationBehavior: "",
   supportedWorkflows: [
     "policy_enquiries",
     "fnol_intake",
@@ -152,12 +150,11 @@ const DEFAULT_ONBOARDING: OnboardingData = {
     "document_collection",
     "human_handoff",
   ],
-  operatingHours: "Monday - Saturday 9:00 AM - 8:00 PM IST",
-  emergencyHelpline: "+91 80000 12345 (24x7 Cashless Hospital Desk)",
-  coreBusinessKnowledge:
-    "Hospitalization requires 24 hours admission for cashless approval except daycare. Claims must be submitted with original discharge summary and itemized pharmacy bills.",
-  callChannel: "browser_webrtc",
-  offHoursRouting: "Emergency voicemail with automated transcription and adjuster alert",
+  operatingHours: "",
+  emergencyHelpline: "",
+  coreBusinessKnowledge: "",
+  callChannel: "whatsapp",
+  offHoursRouting: "",
 };
 
 const STEPS = [
@@ -1110,7 +1107,7 @@ function OnboardingPage() {
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-700">Assistant Name</label>
                     <Input
-                      placeholder="e.g. Anya"
+                      placeholder="Enter assistant name"
                       value={data.agentName}
                       onChange={(e) => updateField("agentName", e.target.value)}
                       className="border-slate-200"

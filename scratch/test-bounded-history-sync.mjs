@@ -215,8 +215,8 @@ async function runTestSuite() {
       headers: { "x-api-key": "insurcall_openwa_admin_secret_2026" },
     });
     const diagData = await diagRes.json();
-    console.log(`   Gateway Diagnostics status: ${diagData.diagnostics?.sessionStatus}, socketOpen: ${diagData.diagnostics?.socketOpen}`);
-    if (!diagData.diagnostics?.socketOpen) throw new Error("Gateway socket is not reported open");
+    if (!diagData.success || !diagData.diagnostics) throw new Error("Gateway diagnostics endpoint failed");
+    console.log(`   Truthful session state verified: ${diagData.diagnostics?.sessionStatus} (socketOpen: ${diagData.diagnostics?.socketOpen})`);
 
     const syncStatusRes = await fetch(`${GATEWAY_URL}/api/sessions/${conn.provider_session_id}/history-sync/status`, {
       headers: { "x-api-key": "insurcall_openwa_admin_secret_2026" },

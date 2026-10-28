@@ -41,7 +41,7 @@ function resolveSessionWebhook(sessionId) {
   if (fs.existsSync(whPath)) {
     try {
       return JSON.parse(fs.readFileSync(whPath, "utf8"));
-    } catch {}
+    } catch { }
   }
   const defaultAppUrl = process.env.APP_BASE_URL || "https://localhost:5173";
   return {
@@ -292,9 +292,9 @@ async function startBaileysSocket(sessionId) {
   // Create safe logger for Baileys
   const dummyLogger = {
     level: "warn",
-    trace: () => {},
-    debug: () => {},
-    info: () => {},
+    trace: () => { },
+    debug: () => { },
+    info: () => { },
     warn: (...args) => console.warn("[Baileys]", ...args),
     error: (...args) => console.error("[Baileys]", ...args),
     child: () => dummyLogger,
@@ -355,7 +355,7 @@ async function startBaileysSocket(sessionId) {
 
       const rawId = sock.user?.id || "";
       const phoneDigits = rawId.split(":")[0]?.split("@")[0];
-      session.phone = phoneDigits ? `+${phoneDigits}` : "+919770075755";
+      session.phone = phoneDigits ? `+${phoneDigits}` : "+91**********";
       session.name = sock.user?.name || "WhatsApp Business";
 
       console.log(`[Baileys Session ${sessionId}] CONNECTED to WhatsApp! Phone: ${session.phone}`);
@@ -385,7 +385,7 @@ async function startBaileysSocket(sessionId) {
         session.sock = null;
         try {
           fs.rmSync(sessionDir, { recursive: true, force: true });
-        } catch {}
+        } catch { }
         dispatchWebhook(session, "session.disconnected", { reason: "logged_out" });
       } else if (shouldReconnect) {
         session.status = "CONNECTING";
@@ -629,7 +629,7 @@ function autoLoadPersistedSessions() {
               s.historySync.totalMessages = savedProgress.totalMessages || 0;
               s.historySync.processedMessages = savedProgress.processedMessages || 0;
               s.historySync.lastError = savedProgress.lastError || null;
-            } catch {}
+            } catch { }
           }
           startBaileysSocket(sessId).catch((err) => {
             console.warn(`[Baileys Gateway] Failed auto-starting session ${sessId}:`, err.message);
@@ -680,7 +680,7 @@ const server = http.createServer((req, res) => {
     if (bodyData) {
       try {
         body = JSON.parse(bodyData);
-      } catch {}
+      } catch { }
     }
 
     // 1. Create Session: POST /api/sessions
@@ -770,7 +770,7 @@ const server = http.createServer((req, res) => {
       const sessionId = simMatch[1];
       const session = getOrCreateSession(sessionId);
       session.status = "ready";
-      session.phone = "+919770075755";
+      session.phone = "+91**********";
       session.name = "InsurCall WhatsApp Agent";
       session.qr = null;
       session.lastConnectedAt = new Date().toISOString();
@@ -925,7 +925,7 @@ const server = http.createServer((req, res) => {
         const sessDir = path.join(DATA_DIR, sessionId);
         fs.mkdirSync(sessDir, { recursive: true });
         fs.writeFileSync(path.join(sessDir, "webhook.json"), JSON.stringify(session.webhook, null, 2));
-      } catch {}
+      } catch { }
       return sendJson(res, 200, {
         success: true,
         id: session.webhook.id,
@@ -944,7 +944,7 @@ const server = http.createServer((req, res) => {
         if (session.sock) {
           try {
             session.sock.end(new Error("Manual stop"));
-          } catch {}
+          } catch { }
           session.sock = null;
         }
       }
@@ -975,15 +975,15 @@ const server = http.createServer((req, res) => {
         historySync: session.historySync,
         queue: queue
           ? {
-              syncId: queue.syncId,
-              status: queue.status,
-              nextBatchIndex: queue.nextBatchIndex,
-              totalBatches: queue.totalBatches,
-              totalMessages: queue.totalMessages,
-              startedAt: queue.startedAt,
-              completedAt: queue.completedAt,
-              lastError: queue.lastError,
-            }
+            syncId: queue.syncId,
+            status: queue.status,
+            nextBatchIndex: queue.nextBatchIndex,
+            totalBatches: queue.totalBatches,
+            totalMessages: queue.totalMessages,
+            startedAt: queue.startedAt,
+            completedAt: queue.completedAt,
+            lastError: queue.lastError,
+          }
           : null,
       });
     }

@@ -35,13 +35,16 @@ interface BrandingConfig {
 const NAV_CORE = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { to: "/whatsapp", label: "WhatsApp Inbox", icon: MessageSquare },
+  { to: "/calls", label: "Voice Calls", icon: PhoneCall },
   { to: "/agent", label: "AI Agent", icon: Bot },
   { to: "/train", label: "Knowledge & Training", icon: BookOpen },
 ] as const;
 
 const NAV_GOVERNANCE = [
+  { to: "/claims", label: "Claims Intake & FNOL", icon: ShieldCheck },
   { to: "/change-requests", label: "Approvals & Handoffs", icon: CheckSquare },
   { to: "/policies", label: "Insurance Records", icon: FileText },
+  { to: "/phone", label: "Telephony & Forwarding", icon: Radio },
   { to: "/settings", label: "Settings & Security", icon: Settings },
   { to: "/audit", label: "Activity & Audit", icon: ShieldAlert },
 ] as const;
@@ -73,7 +76,7 @@ export function AppShell({
   });
 
   const tenantConfig = (tenant?.branding_config as BrandingConfig | null) || {};
-  const companyName = tenant?.name || "InsurCall Insurance Operations";
+  const companyName = tenant?.name || "Workspace";
   const planRaw = typeof tenantConfig.plan === "string" ? tenantConfig.plan : "enterprise";
   const planDisplay = planRaw.charAt(0).toUpperCase() + planRaw.slice(1);
 
@@ -90,7 +93,7 @@ export function AppShell({
     <div className="flex min-h-screen bg-[#FAF9F6] text-[#111827] antialiased font-sans">
       {/* Sidebar Desktop: Fixed & Clean Bright Theme with Cool Dark Elements */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white p-4 md:flex shadow-xs sticky top-0 h-screen select-none z-20">
-        {/* Workspace Brand / Header */}
+        {/* Workspace Brand & Organization Badge */}
         <div className="mb-4 pb-3 border-b border-slate-100">
           <Link to="/dashboard" className="flex items-center justify-between px-1 py-1 group">
             <div className="flex items-center gap-2">
@@ -103,12 +106,27 @@ export function AppShell({
                 Insur<span className="text-[#087F8C]">Call</span>
               </span>
             </div>
-            <span className="rounded-full bg-[#172033] text-white px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider font-bold">
+            <span className="rounded-full bg-teal-50 text-[#087F8C] border border-teal-200/80 px-2 py-0.5 text-[10px] font-semibold tracking-wide capitalize">
               {planDisplay}
             </span>
           </Link>
-          <div className="px-1 pt-1.5 text-[11px] text-slate-500 font-mono font-medium truncate" title={companyName}>
-            {companyName}
+
+          {/* Clean Organization Identity Chip */}
+          <div className="mt-2.5 flex items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1.5 text-xs text-slate-700 shadow-2xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="size-2 rounded-full bg-emerald-500 shrink-0" />
+              <div className="min-w-0">
+                <span className="block font-semibold truncate text-xs text-slate-900" title={companyName}>
+                  {companyName}
+                </span>
+                <span className="block text-[10px] text-slate-400 capitalize">
+                  Insurance Agency
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider shrink-0 pl-1">
+              Live
+            </span>
           </div>
         </div>
 
@@ -116,7 +134,7 @@ export function AppShell({
         <div className="flex-1 space-y-5 overflow-hidden pr-1">
           {/* Core Platform Section */}
           <div className="space-y-1">
-            <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
+            <div className="px-2 pb-1 text-[10px] font-bold tracking-wider text-slate-400 uppercase">
               Core Platform
             </div>
             <nav className="space-y-0.5">
@@ -141,7 +159,7 @@ export function AppShell({
 
           {/* Operations & Governance */}
           <div className="space-y-1">
-            <div className="px-2 pb-1 text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase">
+            <div className="px-2 pb-1 text-[10px] font-bold tracking-wider text-slate-400 uppercase">
               Operations & Governance
             </div>
             <nav className="space-y-0.5">
@@ -174,7 +192,7 @@ export function AppShell({
                 <p className="text-xs font-semibold text-slate-900 truncate">
                   {user?.fullName || user?.firstName || "Staff Adjuster"}
                 </p>
-                <p className="text-[10px] font-mono text-slate-400 truncate">
+                <p className="text-[10px] text-slate-500 truncate">
                   {user?.primaryEmailAddress?.emailAddress || "adjuster@insurcall.ai"}
                 </p>
               </div>
@@ -200,7 +218,7 @@ export function AppShell({
                 {title}
               </h1>
               {subtitle && (
-                <p className="text-[11px] text-slate-500 font-mono leading-none mt-0.5">
+                <p className="text-xs text-slate-500 leading-normal mt-0.5 font-normal">
                   {subtitle}
                 </p>
               )}
@@ -212,7 +230,18 @@ export function AppShell({
               asChild
               size="sm"
               variant="outline"
-              className="h-8 rounded-full border-slate-200 text-xs font-mono text-slate-700 hover:text-black hover:bg-slate-100"
+              className="h-8 rounded-full border-teal-200 bg-teal-50/50 text-xs font-medium text-[#087F8C] hover:text-[#076C77] hover:bg-teal-100/50"
+            >
+              <Link to="/voice">
+                <Mic className="size-3 mr-1.5 text-[#087F8C]" />
+                Live Call
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-full border-slate-200 text-xs font-medium text-slate-700 hover:text-slate-950 hover:bg-slate-100"
             >
               <Link to="/whatsapp">
                 <MessageSquare className="size-3 mr-1.5 text-[#087F8C]" />
@@ -222,7 +251,7 @@ export function AppShell({
             <Button
               asChild
               size="sm"
-              className="h-8 rounded-full bg-[#172033] hover:bg-[#1F2937] text-white text-xs font-mono font-medium"
+              className="h-8 rounded-full bg-[#172033] hover:bg-[#1F2937] text-white text-xs font-medium"
             >
               <Link to="/train">
                 <BookOpen className="size-3 mr-1.5 text-[#10A6AE]" />

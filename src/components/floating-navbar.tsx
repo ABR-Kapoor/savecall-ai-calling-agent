@@ -40,9 +40,9 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
             <img
               src="/01_logo_only_transparent.png"
               alt="InsurCall Emblem"
-              className="h-7 w-auto object-contain transition-transform group-hover:scale-105"
+              className="h-9 w-auto object-contain transition-transform group-hover:scale-105"
             />
-            <span className="font-display text-base font-extrabold tracking-tight text-[#111827]">
+            <span className="font-display text-lg font-extrabold tracking-tight text-[#111827]">
               Insur<span className="text-[#087F8C]">Call</span>
             </span>
           </Link>
@@ -61,26 +61,26 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
             {/* Nav Links in Monospace Uppercase Tracking */}
             <div className="flex items-center px-1 font-mono text-[11px] tracking-widest text-[#344054]">
               <a
-                href="#use-cases"
+                href="#capabilities"
                 className="px-3.5 py-1.5 rounded-full hover:text-[#087F8C] hover:bg-slate-100/70 transition-all font-medium"
               >
                 SOLUTIONS
               </a>
               <a
-                href="#how-it-works"
+                href="#claims-workflow"
                 className="px-3.5 py-1.5 rounded-full hover:text-[#087F8C] hover:bg-slate-100/70 transition-all font-medium"
               >
                 HOW IT WORKS
               </a>
               <a
-                href="#pricing"
+                href="#trust"
                 className="px-3.5 py-1.5 rounded-full hover:text-[#087F8C] hover:bg-slate-100/70 transition-all font-medium"
               >
-                PRICING
+                TRUST
               </a>
             </div>
 
-            {/* Solid Dark Action Pill (matching WORK WITH US button) */}
+            {/* Solid Bright Action Pill */}
             <div className="flex items-center gap-1.5 pl-1">
               <button
                 type="button"
@@ -92,11 +92,11 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
 
               <Link
                 to="/voice"
-                className="group flex items-center gap-1.5 bg-[#111827] hover:bg-[#1F2937] text-white font-mono text-[11px] tracking-wider uppercase px-4 py-2 rounded-full transition-all shadow-xs active:scale-95"
+                className="group flex items-center gap-1.5 bg-[#087F8C] hover:bg-[#066772] text-white font-mono text-[11px] tracking-wider uppercase px-4 py-2 rounded-full transition-all shadow-xs active:scale-95"
               >
-                <Mic className="size-3 text-[#10A6AE]" />
+                <Mic className="size-3 text-white" />
                 <span>TRY DEMO</span>
-                <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5 text-slate-400 group-hover:text-white" />
+                <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5 text-white/70 group-hover:text-white" />
               </Link>
             </div>
           </div>
@@ -126,25 +126,25 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
         <div className="pointer-events-auto md:hidden mx-4 mt-2 p-4 rounded-3xl bg-white/95 border border-slate-200 shadow-xl backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex flex-col gap-2 font-mono text-xs tracking-wider text-slate-800">
             <a
-              href="#use-cases"
+              href="#capabilities"
               onClick={() => setMobileMenuOpen(false)}
               className="px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors"
             >
               SOLUTIONS
             </a>
             <a
-              href="#how-it-works"
+              href="#claims-workflow"
               onClick={() => setMobileMenuOpen(false)}
               className="px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors"
             >
               HOW IT WORKS
             </a>
             <a
-              href="#pricing"
+              href="#trust"
               onClick={() => setMobileMenuOpen(false)}
               className="px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors"
             >
-              PRICING
+              TRUST
             </a>
             <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
               <Button
@@ -162,10 +162,10 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
               <Button
                 asChild
                 size="sm"
-                className="w-full bg-[#111827] text-white text-xs font-mono justify-center"
+                className="w-full bg-[#087F8C] hover:bg-[#066772] text-white text-xs font-mono justify-center"
               >
                 <Link to="/voice" onClick={() => setMobileMenuOpen(false)}>
-                  <Mic className="size-3.5 mr-1.5 text-[#10A6AE]" />
+                  <Mic className="size-3.5 mr-1.5 text-white" />
                   LAUNCH TEST CALL
                 </Link>
               </Button>

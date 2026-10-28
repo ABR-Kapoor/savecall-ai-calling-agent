@@ -51,7 +51,7 @@ async function runTestSuite() {
     {
       id: agentA1_id,
       tenant_id: tenantA_id,
-      name: "Anya - Health Specialist",
+      name: "Maya - Health Specialist",
       greeting: "Hello from Agent A1",
       tone: "Professional",
       languages: ["English"],

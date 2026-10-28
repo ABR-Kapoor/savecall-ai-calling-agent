@@ -35,9 +35,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useBusiness } from "@/hooks/use-business";
-import { insforge as supabase } from "@/integrations/insforge/client";
 import {
-  ingestPdf,
+  ingestKnowledgeFile,
+  getKnowledgeSources,
+  getKnowledgeItems,
+  queryKnowledgeGrounded,
   addManualKnowledgeFact,
   updateSourceTags,
   deleteKnowledgeSource,
@@ -188,40 +190,72 @@ function KnowledgeAndTrainingPage() {
   // Guided Interview State
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [interviewAnswers, setInterviewAnswers] = useState({
-    organization: "Apex Insurance Partners (Composite Agency, Mon-Sat 9 AM - 7 PM IST)",
-    lines: "Comprehensive Motor (Private Car), Family Health Floater, and Term Life Protection",
-    claims: "Cashless hospitalization within 24 hours with TPA e-card; Motor claims require RC copy, DL, and accident site photos.",
-    prohibitions: "Never guarantee claim settlement or payout amounts; transfer complex disputes and nominee changes to staff adjusters.",
+    organization: "",
+    lines: "",
+    claims: "",
+    prohibitions: "",
   });
   const [interviewInput, setInterviewInput] = useState("");
   const [isIngestingInterview, setIsIngestingInterview] = useState(false);
 
   // Retrieval Testbed State
   const [testQuery, setTestQuery] = useState("");
-  const [testResults, setTestResults] = useState<Array<{
-    question: string;
+  const [testFilterTag, setTestFilterTag] = useState<string | null>(null);
+  const [isRunningTest, setIsRunningTest] = useState(false);
+  const [customTagInput, setCustomTagInput] = useState("");
+  const [testGroundedResult, setTestGroundedResult] = useState<{
     answer: string;
-    category: string;
-    score: number;
-    approved: boolean;
-  }> | null>(null);
+    grounded: boolean;
+    citations: Array<{ sourceName: string; similarity: number; sectionHeading?: string | null }>;
+    needs_human_review: boolean;
+    reason?: string;
+    model_used: string;
+  } | null>(null);
+  const [testChunks, setTestChunks] = useState<Array<{
+    sourceName: string;
+    content: string;
+    similarity: number;
+    sectionHeading?: string | undefined;
+  }>>([]);
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["training", businessId] });
+    void queryClient.invalidateQueries({ queryKey: ["training"] });
+    void queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
   };
 
-  // 1. Fetch Knowledge Sources
+  // Synchronize guided interview defaults from tenant database record
+  useEffect(() => {
+    if (business) {
+      const bCfg = (business.branding_config as Record<string, unknown> | undefined) || {};
+      const orgDetails = (bCfg["organization_details"] as Record<string, unknown> | undefined) || {};
+      const coreKnowledge = typeof bCfg["core_business_knowledge"] === "string" ? bCfg["core_business_knowledge"] : "";
+      const businessKnowledge = typeof bCfg["business_knowledge"] === "string" ? bCfg["business_knowledge"] : "";
+      const bType = typeof orgDetails["business_type"] === "string" ? orgDetails["business_type"] : "Insurance Agency";
+      const linesArr = Array.isArray(orgDetails["lines_of_insurance"]) ? orgDetails["lines_of_insurance"] : [];
+
+      setInterviewAnswers((prev) => ({
+        organization: prev.organization || (business.name ? `${business.name} (${bType})` : ""),
+        lines: prev.lines || linesArr.join(", "),
+        claims: prev.claims || (coreKnowledge || businessKnowledge || ""),
+        prohibitions: prev.prohibitions || "Never guarantee claim payouts or modify policy beneficiaries without adjuster sign-off.",
+      }));
+    }
+  }, [business]);
+
+  // Synchronize interview text input when switching topic
+  useEffect(() => {
+    const currentStep = INTERVIEW_STEPS[currentStepIndex];
+    if (currentStep) {
+      setInterviewInput(interviewAnswers[currentStep.field] || "");
+    }
+  }, [currentStepIndex]);
+
+  // 1. Fetch Knowledge Sources from server function
   const sourcesQuery = useQuery({
     queryKey: ["training", "sources", businessId],
     enabled: !!businessId,
     queryFn: async () => {
-      const { data, error } = await supabase.database
-        .from("knowledge_sources")
-        .select("id, type, name, source_uri, status, metadata, created_at, updated_at")
-        .or(`tenant_id.eq.${businessId!},business_id.eq.${businessId!}`)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
+      const data = await getKnowledgeSources({ data: { businessId: businessId! } });
       return (data || []).map((s: KnowledgeSourceRow) => ({
         id: s.id,
         type: s.type || "document",
@@ -232,24 +266,19 @@ function KnowledgeAndTrainingPage() {
         textPreview: s.metadata?.text_preview || "",
         pagesFound: s.metadata?.pages_found ?? 1,
         factsFound: s.metadata?.facts_found ?? 1,
+        chunksCount: (s.metadata?.["chunks_count"] as number | undefined) ?? 1,
         createdAt: s.created_at,
         updatedAt: s.updated_at,
       }));
     },
   });
 
-  // 2. Fetch Knowledge Items (Facts)
+  // 2. Fetch Knowledge Items (Facts) from server function
   const itemsQuery = useQuery({
     queryKey: ["training", "items", businessId],
     enabled: !!businessId,
     queryFn: async () => {
-      const { data, error } = await supabase.database
-        .from("knowledge_items")
-        .select("id, question, answer, category, approved, source_id, created_at")
-        .or(`tenant_id.eq.${businessId!},business_id.eq.${businessId!}`)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
+      const data = await getKnowledgeItems({ data: { businessId: businessId! } });
       return (data as KnowledgeItemRecord[]) || [];
     },
   });
@@ -281,11 +310,20 @@ function KnowledgeAndTrainingPage() {
     ? items.filter((i) => i.source_id === selectedSource.id)
     : [];
 
-  // File upload handler
+  // Multi-format vector file upload handler
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0 || !businessId) return;
     const file = files[0];
     if (!file) return;
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const validExtensions = ["pdf", "docx", "txt", "md", "csv", "xlsx"] as const;
+    type ValidExt = typeof validExtensions[number];
+
+    if (!ext || !validExtensions.includes(ext as ValidExt)) {
+      toast.error(`Unsupported format: .${ext}. Please upload PDF, DOCX, TXT, MD, CSV, or XLSX.`);
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -293,21 +331,21 @@ function KnowledgeAndTrainingPage() {
       reader.onload = async () => {
         try {
           const base64 = (reader.result as string).split(",")[1];
-          if (!base64) throw new Error("Could not read file data.");
+          if (!base64) throw new Error("Could not read file binary.");
 
-          await ingestPdf({
+          const res = await ingestKnowledgeFile({
             data: {
-              businessId,
+              tenantId: businessId,
               fileName: file.name,
-              dataBase64: base64,
-              tags: ["Policy Document", "Customer-safe"],
+              fileBase64: base64,
+              fileType: ext as ValidExt,
             },
           });
 
-          toast.success(`Successfully uploaded and indexed ${file.name}`);
+          toast.success(`Successfully uploaded and indexed ${file.name} (${res.chunksIndexed} vector chunks)`);
           invalidate();
         } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : "Failed to process PDF";
+          const msg = e instanceof Error ? e.message : "Failed to process and index document";
           toast.error(msg);
         } finally {
           setIsUploading(false);
@@ -386,7 +424,7 @@ function KnowledgeAndTrainingPage() {
       return updateSourceTags({ data: { sourceId, tags } });
     },
     onSuccess: () => {
-      toast.success("Document tags updated.");
+      toast.success("Document tags updated. LLM retrieval filters synchronized.");
       invalidate();
     },
     onError: (err: unknown) => {
@@ -394,6 +432,50 @@ function KnowledgeAndTrainingPage() {
       toast.error(msg);
     },
   });
+
+  // Handlers for interactive document tagging
+  const handleAddTag = (tagToAdd: string) => {
+    if (!selectedSource || !tagToAdd.trim()) return;
+    const cleanTag = tagToAdd.trim().replace(/^#/, "");
+    if (!cleanTag) return;
+    const currentTags = selectedSource.tags || [];
+    if (currentTags.some((t) => t.toLowerCase() === cleanTag.toLowerCase())) {
+      toast.info(`Tag #${cleanTag} is already attached to this document.`);
+      return;
+    }
+    const nextTags = [...currentTags, cleanTag];
+    updateTagsMutation.mutate({ sourceId: selectedSource.id, tags: nextTags });
+    setCustomTagInput("");
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    if (!selectedSource) return;
+    const nextTags = (selectedSource.tags || []).filter(
+      (t) => t.toLowerCase() !== tagToRemove.toLowerCase()
+    );
+    updateTagsMutation.mutate({ sourceId: selectedSource.id, tags: nextTags });
+  };
+
+  // Handle typing in interview textarea
+  const handleInterviewInputChange = (val: string) => {
+    setInterviewInput(val);
+    const currentStep = INTERVIEW_STEPS[currentStepIndex];
+    if (currentStep) {
+      setInterviewAnswers((prev) => ({
+        ...prev,
+        [currentStep.field]: val,
+      }));
+    }
+  };
+
+  // Switch step cleanly and load that step's answer
+  const switchStep = (nextIdx: number) => {
+    const nextStep = INTERVIEW_STEPS[nextIdx];
+    if (nextStep) {
+      setCurrentStepIndex(nextIdx);
+      setInterviewInput(interviewAnswers[nextStep.field] || "");
+    }
+  };
 
   // Handle Interview Step Response Submission
   const handleSaveInterviewResponse = () => {
@@ -406,9 +488,8 @@ function KnowledgeAndTrainingPage() {
         [currentStep.field]: interviewInput.trim(),
       }));
     }
-    setInterviewInput("");
     if (currentStepIndex < INTERVIEW_STEPS.length - 1) {
-      setCurrentStepIndex((prev) => prev + 1);
+      switchStep(currentStepIndex + 1);
     } else {
       toast.info("All interview topics answered. Review and approve extracted facts below.");
     }
@@ -469,31 +550,59 @@ function KnowledgeAndTrainingPage() {
     }
   };
 
-  // Test Semantic Retrieval locally against loaded items
-  const handleRunRetrievalTest = () => {
-    if (!testQuery.trim()) {
-      setTestResults(null);
+  // Test Semantic Retrieval directly against pgvector store
+  const handleRunRetrievalTest = async () => {
+    if (!testQuery.trim() || !businessId) {
+      setTestGroundedResult(null);
+      setTestChunks([]);
       return;
     }
-    const q = testQuery.toLowerCase();
-    const scored = items.map((item) => {
-      let score = 0.5;
-      const qWords = q.split(/\s+/).filter(Boolean);
-      for (const w of qWords) {
-        if (item.question.toLowerCase().includes(w)) score += 0.2;
-        if (item.answer.toLowerCase().includes(w)) score += 0.15;
+    setIsRunningTest(true);
+    try {
+      interface GroundedQueryResult {
+        chunks: Array<{
+          id: string;
+          sourceId: string;
+          sourceName: string;
+          sourceType: string;
+          content: string;
+          similarity: number;
+          sectionHeading?: string;
+          pageNumber?: number;
+        }>;
+        answerResult: {
+          answer: string;
+          grounded: boolean;
+          citations: Array<{ sourceName: string; similarity: number; sectionHeading?: string | null }>;
+          needs_human_review: boolean;
+          reason?: string;
+          model_used: string;
+        };
       }
-      return {
-        question: item.question,
-        answer: item.answer,
-        category: item.category,
-        approved: item.approved,
-        score: Math.min(0.98, score),
-      };
-    });
 
-    scored.sort((a, b) => b.score - a.score);
-    setTestResults(scored.slice(0, 4));
+      const res = (await queryKnowledgeGrounded({
+        data: {
+          tenantId: businessId,
+          query: testQuery.trim(),
+          tags: testFilterTag ? [testFilterTag] : undefined,
+        },
+      })) as GroundedQueryResult;
+
+      setTestGroundedResult(res.answerResult);
+      setTestChunks(
+        res.chunks.map((c) => ({
+          sourceName: c.sourceName,
+          content: c.content,
+          similarity: c.similarity,
+          sectionHeading: c.sectionHeading || undefined,
+        }))
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to run retrieval test";
+      toast.error(msg);
+    } finally {
+      setIsRunningTest(false);
+    }
   };
 
   if (isBusinessLoading) {
@@ -515,17 +624,17 @@ function KnowledgeAndTrainingPage() {
       <div className="space-y-6">
         {/* Navigation Tabs */}
         <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as typeof mainTab)} className="space-y-4">
-          <TabsList className="bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <TabsTrigger value="interview" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+          <TabsList className="bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+            <TabsTrigger value="interview" className="text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-[#087F8C] data-[state=active]:shadow-2xs">
               <MessageSquare className="size-3.5 mr-1.5" /> 1. Guided Interview
             </TabsTrigger>
-            <TabsTrigger value="documents" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="documents" className="text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-[#087F8C] data-[state=active]:shadow-2xs">
               <FileText className="size-3.5 mr-1.5" /> 2. Documents & Guidelines ({sources.length})
             </TabsTrigger>
-            <TabsTrigger value="facts" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="facts" className="text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-[#087F8C] data-[state=active]:shadow-2xs">
               <ShieldCheck className="size-3.5 mr-1.5" /> 3. Approved Facts ({items.filter((i) => i.approved).length})
             </TabsTrigger>
-            <TabsTrigger value="testbed" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="testbed" className="text-xs font-semibold rounded-xl data-[state=active]:bg-white data-[state=active]:text-[#087F8C] data-[state=active]:shadow-2xs">
               <Search className="size-3.5 mr-1.5" /> 4. Retrieval Inspector
             </TabsTrigger>
           </TabsList>
@@ -545,12 +654,12 @@ function KnowledgeAndTrainingPage() {
                         <h3 className="font-display text-sm font-bold text-slate-900">
                           Let's Train Your InsurCall Assistant
                         </h3>
-                        <p className="text-[11px] font-mono text-slate-500">
+                        <p className="text-xs text-slate-500">
                           Topic {currentStepIndex + 1} of {INTERVIEW_STEPS.length}: {currentStep?.area}
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-[10px] font-mono text-teal-800 bg-teal-50 border-teal-200">
+                    <Badge variant="outline" className="text-[10px] font-semibold text-teal-800 bg-teal-50 border-teal-200 rounded-full">
                       Step {currentStepIndex + 1} / {INTERVIEW_STEPS.length}
                     </Badge>
                   </div>
@@ -577,9 +686,9 @@ function KnowledgeAndTrainingPage() {
                     <Textarea
                       rows={3}
                       placeholder={currentStep?.example}
-                      value={interviewInput || interviewAnswers[currentStep?.field || "organization"]}
-                      onChange={(e) => setInterviewInput(e.target.value)}
-                      className="text-xs bg-white border-slate-200 leading-relaxed"
+                      value={interviewInput}
+                      onChange={(e) => handleInterviewInputChange(e.target.value)}
+                      className="text-xs bg-white border-slate-200 rounded-xl leading-relaxed"
                     />
                   </div>
 
@@ -588,8 +697,8 @@ function KnowledgeAndTrainingPage() {
                       variant="outline"
                       size="sm"
                       disabled={currentStepIndex === 0}
-                      onClick={() => setCurrentStepIndex((p) => Math.max(0, p - 1))}
-                      className="text-xs border-slate-200 font-mono"
+                      onClick={() => switchStep(Math.max(0, currentStepIndex - 1))}
+                      className="text-xs border-slate-200 font-medium rounded-xl"
                     >
                       Previous Topic
                     </Button>
@@ -597,7 +706,7 @@ function KnowledgeAndTrainingPage() {
                     <Button
                       size="sm"
                       onClick={handleSaveInterviewResponse}
-                      className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-mono gap-1.5 shadow-xs"
+                      className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium gap-1.5 shadow-2xs rounded-xl"
                     >
                       {currentStepIndex < INTERVIEW_STEPS.length - 1 ? "Save & Next Topic" : "Update Response"}
                       <ArrowRight className="size-3.5" />
@@ -618,7 +727,7 @@ function KnowledgeAndTrainingPage() {
                         Derived directly from your interview responses.
                       </p>
                     </div>
-                    <Badge variant="outline" className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200">
+                    <Badge variant="outline" className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border-emerald-200 rounded-full">
                       Traceable
                     </Badge>
                   </div>
@@ -633,9 +742,9 @@ function KnowledgeAndTrainingPage() {
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-bold text-slate-900 text-[11px]">{s.area}</span>
-                            <span className="text-[10px] font-mono text-slate-400">Topic #{idx + 1}</span>
+                            <span className="text-[10px] text-slate-400 font-medium">Topic #{idx + 1}</span>
                           </div>
-                          <p className="text-[11.5px] text-slate-600 line-clamp-2 leading-relaxed">{val}</p>
+                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{val}</p>
                         </div>
                       );
                     })}
@@ -645,7 +754,7 @@ function KnowledgeAndTrainingPage() {
                     <Button
                       onClick={handleApproveInterviewFacts}
                       disabled={isIngestingInterview || !businessId}
-                      className="w-full bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-mono h-10 shadow-xs"
+                      className="w-full bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium h-10 shadow-2xs rounded-xl"
                     >
                       {isIngestingInterview ? (
                         <>
@@ -672,10 +781,10 @@ function KnowledgeAndTrainingPage() {
           <TabsContent value="documents" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               {/* LEFT PANEL: Categories & Tags (Col 3) */}
-              <div className="lg:col-span-3 space-y-4">
+              <div className="lg:col-span-3 min-w-0 space-y-4">
                 <Card className="border border-slate-200 bg-white shadow-xs rounded-3xl p-4 space-y-4">
                   <div>
-                    <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">
                       Document Categories
                     </span>
                     <div className="space-y-1">
@@ -701,13 +810,13 @@ function KnowledgeAndTrainingPage() {
 
                   <div className="pt-3 border-t border-slate-100">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                         Filter by Tag
                       </span>
                       {selectedTag && (
                         <button
                           onClick={() => setSelectedTag(null)}
-                          className="text-[10px] font-mono text-[#087F8C] hover:underline"
+                          className="text-[10px] font-medium text-[#087F8C] hover:underline"
                         >
                           Clear
                         </button>
@@ -736,7 +845,7 @@ function KnowledgeAndTrainingPage() {
               </div>
 
               {/* CENTRE PANEL: Drag & Drop + List (Col 5) */}
-              <div className="lg:col-span-5 space-y-4">
+              <div className="lg:col-span-5 min-w-0 space-y-4">
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -758,7 +867,7 @@ function KnowledgeAndTrainingPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.txt,.md"
+                    accept=".pdf,.docx,.txt,.md,.csv,.xlsx"
                     className="hidden"
                     onChange={(e) => handleFileUpload(e.target.files)}
                   />
@@ -770,10 +879,10 @@ function KnowledgeAndTrainingPage() {
                     )}
                   </div>
                   <h4 className="text-xs font-bold text-slate-900">
-                    {isUploading ? "Extracting policy text..." : "Drop policy PDF, guidelines, or rate card here"}
+                    {isUploading ? "Extracting and indexing policy text..." : "Drop policy PDF, guidelines, or rate card here"}
                   </h4>
                   <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
-                    Supports PDF, TXT, or Markdown. Text is chunked locally and indexed in pgvector.
+                    Supports PDF, DOCX, TXT, Markdown, CSV, or XLSX. Text is chunked locally and indexed in pgvector.
                   </p>
                 </div>
 
@@ -809,8 +918,8 @@ function KnowledgeAndTrainingPage() {
                               : "border-slate-200 bg-white hover:border-slate-300 shadow-2xs"
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3">
+                          <div className="flex items-start justify-between gap-3 min-w-0">
+                            <div className="flex items-start gap-3 min-w-0 flex-1">
                               <span
                                 className={`grid size-9 shrink-0 place-items-center rounded-xl text-xs font-bold ${
                                   source.type === "pdf"
@@ -820,27 +929,38 @@ function KnowledgeAndTrainingPage() {
                               >
                                 {source.type === "pdf" ? "PDF" : "FACT"}
                               </span>
-                              <div className="space-y-1">
-                                <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{source.name}</h4>
-                                <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <h4
+                                  className="text-xs font-bold text-slate-900 truncate break-all block"
+                                  title={source.name}
+                                >
+                                  {source.name}
+                                </h4>
+                                <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed break-words">
                                   {source.textPreview || "Extracted policy wording ready for retrieval."}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                  {source.tags.map((t) => (
-                                    <span
-                                      key={t}
-                                      className="inline-flex items-center gap-0.5 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-mono text-slate-600"
-                                    >
-                                      #{t}
+                                  {source.tags.length === 0 ? (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0">
+                                      <Tag className="size-2.5" /> + Add Tags for LLM
                                     </span>
-                                  ))}
+                                  ) : (
+                                    source.tags.map((t) => (
+                                      <span
+                                        key={t}
+                                        className="inline-flex items-center gap-0.5 rounded-md bg-[#E6F6F7] border border-[#087F8C]/20 px-2 py-0.5 text-[10px] font-semibold text-[#087F8C] shrink-0"
+                                      >
+                                        #{t}
+                                      </span>
+                                    ))
+                                  )}
                                 </div>
                               </div>
                             </div>
 
                             <Badge
                               variant="outline"
-                              className="shrink-0 text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200"
+                              className="shrink-0 text-[10px] font-medium text-emerald-800 bg-emerald-50 border-emerald-200 ml-2"
                             >
                               Indexed
                             </Badge>
@@ -852,16 +972,19 @@ function KnowledgeAndTrainingPage() {
                 </div>
               </div>
 
-              {/* RIGHT DETAIL DRAWER: Source Inspection (Col 4) */}
-              <div className="lg:col-span-4 space-y-4">
+              {/* RIGHT DETAIL DRAWER: Source Inspection & Tagging (Col 4) */}
+              <div className="lg:col-span-4 min-w-0 space-y-4">
                 {selectedSource ? (
-                  <Card className="border border-slate-200 bg-white shadow-xs rounded-3xl p-5 space-y-4 sticky top-20">
-                    <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                  <Card className="border border-slate-200 bg-white shadow-xs rounded-3xl p-5 space-y-4 sticky top-20 overflow-hidden">
+                    <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100 min-w-0">
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
                           Selected Document
                         </span>
-                        <h3 className="text-sm font-bold text-slate-900 line-clamp-2">
+                        <h3
+                          className="text-sm font-bold text-slate-900 break-words [overflow-wrap:anywhere] leading-snug"
+                          title={selectedSource.name}
+                        >
                           {selectedSource.name}
                         </h3>
                       </div>
@@ -873,15 +996,125 @@ function KnowledgeAndTrainingPage() {
                             deleteSourceMutation.mutate(selectedSource.id);
                           }
                         }}
-                        className="size-8 p-0 text-slate-400 hover:text-rose-600 rounded-lg"
+                        className="size-8 p-0 text-slate-400 hover:text-rose-600 rounded-lg shrink-0"
                       >
                         <Trash2 className="size-4" />
                       </Button>
                     </div>
 
+                    {/* DOCUMENT TAGS & LLM RETRIEVAL SECTION */}
+                    <div className="space-y-3 pb-3 border-b border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <Tag className="size-3.5 text-[#087F8C]" />
+                          Document Tags for LLM Retrieval
+                        </span>
+                        <Badge variant="outline" className="text-[10px] font-semibold text-[#087F8C] bg-[#E6F6F7] border-[#087F8C]/20">
+                          {selectedSource.tags.length} Active {selectedSource.tags.length === 1 ? "Tag" : "Tags"}
+                        </Badge>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Tag this document to control when the AI Assistant retrieves it during customer inquiries or voice calls.
+                      </p>
+
+                      {/* Current Active Tags */}
+                      <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-[#FAF9F6] rounded-xl border border-slate-100 items-center">
+                        {selectedSource.tags.length === 0 ? (
+                          <span className="text-[11px] text-amber-700 italic">No tags attached. Add domain tags below so the LLM can fetch this document.</span>
+                        ) : (
+                          selectedSource.tags.map((t) => (
+                            <span
+                              key={t}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-[#087F8C] border border-[#087F8C]/30 shadow-2xs group"
+                            >
+                              <span>#{t}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTag(t)}
+                                className="size-3.5 rounded-full hover:bg-rose-100 hover:text-rose-600 grid place-items-center text-slate-400 transition-colors"
+                                title={`Remove #${t}`}
+                              >
+                                <X className="size-2.5" />
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Custom Tag Input */}
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Tag className="absolute left-3 top-2.5 size-3.5 text-slate-400" />
+                          <Input
+                            placeholder="Type tag (e.g. Life, Motor, Cashless)..."
+                            value={customTagInput}
+                            onChange={(e) => setCustomTagInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddTag(customTagInput);
+                              }
+                            }}
+                            className="pl-8 text-xs h-9 bg-white border-slate-200 rounded-xl"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleAddTag(customTagInput)}
+                          disabled={!customTagInput.trim() || updateTagsMutation.isPending}
+                          className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-semibold h-9 px-3 rounded-xl shrink-0"
+                        >
+                          <Plus className="size-3.5 mr-1" /> Add
+                        </Button>
+                      </div>
+
+                      {/* Quick Add Preset Tag Suggestions */}
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                          Quick Add Domain Tags:
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {PRESET_TAGS.map((pt) => {
+                            const isAlreadyAdded = selectedSource.tags.some(
+                              (t) => t.toLowerCase() === pt.toLowerCase()
+                            );
+                            return (
+                              <button
+                                key={pt}
+                                type="button"
+                                disabled={isAlreadyAdded || updateTagsMutation.isPending}
+                                onClick={() => handleAddTag(pt)}
+                                className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition-all ${
+                                  isAlreadyAdded
+                                    ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                    : "bg-white text-slate-700 border-slate-200 hover:border-[#087F8C] hover:text-[#087F8C]"
+                                }`}
+                              >
+                                +{pt}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* LLM Retrieval Scope Notice */}
+                      <div className="rounded-xl bg-teal-50/70 border border-teal-200/70 p-2.5 text-[11px] text-teal-900 space-y-1">
+                        <div className="font-semibold flex items-center gap-1 text-[#087F8C]">
+                          <Sparkles className="size-3" /> LLM Retrieval Guidance:
+                        </div>
+                        <p className="text-[10px] text-teal-800 leading-relaxed">
+                          {selectedSource.tags.length > 0
+                            ? `When inquiries match ${selectedSource.tags.map((t) => `#${t}`).join(", ")}, the AI assistant will prioritize and cite this document.`
+                            : "Without tags, this document is only retrieved via generic text matching. Add domain tags above for precise retrieval."}
+                        </p>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <span className="text-xs font-semibold text-slate-700 block">Extracted Text Preview:</span>
-                      <div className="rounded-xl border border-slate-100 bg-[#FAF9F6] p-3 text-xs text-slate-600 max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap font-sans">
+                      <div className="rounded-xl border border-slate-100 bg-[#FAF9F6] p-3 text-xs text-slate-600 max-h-44 overflow-y-auto leading-relaxed whitespace-pre-wrap font-sans break-words [overflow-wrap:anywhere]">
                         {selectedSource.textPreview || "No raw text preview."}
                       </div>
                     </div>
@@ -910,7 +1143,7 @@ function KnowledgeAndTrainingPage() {
               <Button
                 size="sm"
                 onClick={() => setShowAddFactModal(true)}
-                className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-mono gap-1.5 shadow-xs"
+                className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium gap-1.5 shadow-xs"
               >
                 <Plus className="size-3.5" /> Add Custom Fact
               </Button>
@@ -928,7 +1161,7 @@ function KnowledgeAndTrainingPage() {
                           approved: !item.approved,
                         })
                       }
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full border font-semibold shrink-0 ${
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${
                         item.approved
                           ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                           : "bg-amber-50 text-amber-800 border-amber-200"
@@ -938,7 +1171,7 @@ function KnowledgeAndTrainingPage() {
                     </button>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">{item.answer}</p>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] font-medium text-slate-500">
                     <span>{item.category}</span>
                     <span>{new Date(item.created_at).toLocaleDateString()}</span>
                   </div>
@@ -957,6 +1190,36 @@ function KnowledgeAndTrainingPage() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   Test realistic policyholder questions against your approved knowledge store before enabling customer auto-replies.
                 </p>
+
+                {/* Tag Filter Selector for LLM Test */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-2">
+                  <span className="text-[11px] font-semibold text-slate-500 mr-1 flex items-center gap-1">
+                    <Tag className="size-3 text-[#087F8C]" /> Requirement Tag:
+                  </span>
+                  <button
+                    onClick={() => setTestFilterTag(null)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-colors ${
+                      !testFilterTag
+                        ? "bg-[#087F8C] text-white border-[#087F8C]"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    All Documents
+                  </button>
+                  {PRESET_TAGS.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTestFilterTag(testFilterTag === t ? null : t)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-colors ${
+                        testFilterTag === t
+                          ? "bg-[#172033] text-white border-[#172033]"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      #{t}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -964,43 +1227,127 @@ function KnowledgeAndTrainingPage() {
                   placeholder="e.g. What is the waiting period for cashless hospitalization?"
                   value={testQuery}
                   onChange={(e) => setTestQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleRunRetrievalTest()}
+                  onKeyDown={(e) => e.key === "Enter" && void handleRunRetrievalTest()}
                   className="text-xs border-slate-200 bg-white"
                 />
                 <Button
-                  onClick={handleRunRetrievalTest}
-                  className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-mono shrink-0"
+                  onClick={() => void handleRunRetrievalTest()}
+                  disabled={isRunningTest || !testQuery.trim()}
+                  className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium shrink-0 gap-1.5"
                 >
-                  <Search className="size-3.5 mr-1.5" /> Run Test Query
+                  {isRunningTest ? (
+                    <>
+                      <RefreshCw className="size-3.5 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="size-3.5" />
+                      Run Test Query
+                    </>
+                  )}
                 </Button>
               </div>
 
-              {testResults && (
-                <div className="space-y-3 pt-2">
-                  <span className="text-xs font-semibold text-slate-700 block">
-                    Retrieval Matches ({testResults.length}):
-                  </span>
-                  {testResults.map((res, i) => (
-                    <div
-                      key={i}
-                      className="rounded-2xl border border-slate-200 bg-[#FAF9F6] p-4 text-xs space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">{res.question}</span>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200"
-                        >
-                          Match: {Math.round(res.score * 100)}%
-                        </Badge>
+              {testGroundedResult && (
+                <div className="space-y-4 pt-2">
+                  {/* Grounded AI Answer Card */}
+                  <div className={`rounded-2xl border p-4 text-xs space-y-2.5 ${
+                    testGroundedResult.grounded
+                      ? "border-emerald-200 bg-emerald-50/50"
+                      : "border-amber-200 bg-amber-50/50"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {testGroundedResult.grounded ? (
+                          <Badge className="bg-emerald-600 text-white text-[10px] gap-1 font-semibold">
+                            <CheckCircle2 className="size-3" /> Grounded & Verified
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-100 text-[10px] gap-1 font-semibold">
+                            <AlertCircle className="size-3 text-amber-600" /> Ungrounded: Human Escalation Triggered
+                          </Badge>
+                        )}
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          Model: {testGroundedResult.model_used}
+                        </span>
                       </div>
-                      <p className="text-slate-600 leading-relaxed text-[11.5px]">{res.answer}</p>
-                      <div className="flex items-center justify-between pt-1 text-[10px] font-mono text-slate-400">
-                        <span>Category: {res.category}</span>
-                        <span>{res.approved ? "Status: Approved" : "Status: Pending"}</span>
-                      </div>
+                      {testGroundedResult.needs_human_review && (
+                        <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                          Staff Review Required
+                        </span>
+                      )}
                     </div>
-                  ))}
+
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 space-y-1">
+                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                        Generated Assistant Response
+                      </span>
+                      <p className="text-xs text-slate-900 leading-relaxed font-medium">
+                        "{testGroundedResult.answer}"
+                      </p>
+                    </div>
+
+                    {testGroundedResult.citations.length > 0 && (
+                      <div className="pt-1">
+                        <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider block mb-1">
+                          Citations & Grounding Sources:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {testGroundedResult.citations.map((c, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700"
+                            >
+                              <FileText className="size-3 text-[#087F8C]" />
+                              {c.sourceName}
+                              <span className="text-[10px] font-mono text-emerald-700">
+                                ({Math.round(c.similarity * 100)}% match)
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Matching Vector Chunks */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold text-slate-700 block">
+                      Retrieved Semantic Chunks ({testChunks.length}):
+                    </span>
+                    {testChunks.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic p-3 bg-slate-50 rounded-xl">
+                        No vector matches exceeded the similarity threshold. The assistant correctly refused to invent facts.
+                      </p>
+                    ) : (
+                      testChunks.map((chunk, i) => (
+                        <div
+                          key={i}
+                          className="rounded-2xl border border-slate-200 bg-[#FAF9F6] p-3.5 text-xs space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <BookOpen className="size-3.5 text-[#087F8C]" />
+                              {chunk.sourceName}
+                              {chunk.sectionHeading && (
+                                <span className="text-slate-500 font-normal">({chunk.sectionHeading})</span>
+                              )}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border-emerald-200 font-mono"
+                            >
+                              Similarity: {Math.round(chunk.similarity * 100)}%
+                            </Badge>
+                          </div>
+                          <p className="text-slate-700 leading-relaxed text-[11.5px] bg-white p-2.5 rounded-xl border border-slate-100">
+                            {chunk.content}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </Card>
@@ -1074,7 +1421,7 @@ function KnowledgeAndTrainingPage() {
                   size="sm"
                   disabled={!factQuestion.trim() || !factAnswer.trim() || addFactMutation.isPending}
                   onClick={() => addFactMutation.mutate()}
-                  className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-mono"
+                  className="bg-[#087F8C] hover:bg-[#076C77] text-white text-xs font-medium"
                 >
                   {addFactMutation.isPending ? "Saving..." : "Save Approved Fact"}
                 </Button>

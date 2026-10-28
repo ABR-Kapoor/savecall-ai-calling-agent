@@ -54,14 +54,31 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-function cleanWhatsAppPhone(rawJid: string): string {
-  const digits = rawJid.replace(/@s\.whatsapp\.net|@c\.us|@g\.us/g, "").split(":")[0] || "";
-  return digits.startsWith("+") ? digits : `+${digits}`;
-}
+import { cleanWhatsAppPhone, parseWhatsAppIdentity } from "@/lib/whatsapp/identity";
+import { evaluateOutboundWhatsAppGate } from "@/lib/whatsapp/outbound-guard.server";
 
 export const Route = createFileRoute("/api/webhooks/whatsapp")({
   server: {
     handlers: {
+      GET: async ({ request }) => {
+        const url = new URL(request.url);
+        const mode = url.searchParams.get("hub.mode");
+        const token = url.searchParams.get("hub.verify_token");
+        const challenge = url.searchParams.get("hub.challenge");
+
+        const verifyToken =
+          process.env["WHATSAPP_WEBHOOK_VERIFY_TOKEN"] ||
+          process.env["META_WHATSAPP_VERIFY_TOKEN"] ||
+          "";
+
+        if (mode === "subscribe" && token && verifyToken && token === verifyToken) {
+          return new Response(challenge || "", {
+            status: 200,
+            headers: { "Content-Type": "text/plain" },
+          });
+        }
+        return new Response("Forbidden", { status: 403 });
+      },
       POST: async ({ request }) => {
         try {
           const rawBody = await request.text();
@@ -656,13 +673,30 @@ export const Route = createFileRoute("/api/webhooks/whatsapp")({
               const isTakeoverActive =
                 Boolean(conversation.human_takeover) ||
                 Boolean(connection.human_takeover_enabled);
-              const allowAutoReply = process.env.ENABLE_WHATSAPP_AI_AUTOREPLY === "true";
 
-              if (isTakeoverActive || !connection.auto_reply_enabled || !allowAutoReply) {
+              // Preliminary Outbound Safety Gate Check (kill switch, allowlist, group, LID, takeover)
+              const initialGate = evaluateOutboundWhatsAppGate({
+                tenantId,
+                chatId: rawChatId,
+                recipientPhone: formattedPhone,
+                messageType: "ai_auto_reply",
+                fromMe: false,
+                humanTakeoverActive: isTakeoverActive,
+                connectionAutoReplyEnabled: connection.auto_reply_enabled,
+                lastReplySentAt: conversation.last_message_at,
+              });
+
+              if (!initialGate.allowed) {
                 console.info(
-                  `[WhatsApp Auto-Reply] Ingestion-only: Outbound auto-reply inactive for conversation ${conversation.id}`
+                  `[WhatsApp Auto-Reply Gate] Ingestion-only: reply to ${initialGate.sanitizedRecipient} blocked (${initialGate.code}): ${initialGate.reason}`
                 );
-                return json({ status: "ok", messageReceived: true, humanTakeover: isTakeoverActive, autoReplySent: false });
+                return json({
+                  status: "ok",
+                  messageReceived: true,
+                  autoReplySent: false,
+                  gateCode: initialGate.code,
+                  reason: initialGate.reason,
+                });
               }
 
               // Resolve tenant configuration
@@ -684,6 +718,57 @@ export const Route = createFileRoute("/api/webhooks/whatsapp")({
                 query: rawBody,
                 agentInstructions: agentCfg.instructions,
               });
+
+              // Final Outbound Gate Check (enforcing groundedness and verification requirements)
+              const finalGate = evaluateOutboundWhatsAppGate({
+                tenantId,
+                chatId: rawChatId,
+                recipientPhone: formattedPhone,
+                messageType: "ai_auto_reply",
+                fromMe: false,
+                humanTakeoverActive: isTakeoverActive,
+                connectionAutoReplyEnabled: connection.auto_reply_enabled,
+                grounded: groundedResult.grounded,
+                needsHumanReview: groundedResult.needs_human_review,
+                lastReplySentAt: conversation.last_message_at,
+              });
+
+              if (!finalGate.allowed) {
+                console.info(
+                  `[WhatsApp Auto-Reply Gate] Blocked reply to ${finalGate.sanitizedRecipient} (${finalGate.code}): ${finalGate.reason}`
+                );
+
+                // Hand off to human staff when knowledge is missing/uncertain so customer is not hallucinated to
+                if (groundedResult.needs_human_review || !groundedResult.grounded) {
+                  await insforgeServer.database
+                    .from("whatsapp_conversations")
+                    .update({ human_takeover: true, updated_at: now })
+                    .eq("id", conversation.id);
+
+                  await insforgeServer.database.from("approval_requests").insert({
+                    tenant_id: tenantId,
+                    request_type: "customer_inquiry_escalation",
+                    status: "pending",
+                    risk_level: "HIGH",
+                    payload: {
+                      query: rawBody,
+                      conversation_id: conversation.id,
+                      customer_phone: formattedPhone,
+                      customer_name: senderName,
+                      reason: "Ungrounded policy query: staff adjuster review required",
+                    },
+                  });
+                }
+
+                return json({
+                  status: "ok",
+                  messageReceived: true,
+                  autoReplySent: false,
+                  escalatedToStaff: true,
+                  gateCode: finalGate.code,
+                  reason: finalGate.reason,
+                });
+              }
 
               // Send grounded reply via OpenWA / Baileys
               const replyIdempotency = `reply_${Date.now()}_${messageId.slice(-6)}`;

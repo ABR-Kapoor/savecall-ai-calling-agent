@@ -11,7 +11,18 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AiDisclosureRouteImport } from './routes/ai-disclosure'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ConsentPreferencesRouteImport } from './routes/consent-preferences'
+import { Route as DataProcessingRouteImport } from './routes/data-processing'
+import { Route as DataRightsRouteImport } from './routes/data-rights'
+import { Route as GrievanceRouteImport } from './routes/grievance'
+import { Route as InsuranceDisclosuresRouteImport } from './routes/insurance-disclosures'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RetentionRouteImport } from './routes/retention'
+import { Route as SecurityRouteImport } from './routes/security'
+import { Route as SubprocessorsRouteImport } from './routes/subprocessors'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as VoiceRouteImport } from './routes/voice'
 import { Route as AuthenticatedAgentRouteImport } from './routes/_authenticated/agent'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
@@ -30,6 +41,7 @@ import { Route as ApiVoiceChatRouteImport } from './routes/api/voice/chat'
 import { Route as ApiVoiceEndRouteImport } from './routes/api/voice/end'
 import { Route as ApiVoiceSessionRouteImport } from './routes/api/voice/session'
 import { Route as ApiWebhooksClerkRouteImport } from './routes/api/webhooks/clerk'
+import { Route as ApiWebhooksMetaWhatsappRouteImport } from './routes/api/webhooks/meta-whatsapp'
 import { Route as ApiWebhooksTelephonyRouteImport } from './routes/api/webhooks/telephony'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api/webhooks/whatsapp'
 
@@ -42,9 +54,64 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AiDisclosureRoute = AiDisclosureRouteImport.update({
+  id: '/ai-disclosure',
+  path: '/ai-disclosure',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsentPreferencesRoute = ConsentPreferencesRouteImport.update({
+  id: '/consent-preferences',
+  path: '/consent-preferences',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataProcessingRoute = DataProcessingRouteImport.update({
+  id: '/data-processing',
+  path: '/data-processing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataRightsRoute = DataRightsRouteImport.update({
+  id: '/data-rights',
+  path: '/data-rights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GrievanceRoute = GrievanceRouteImport.update({
+  id: '/grievance',
+  path: '/grievance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InsuranceDisclosuresRoute = InsuranceDisclosuresRouteImport.update({
+  id: '/insurance-disclosures',
+  path: '/insurance-disclosures',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RetentionRoute = RetentionRouteImport.update({
+  id: '/retention',
+  path: '/retention',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubprocessorsRoute = SubprocessorsRouteImport.update({
+  id: '/subprocessors',
+  path: '/subprocessors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VoiceRoute = VoiceRouteImport.update({
@@ -138,6 +205,11 @@ const ApiWebhooksClerkRoute = ApiWebhooksClerkRouteImport.update({
   path: '/api/webhooks/clerk',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksMetaWhatsappRoute = ApiWebhooksMetaWhatsappRouteImport.update({
+  id: '/api/webhooks/meta-whatsapp',
+  path: '/api/webhooks/meta-whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksTelephonyRoute = ApiWebhooksTelephonyRouteImport.update({
   id: '/api/webhooks/telephony',
   path: '/api/webhooks/telephony',
@@ -151,7 +223,18 @@ const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ai-disclosure': typeof AiDisclosureRoute
   '/auth': typeof AuthRoute
+  '/consent-preferences': typeof ConsentPreferencesRoute
+  '/data-processing': typeof DataProcessingRoute
+  '/data-rights': typeof DataRightsRoute
+  '/grievance': typeof GrievanceRoute
+  '/insurance-disclosures': typeof InsuranceDisclosuresRoute
+  '/privacy': typeof PrivacyRoute
+  '/retention': typeof RetentionRoute
+  '/security': typeof SecurityRoute
+  '/subprocessors': typeof SubprocessorsRoute
+  '/terms': typeof TermsRoute
   '/voice': typeof VoiceRoute
   '/agent': typeof AuthenticatedAgentRoute
   '/audit': typeof AuthenticatedAuditRoute
@@ -170,12 +253,24 @@ export interface FileRoutesByFullPath {
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/api/webhooks/meta-whatsapp': typeof ApiWebhooksMetaWhatsappRoute
   '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ai-disclosure': typeof AiDisclosureRoute
   '/auth': typeof AuthRoute
+  '/consent-preferences': typeof ConsentPreferencesRoute
+  '/data-processing': typeof DataProcessingRoute
+  '/data-rights': typeof DataRightsRoute
+  '/grievance': typeof GrievanceRoute
+  '/insurance-disclosures': typeof InsuranceDisclosuresRoute
+  '/privacy': typeof PrivacyRoute
+  '/retention': typeof RetentionRoute
+  '/security': typeof SecurityRoute
+  '/subprocessors': typeof SubprocessorsRoute
+  '/terms': typeof TermsRoute
   '/voice': typeof VoiceRoute
   '/agent': typeof AuthenticatedAgentRoute
   '/audit': typeof AuthenticatedAuditRoute
@@ -194,6 +289,7 @@ export interface FileRoutesByTo {
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/api/webhooks/meta-whatsapp': typeof ApiWebhooksMetaWhatsappRoute
   '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
@@ -201,7 +297,18 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/ai-disclosure': typeof AiDisclosureRoute
   '/auth': typeof AuthRoute
+  '/consent-preferences': typeof ConsentPreferencesRoute
+  '/data-processing': typeof DataProcessingRoute
+  '/data-rights': typeof DataRightsRoute
+  '/grievance': typeof GrievanceRoute
+  '/insurance-disclosures': typeof InsuranceDisclosuresRoute
+  '/privacy': typeof PrivacyRoute
+  '/retention': typeof RetentionRoute
+  '/security': typeof SecurityRoute
+  '/subprocessors': typeof SubprocessorsRoute
+  '/terms': typeof TermsRoute
   '/voice': typeof VoiceRoute
   '/_authenticated/agent': typeof AuthenticatedAgentRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
@@ -220,6 +327,7 @@ export interface FileRoutesById {
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
+  '/api/webhooks/meta-whatsapp': typeof ApiWebhooksMetaWhatsappRoute
   '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
@@ -227,7 +335,18 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ai-disclosure'
     | '/auth'
+    | '/consent-preferences'
+    | '/data-processing'
+    | '/data-rights'
+    | '/grievance'
+    | '/insurance-disclosures'
+    | '/privacy'
+    | '/retention'
+    | '/security'
+    | '/subprocessors'
+    | '/terms'
     | '/voice'
     | '/agent'
     | '/audit'
@@ -246,12 +365,24 @@ export interface FileRouteTypes {
     | '/api/voice/end'
     | '/api/voice/session'
     | '/api/webhooks/clerk'
+    | '/api/webhooks/meta-whatsapp'
     | '/api/webhooks/telephony'
     | '/api/webhooks/whatsapp'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ai-disclosure'
     | '/auth'
+    | '/consent-preferences'
+    | '/data-processing'
+    | '/data-rights'
+    | '/grievance'
+    | '/insurance-disclosures'
+    | '/privacy'
+    | '/retention'
+    | '/security'
+    | '/subprocessors'
+    | '/terms'
     | '/voice'
     | '/agent'
     | '/audit'
@@ -270,13 +401,25 @@ export interface FileRouteTypes {
     | '/api/voice/end'
     | '/api/voice/session'
     | '/api/webhooks/clerk'
+    | '/api/webhooks/meta-whatsapp'
     | '/api/webhooks/telephony'
     | '/api/webhooks/whatsapp'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/ai-disclosure'
     | '/auth'
+    | '/consent-preferences'
+    | '/data-processing'
+    | '/data-rights'
+    | '/grievance'
+    | '/insurance-disclosures'
+    | '/privacy'
+    | '/retention'
+    | '/security'
+    | '/subprocessors'
+    | '/terms'
     | '/voice'
     | '/_authenticated/agent'
     | '/_authenticated/audit'
@@ -295,6 +438,7 @@ export interface FileRouteTypes {
     | '/api/voice/end'
     | '/api/voice/session'
     | '/api/webhooks/clerk'
+    | '/api/webhooks/meta-whatsapp'
     | '/api/webhooks/telephony'
     | '/api/webhooks/whatsapp'
   fileRoutesById: FileRoutesById
@@ -302,13 +446,25 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AiDisclosureRoute: typeof AiDisclosureRoute
   AuthRoute: typeof AuthRoute
+  ConsentPreferencesRoute: typeof ConsentPreferencesRoute
+  DataProcessingRoute: typeof DataProcessingRoute
+  DataRightsRoute: typeof DataRightsRoute
+  GrievanceRoute: typeof GrievanceRoute
+  InsuranceDisclosuresRoute: typeof InsuranceDisclosuresRoute
+  PrivacyRoute: typeof PrivacyRoute
+  RetentionRoute: typeof RetentionRoute
+  SecurityRoute: typeof SecurityRoute
+  SubprocessorsRoute: typeof SubprocessorsRoute
+  TermsRoute: typeof TermsRoute
   VoiceRoute: typeof VoiceRoute
   ApiAgentToolsRoute: typeof ApiAgentToolsRoute
   ApiVoiceChatRoute: typeof ApiVoiceChatRoute
   ApiVoiceEndRoute: typeof ApiVoiceEndRoute
   ApiVoiceSessionRoute: typeof ApiVoiceSessionRoute
   ApiWebhooksClerkRoute: typeof ApiWebhooksClerkRoute
+  ApiWebhooksMetaWhatsappRoute: typeof ApiWebhooksMetaWhatsappRoute
   ApiWebhooksTelephonyRoute: typeof ApiWebhooksTelephonyRoute
   ApiWebhooksWhatsappRoute: typeof ApiWebhooksWhatsappRoute
 }
@@ -329,11 +485,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ai-disclosure': {
+      id: '/ai-disclosure'
+      path: '/ai-disclosure'
+      fullPath: '/ai-disclosure'
+      preLoaderRoute: typeof AiDisclosureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consent-preferences': {
+      id: '/consent-preferences'
+      path: '/consent-preferences'
+      fullPath: '/consent-preferences'
+      preLoaderRoute: typeof ConsentPreferencesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-processing': {
+      id: '/data-processing'
+      path: '/data-processing'
+      fullPath: '/data-processing'
+      preLoaderRoute: typeof DataProcessingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-rights': {
+      id: '/data-rights'
+      path: '/data-rights'
+      fullPath: '/data-rights'
+      preLoaderRoute: typeof DataRightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/grievance': {
+      id: '/grievance'
+      path: '/grievance'
+      fullPath: '/grievance'
+      preLoaderRoute: typeof GrievanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/insurance-disclosures': {
+      id: '/insurance-disclosures'
+      path: '/insurance-disclosures'
+      fullPath: '/insurance-disclosures'
+      preLoaderRoute: typeof InsuranceDisclosuresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/retention': {
+      id: '/retention'
+      path: '/retention'
+      fullPath: '/retention'
+      preLoaderRoute: typeof RetentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/subprocessors': {
+      id: '/subprocessors'
+      path: '/subprocessors'
+      fullPath: '/subprocessors'
+      preLoaderRoute: typeof SubprocessorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/voice': {
@@ -462,6 +695,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksClerkRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/meta-whatsapp': {
+      id: '/api/webhooks/meta-whatsapp'
+      path: '/api/webhooks/meta-whatsapp'
+      fullPath: '/api/webhooks/meta-whatsapp'
+      preLoaderRoute: typeof ApiWebhooksMetaWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/telephony': {
       id: '/api/webhooks/telephony'
       path: '/api/webhooks/telephony'
@@ -515,13 +755,25 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AiDisclosureRoute: AiDisclosureRoute,
   AuthRoute: AuthRoute,
+  ConsentPreferencesRoute: ConsentPreferencesRoute,
+  DataProcessingRoute: DataProcessingRoute,
+  DataRightsRoute: DataRightsRoute,
+  GrievanceRoute: GrievanceRoute,
+  InsuranceDisclosuresRoute: InsuranceDisclosuresRoute,
+  PrivacyRoute: PrivacyRoute,
+  RetentionRoute: RetentionRoute,
+  SecurityRoute: SecurityRoute,
+  SubprocessorsRoute: SubprocessorsRoute,
+  TermsRoute: TermsRoute,
   VoiceRoute: VoiceRoute,
   ApiAgentToolsRoute: ApiAgentToolsRoute,
   ApiVoiceChatRoute: ApiVoiceChatRoute,
   ApiVoiceEndRoute: ApiVoiceEndRoute,
   ApiVoiceSessionRoute: ApiVoiceSessionRoute,
   ApiWebhooksClerkRoute: ApiWebhooksClerkRoute,
+  ApiWebhooksMetaWhatsappRoute: ApiWebhooksMetaWhatsappRoute,
   ApiWebhooksTelephonyRoute: ApiWebhooksTelephonyRoute,
   ApiWebhooksWhatsappRoute: ApiWebhooksWhatsappRoute,
 }

@@ -69,8 +69,8 @@ async function runVoiceRagIntegrationTests() {
     // Insert Agents
     await pool.query(
       `INSERT INTO ai_agents (id, tenant_id, name, greeting, tone, languages, voice, can_answer_questions, can_capture_leads) VALUES
-       ($1, $2, 'Anya Health Receptionist', 'Hello! Welcome to Milestone4 Health.', 'Professional', ARRAY['English'], 'en-IN-NeerjaNeural', true, true),
-       ($3, $2, 'Anya Claims Specialist', 'Hello! Claims intake.', 'Empathetic', ARRAY['English'], 'en-IN-NeerjaNeural', true, true),
+       ($1, $2, 'Pooja Health Receptionist', 'Hello! Welcome to Milestone4 Health.', 'Professional', ARRAY['English'], 'en-IN-NeerjaNeural', true, true),
+       ($3, $2, 'Pooja Claims Specialist', 'Hello! Claims intake.', 'Empathetic', ARRAY['English'], 'en-IN-NeerjaNeural', true, true),
        ($4, $5, 'Vikram VIP Receptionist', 'Hello VIP caller.', 'Formal', ARRAY['English'], 'en-IN-PrabhatNeural', true, true)`,
       [agentA1_id, tenantA_id, agentA2_id, agentB1_id, tenantB_id]
     );

@@ -1,10 +1,10 @@
 import crypto from "crypto";
 import dns from "dns";
-import { insforgeServer } from "@/lib/insforge/client.server";
+import { insforgeServer } from "../insforge/client.server.ts";
 import {
   generateSemanticEmbedding,
   EMBEDDING_MODEL_VERSION,
-} from "./embeddings.server";
+} from "./embeddings.server.ts";
 
 export type IngestionSourceType = "pdf" | "docx" | "txt" | "md" | "csv" | "xlsx" | "url";
 
@@ -33,6 +33,34 @@ export interface IngestionResult {
   contentHash: string;
   status: "done" | "failed";
   error?: string | undefined;
+}
+
+/**
+ * Strips PostgreSQL-incompatible null characters (\u0000) and dangerous control codes
+ * from parsed strings before database insertion.
+ */
+export function sanitizeText(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\0/g, "")
+    .replace(/\\u0000/g, "")
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function sanitizeMetadata(meta: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    if (typeof v === "string") {
+      clean[k] = v.replace(/\0/g, "").replace(/\\u0000/g, "").trim();
+    } else if (v && typeof v === "object" && !Array.isArray(v)) {
+      clean[k] = sanitizeMetadata(v as Record<string, unknown>);
+    } else {
+      clean[k] = v;
+    }
+  }
+  return clean;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +283,7 @@ export async function fetchSafeWebsite(
 // ---------------------------------------------------------------------------
 
 export async function parsePdf(buffer: Buffer): Promise<ParsedChunk[]> {
-  const { extractText, getDocumentProxy } = await import("unpdf");
+  const { getDocumentProxy } = await import("unpdf");
   const doc = await getDocumentProxy(new Uint8Array(buffer));
   const totalPages = doc.numPages;
   const chunks: ParsedChunk[] = [];
@@ -264,11 +292,10 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedChunk[]> {
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     const page = await doc.getPage(pageNum);
     const content = await page.getTextContent();
-    const pageText = (content.items || [])
+    const rawText = (content.items || [])
       .map((it: any) => it.str || "")
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+      .join(" ");
+    const pageText = sanitizeText(rawText);
 
     if (!pageText || pageText.length < 40) {
       // Scanned page fallback detection
@@ -284,8 +311,10 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedChunk[]> {
 
     const subChunks = chunkText(pageText, 500, 50);
     for (const sub of subChunks) {
+      const cleanSub = sanitizeText(sub);
+      if (!cleanSub) continue;
       chunks.push({
-        content: sub,
+        content: cleanSub,
         chunkIndex: chunkIdx++,
         pageNumber: pageNum,
         sectionHeading: `Page ${pageNum}`,
@@ -300,15 +329,17 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedChunk[]> {
 export async function parseDocx(buffer: Buffer): Promise<ParsedChunk[]> {
   const mammoth = await import("mammoth");
   const result = await mammoth.extractRawText({ buffer });
-  const rawText = result.value || "";
+  const rawText = sanitizeText(result.value || "");
   const subChunks = chunkText(rawText, 500, 50);
 
-  return subChunks.map((content, idx) => ({
-    content,
-    chunkIndex: idx,
-    sectionHeading: "Document Body",
-    metadata: { format: "docx" },
-  }));
+  return subChunks
+    .map((content, idx) => ({
+      content: sanitizeText(content),
+      chunkIndex: idx,
+      sectionHeading: "Document Body",
+      metadata: { format: "docx" },
+    }))
+    .filter((c) => c.content.length > 0);
 }
 
 export function parsePlainText(text: string, format = "txt"): ParsedChunk[] {
@@ -495,7 +526,20 @@ export async function ingestDocument(input: IngestionInput): Promise<IngestionRe
       throw new Error("No readable text content extracted from document");
     }
 
+    const cleanChunks = chunks.map((c) => ({
+      ...c,
+      content: sanitizeText(c.content),
+      sheetName: c.sheetName ? sanitizeText(c.sheetName) : null,
+      sectionHeading: c.sectionHeading ? sanitizeText(c.sectionHeading) : null,
+      metadata: sanitizeMetadata(c.metadata || {}),
+    })).filter((c) => c.content.length > 0);
+
+    if (cleanChunks.length === 0) {
+      throw new Error("No readable text content remaining after sanitization");
+    }
+
     const contentHash = crypto.createHash("sha256").update(fullTextForHash).digest("hex");
+    const previewText = cleanChunks.slice(0, 3).map((c) => c.content).join("\n\n---\n\n").slice(0, 1000);
 
     // 2. Persist Knowledge Source in Database
     const { error: srcErr } = await insforgeServer.database
@@ -505,16 +549,17 @@ export async function ingestDocument(input: IngestionInput): Promise<IngestionRe
           id: sourceId,
           tenant_id: input.tenantId,
           business_id: input.tenantId,
-          name: input.sourceName,
+          name: sanitizeText(input.sourceName),
           type: input.sourceType,
-          source_uri: input.sourceUri || input.sourceName,
+          source_uri: input.sourceUri ? sanitizeText(input.sourceUri) : sanitizeText(input.sourceName),
           status: "done",
           approved_for_rag: true,
           content_hash: contentHash,
           metadata: {
-            chunks_count: chunks.length,
+            chunks_count: cleanChunks.length,
             file_type: input.sourceType,
             embedding_model: EMBEDDING_MODEL_VERSION,
+            text_preview: previewText,
             ingested_at: new Date().toISOString(),
           },
         },
@@ -540,13 +585,13 @@ export async function ingestDocument(input: IngestionInput): Promise<IngestionRe
 
     // 4. Generate genuine semantic 384-dimensional embeddings and persist chunks
     const chunkRows = await Promise.all(
-      chunks.map(async (c) => {
+      cleanChunks.map(async (c, idx) => {
         const embedding = await generateSemanticEmbedding(c.content);
         return {
           id: crypto.randomUUID(),
           tenant_id: input.tenantId,
           source_id: sourceId,
-          chunk_index: c.chunkIndex,
+          chunk_index: idx,
           content: c.content,
           page_number: c.pageNumber || null,
           sheet_name: c.sheetName || null,

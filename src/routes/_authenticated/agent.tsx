@@ -130,15 +130,15 @@ function AgentStudioPage() {
   });
 
   const [form, setForm] = useState({
-    name: "Anya",
-    role: "Autonomous WhatsApp Insurance Receptionist",
-    businessIdentity: "Licensed Insurance Agency / Brokerage",
-    greeting: "Hello! Welcome to our office. I am Anya, your AI insurance assistant. How can I assist you with your policy, coverage, or claim inquiry today?",
-    disclosure: "I am an automated AI assistant. For legally binding policy endorsements or formal claim settlements, our licensed staff adjusters will assist you.",
-    tone: "professional",
+    name: "",
+    role: "",
+    businessIdentity: "",
+    greeting: "",
+    disclosure: "",
+    tone: "",
     languages: "hi,en,hinglish",
     deployment_mode: "assist",
-    escalationContact: "+91 98765 43210 (Claims Service Desk)",
+    escalationContact: "",
     // Permitted Tasks
     can_answer_questions: true,
     can_capture_leads: true,
@@ -151,26 +151,40 @@ function AgentStudioPage() {
     never_quote_unapproved: true,
     never_collect_credentials: true,
     // Configuration version
-    version: "v1.2.0",
+    version: "v1.0.0",
   });
 
   useEffect(() => {
-    if (!agentQuery.data) return;
     const a = agentQuery.data;
+    const bCfg = business?.branding_config || {};
+    const aCfg = (bCfg.agent_config as Record<string, unknown> | undefined) || {};
+    const orgName = business?.name || "";
+
+    const rawName = a?.name || (typeof aCfg["name"] === "string" ? aCfg["name"] : "") || (typeof aCfg["agent_name"] === "string" ? aCfg["agent_name"] : "");
+    const rawRole = a?.role || (typeof aCfg["role"] === "string" ? aCfg["role"] : "");
+    const rawGreeting = a?.greeting || (typeof aCfg["greeting"] === "string" ? aCfg["greeting"] : "");
+    const rawTone = a?.tone || (typeof aCfg["tone"] === "string" ? aCfg["tone"] : "");
+    const rawLanguages = a?.languages
+      ? (Array.isArray(a.languages) ? a.languages.join(",") : a.languages)
+      : (typeof aCfg["language"] === "string" ? aCfg["language"] : "hi,en,hinglish");
+    const rawPhone = typeof bCfg.support_phone === "string" ? bCfg.support_phone : "";
+
     setForm((prev) => ({
       ...prev,
-      name: a.name || "Anya",
-      role: a.role || "Autonomous WhatsApp Insurance Receptionist",
-      greeting: a.greeting || prev.greeting,
-      tone: a.tone || "professional",
-      languages: Array.isArray(a.languages) ? a.languages.join(",") : (a.languages ?? "hi,en,hinglish"),
-      deployment_mode: a.deployment_mode || "assist",
-      can_book: a.can_book ?? true,
-      can_capture_leads: a.can_capture_leads ?? true,
-      can_transfer: a.can_transfer ?? true,
-      can_answer_questions: a.can_answer_questions ?? true,
+      name: rawName || "",
+      role: rawRole || "",
+      businessIdentity: orgName || "",
+      greeting: rawGreeting || "",
+      tone: rawTone || "",
+      languages: rawLanguages || "hi,en,hinglish",
+      deployment_mode: a?.deployment_mode || prev.deployment_mode,
+      escalationContact: rawPhone || prev.escalationContact,
+      can_book: a?.can_book ?? prev.can_book,
+      can_capture_leads: a?.can_capture_leads ?? prev.can_capture_leads,
+      can_transfer: a?.can_transfer ?? prev.can_transfer,
+      can_answer_questions: a?.can_answer_questions ?? prev.can_answer_questions,
     }));
-  }, [agentQuery.data]);
+  }, [agentQuery.data, business]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -197,11 +211,31 @@ function AgentStudioPage() {
         : await supabase.database.from("ai_agents").insert([payload]);
 
       if (error) throw error;
+
+      // Synchronize with tenant branding_config in PostgreSQL
+      const existingBrd = (business?.branding_config || {}) as Record<string, unknown>;
+      const existingAgent = (existingBrd["agent_config"] || {}) as Record<string, unknown>;
+      await supabase.database.from("tenants").update({
+        branding_config: {
+          ...existingBrd,
+          agent_config: {
+            ...existingAgent,
+            name: form.name.trim(),
+            agent_name: form.name.trim(),
+            role: form.role.trim(),
+            greeting: form.greeting.trim(),
+            tone: form.tone,
+            languages: form.languages,
+            last_trained_at: new Date().toISOString(),
+          },
+        },
+      }).eq("id", businessId);
     },
     onSuccess: () => {
       toast.success("AI Agent configuration saved and synchronized with live WhatsApp assistant.");
       void queryClient.invalidateQueries({ queryKey: ["agent-studio", businessId] });
       void queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-tenant"] });
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : "Failed to save configuration";
@@ -211,12 +245,12 @@ function AgentStudioPage() {
 
   // Generates the deterministic system prompt preview
   const generatedPrompt = `### ROLE AND IMMUTABLE SAFETY CONTRACT
-You are ${form.name}, an authorized AI Insurance Assistant representing ${form.businessIdentity}.
-Your communication style is ${form.tone} and bilingual (${form.languages}).
+You are ${form.name || "[Unassigned Assistant Name]"}, an authorized AI Insurance Assistant representing ${form.businessIdentity || "[Your Business Name]"}.
+Your communication style is ${form.tone || "[Tone not specified]"} and bilingual (${form.languages || "hi,en"}).
 
 ### MANDATORY CUSTOMER DISCLOSURE
 On conversation start, you must disclose:
-"${form.disclosure}"
+"${form.disclosure || "I am an automated AI assistant. For legally binding policy endorsements or formal claim settlements, our licensed staff adjusters will assist you."}"
 
 ### APPROVED CAPABILITIES
 ${form.can_answer_questions ? "- Explain coverage terms, policy wording, and claim filing steps using ONLY approved knowledge." : ""}
@@ -229,7 +263,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
 - NEVER modify policy beneficiaries, nominees, or coverage limits without dual-control human authorization.
 - NEVER request passwords, Aadhaar OTPs, credit card CVVs, or bank login credentials.
 - NEVER invent facts, hospitals, or premiums if not found in verified knowledge sources.
-- If verified evidence is absent or confidence is below 0.65, escalate to ${form.escalationContact}.`;
+${form.escalationContact ? `- If verified evidence is absent or confidence is below 0.65, escalate to ${form.escalationContact}.` : "- If verified evidence is absent or confidence is below 0.65, escalate to authorized staff."}`;
 
   return (
     <AppShell
@@ -245,21 +279,21 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-display text-base font-bold text-slate-900">{form.name}</h2>
-                <Badge variant="outline" className="text-[10px] font-mono border-teal-200 text-teal-800 bg-teal-50 uppercase">
+                <h2 className="font-display text-base font-bold text-slate-900">{form.name || "Custom Assistant"}</h2>
+                <Badge variant="outline" className="text-[10px] font-medium border-teal-200 text-teal-800 bg-teal-50 uppercase">
                   {form.deployment_mode}
                 </Badge>
-                <span className="text-[11px] font-mono text-slate-400">Ver: {form.version}</span>
+                <span className="text-[11px] text-slate-400 font-medium">Ver: {form.version}</span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {form.role} • Speaks {form.languages.includes("hi") ? "Hinglish, Hindi & English" : "English"}
+                {form.role || "Role unassigned"} • Speaks {form.languages.includes("hi") ? "Hinglish, Hindi & English" : form.languages ? form.languages : "Languages unassigned"}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2.5">
             <Link to="/whatsapp">
-              <Button variant="outline" size="sm" className="text-xs gap-1.5 border-slate-200 font-mono">
+              <Button variant="outline" size="sm" className="text-xs gap-1.5 border-slate-200 font-medium">
                 <MessageSquare className="size-3.5 text-[#087F8C]" /> Test in WhatsApp Inbox
               </Button>
             </Link>
@@ -267,7 +301,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
               onClick={() => saveMutation.mutate()}
               disabled={!businessId || saveMutation.isPending}
               size="sm"
-              className="bg-[#087F8C] hover:bg-[#076C77] text-white font-medium text-xs font-mono gap-1.5 shadow-xs"
+              className="bg-[#087F8C] hover:bg-[#076C77] text-white font-medium text-xs gap-1.5 shadow-xs"
             >
               <CheckCircle2 className="size-3.5" />
               {saveMutation.isPending ? "Saving..." : "Save Agent"}
@@ -278,16 +312,16 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
         {/* Studio Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
           <TabsList className="bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <TabsTrigger value="identity" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="identity" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
               <Bot className="size-3.5 mr-1.5" /> Identity & Disclosure
             </TabsTrigger>
-            <TabsTrigger value="boundaries" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="boundaries" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
               <ShieldCheck className="size-3.5 mr-1.5" /> Permitted & Prohibited Tasks
             </TabsTrigger>
-            <TabsTrigger value="escalation" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="escalation" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
               <ShieldAlert className="size-3.5 mr-1.5" /> Escalation & Dual-Control
             </TabsTrigger>
-            <TabsTrigger value="prompt" className="text-xs font-mono data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+            <TabsTrigger value="prompt" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
               <Code2 className="size-3.5 mr-1.5" /> System Prompt Preview
             </TabsTrigger>
           </TabsList>
@@ -311,7 +345,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                       id="agent-name"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="e.g. Anya, Riya, Aarav"
+                      placeholder="Enter assistant display name"
                       className="text-xs bg-white border-slate-200"
                     />
                   </div>
@@ -322,7 +356,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                       id="agent-role"
                       value={form.role}
                       onChange={(e) => setForm({ ...form, role: e.target.value })}
-                      placeholder="e.g. Autonomous WhatsApp Insurance Specialist"
+                      placeholder="Enter role or job title (e.g. WhatsApp Customer Support)"
                       className="text-xs bg-white border-slate-200"
                     />
                   </div>
@@ -382,7 +416,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                     <Label htmlFor="disclosure" className="text-xs font-medium text-slate-700">
                       Mandatory Customer-Facing AI Notice
                     </Label>
-                    <Badge variant="outline" className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200">
+                    <Badge variant="outline" className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border-emerald-200">
                       Compliance Enforced
                     </Badge>
                   </div>
@@ -503,7 +537,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                     <span className="text-xs font-semibold text-slate-900 block">No Claim Settlement Guarantees</span>
                     <span className="text-[11px] text-slate-500">Agent will never promise claim approval, payout timing, or cash disbursements.</span>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono text-rose-800 bg-rose-100 border-rose-200">
+                  <Badge variant="outline" className="text-[10px] font-medium text-rose-800 bg-rose-100 border-rose-200">
                     Locked
                   </Badge>
                 </div>
@@ -513,7 +547,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                     <span className="text-xs font-semibold text-slate-900 block">No Irreversible Beneficiary Changes</span>
                     <span className="text-[11px] text-slate-500">Changes to policy nominee or contact email require staff dual-control authorization.</span>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono text-rose-800 bg-rose-100 border-rose-200">
+                  <Badge variant="outline" className="text-[10px] font-medium text-rose-800 bg-rose-100 border-rose-200">
                     Locked
                   </Badge>
                 </div>
@@ -523,7 +557,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                     <span className="text-xs font-semibold text-slate-900 block">Zero Sensitive Credential Collection</span>
                     <span className="text-[11px] text-slate-500">Agent refuses to collect OTPs, CVVs, passwords, or netbanking credentials.</span>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono text-rose-800 bg-rose-100 border-rose-200">
+                  <Badge variant="outline" className="text-[10px] font-medium text-rose-800 bg-rose-100 border-rose-200">
                     Locked
                   </Badge>
                 </div>
@@ -584,7 +618,7 @@ ${form.can_transfer ? "- Initiate instant human takeover when requested by custo
                       Assembled deterministically from immutable safety rules + approved business configuration.
                     </CardDescription>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border-emerald-200">
+                  <Badge variant="outline" className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border-emerald-200">
                     Prompt Shield Active
                   </Badge>
                 </div>
