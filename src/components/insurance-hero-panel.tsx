@@ -597,29 +597,32 @@ export function InsuranceHeroPanel() {
 
         {/* Curvy arrow gesture pointing to button from right */}
         <div className="flex items-center gap-2 self-end sm:self-center">
+          {/* Hand-drawn arrow curving down and pointing directly left toward button */}
           <svg
-            className="w-10 h-8 text-[#087F8C] shrink-0 -scale-x-100 -rotate-6"
-            viewBox="0 0 46 36"
+            className="w-10 h-8 text-[#087F8C] shrink-0"
+            viewBox="0 0 44 32"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
+            {/* Swoop from top-right down toward left */}
             <path
-              d="M4 10 C16 4, 32 8, 36 22 C37 26, 35 30, 24 32"
+              d="M38 6 C28 4, 14 8, 8 20"
               stroke="currentColor"
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeDasharray="3.5 3.5"
             />
+            {/* Arrowhead pointing left toward the button */}
             <path
-              d="M28 26 L 22 32 L 29 36"
+              d="M14 14 L 6 20 L 12 26"
               stroke="currentColor"
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
-          <span className="text-[12px] font-medium text-[#3D5A53] italic">
+          <span className="text-[12px] font-medium text-[#3D5A53] italic whitespace-nowrap">
             Want this exact AI agent for your business?
           </span>
         </div>
