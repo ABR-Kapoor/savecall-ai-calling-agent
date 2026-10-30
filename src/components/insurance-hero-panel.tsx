@@ -582,11 +582,23 @@ export function InsuranceHeroPanel() {
       </div>
 
       {/* 2. Curvy Arrow & Catchy Onboarding CTA */}
-      <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 px-2 sm:px-3">
-        {/* Curvy arrow gesture */}
-        <div className="flex items-center gap-2 self-start sm:self-center">
+      <div className="mt-4 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 px-2 sm:px-3">
+        {/* Catchy Onboarding Button */}
+        <Link
+          to={user ? "/onboarding" : "/auth"}
+          className="group inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#087F8C] via-[#098D9B] to-[#0AA0AE] hover:from-[#076C77] hover:to-[#087F8C] px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(8,127,140,0.55)] hover:shadow-[0_12px_30px_-6px_rgba(8,127,140,0.65)] hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer shrink-0"
+        >
+          <Sparkles className="size-4 text-emerald-200 animate-pulse" />
+          <span>Get This Agent For My Company</span>
+          <div className="size-5 rounded-full bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5">
+            <ArrowRight className="size-3 text-white" />
+          </div>
+        </Link>
+
+        {/* Curvy arrow gesture pointing to button from right */}
+        <div className="flex items-center gap-2 self-end sm:self-center">
           <svg
-            className="w-10 h-8 text-[#087F8C] shrink-0 -rotate-6"
+            className="w-10 h-8 text-[#087F8C] shrink-0 -scale-x-100 -rotate-6"
             viewBox="0 0 46 36"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
@@ -611,18 +623,6 @@ export function InsuranceHeroPanel() {
             Want this exact AI agent for your business?
           </span>
         </div>
-
-        {/* Catchy Onboarding Button */}
-        <Link
-          to={user ? "/onboarding" : "/auth"}
-          className="group inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#087F8C] via-[#098D9B] to-[#0AA0AE] hover:from-[#076C77] hover:to-[#087F8C] px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(8,127,140,0.55)] hover:shadow-[0_12px_30px_-6px_rgba(8,127,140,0.65)] hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer shrink-0"
-        >
-          <Sparkles className="size-4 text-emerald-200 animate-pulse" />
-          <span>Get This Agent For My Company</span>
-          <div className="size-5 rounded-full bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5">
-            <ArrowRight className="size-3 text-white" />
-          </div>
-        </Link>
       </div>
     </div>
   );
