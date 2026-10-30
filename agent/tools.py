@@ -11,16 +11,22 @@ from typing import Any, Dict
 
 logger = logging.getLogger("savecall-tools")
 
-API_BASE = os.environ.get("SAVECALL_API_URL", "https://127.0.0.1:5173")
-AGENT_SECRET = os.environ.get("AGENT_INTERNAL_SECRET", "savecall_agent_secret_2026_dev")
+API_BASE = os.environ.get("SAVECALL_API_URL") or os.environ.get("PUBLIC_API_BASE_URL", "")
+AGENT_SECRET = os.environ.get("AGENT_INTERNAL_SECRET", "")
 
 async def execute_remote_tool(
     call_session_id: str,
     tenant_id: str,
-    customer_id: str,
+    customer_id: str | None,
     tool_name: str,
     arguments: Dict[str, Any]
 ) -> Dict[str, Any]:
+    if not API_BASE.startswith("https://") or not AGENT_SECRET:
+        return {
+            "ok": False,
+            "error": "The secure HTTPS backend callback is not configured. No tenant records were accessed.",
+        }
+
     url = f"{API_BASE.rstrip('/')}/api/agent/tools"
     headers = {
         "Content-Type": "application/json",
@@ -35,9 +41,7 @@ async def execute_remote_tool(
     }
 
     try:
-        # Disable SSL verification for local dev self-signed cert
-        connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 data = await resp.json()
                 logger.info(f"Tool {tool_name} returned status {resp.status}")

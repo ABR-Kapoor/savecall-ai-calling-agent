@@ -729,7 +729,7 @@ function SettingsPage() {
                       {tenant?.name || "Verified Organization"}
                     </p>
                     <p className="text-emerald-700 font-medium text-[11px] flex items-center gap-1">
-                      <CheckCircle2 className="size-3" /> PostgreSQL Row-Level Security Enforced
+                      <CheckCircle2 className="size-3" /> Strict Tenant Data Isolation Enforced
                     </p>
                   </div>
                 </div>
@@ -837,7 +837,7 @@ function SettingsPage() {
                   </div>
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
                     <span className="text-slate-400 font-medium text-[11px] block">Retrieval Pipeline</span>
-                    <span className="text-sm font-bold text-slate-900 block">PostgreSQL pgvector</span>
+                    <span className="text-sm font-bold text-slate-900 block">Encrypted Vector Index</span>
                     <span className="text-[10px] text-emerald-700 font-medium">1536-dim embeddings</span>
                   </div>
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1">
@@ -1134,10 +1134,10 @@ function SettingsPage() {
                     </div>
                     <div>
                       <CardTitle className="text-base font-bold text-slate-900">
-                        WhatsApp Business Calling (LiveKit Cloud)
+                        WhatsApp Business Voice Calling
                       </CardTitle>
                       <CardDescription className="text-xs text-slate-500">
-                        Official Meta WhatsApp Cloud API and LiveKit Cloud Telephony Connector configuration
+                        Official Meta WhatsApp Cloud API and Autonomous Voice Telephony configuration
                       </CardDescription>
                     </div>
                   </div>
@@ -1168,14 +1168,14 @@ function SettingsPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">LiveKit Cloud Telephony Project</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Cloud Voice Telephony Project</Label>
                     <Input
                       readOnly
-                      value={waCallingStatus?.validation?.details?.livekitUrlHost || "Configured in LIVEKIT_URL"}
+                      value={waCallingStatus?.validation?.details?.livekitUrlHost || "Configured via Telephony Settings"}
                       className="font-mono text-xs bg-slate-50 border-slate-200"
                     />
                     <p className="text-[11px] text-slate-500">
-                      LiveKit Cloud URL with native WhatsApp Connector bridge.
+                      Autonomous voice network with native messaging bridge.
                     </p>
                   </div>
                 </div>

@@ -60,7 +60,7 @@ export const getWhatsAppConnection = createServerFn({ method: "GET", strict: fal
     if (connection && connection.provider_session_id && connection.status !== "CONNECTED") {
       try {
         const liveSession = await defaultOpenWAAdapter.getSession(connection.provider_session_id);
-        if (liveSession.status === "ready" || liveSession.status === "authenticated") {
+        if (["ready", "authenticated"].includes(liveSession.status.toLowerCase())) {
           await insforgeServer.database
             .from("whatsapp_connections")
             .update({
@@ -287,7 +287,10 @@ export const initiateWhatsAppSession = createServerFn({ method: "POST", strict: 
     try {
       const qrRes = await defaultOpenWAAdapter.getQrCode(providerSessionId);
       qrData = qrRes.qr;
-      qrStatus = qrRes.status === "ready" ? "CONNECTED" : "QR_READY";
+      const qrProviderStatus = qrRes.status.toLowerCase();
+      const authenticated = ["authenticated", "connected"].includes(qrProviderStatus) ||
+        (qrProviderStatus === "ready" && !qrData);
+      qrStatus = authenticated ? "CONNECTED" : qrData ? "QR_READY" : "STARTING";
     } catch {
       qrStatus = "STARTING";
     }
@@ -299,7 +302,7 @@ export const initiateWhatsAppSession = createServerFn({ method: "POST", strict: 
       .update({
         provider_session_id: providerSessionId,
         status: qrStatus as WhatsAppConnectionRecord["status"],
-        qr_code: qrData,
+        qr_code: qrStatus === "CONNECTED" ? null : qrData,
         qr_expires_at: qrExpiresAt,
         webhook_secret: webhookSecret,
         updated_at: new Date().toISOString(),
@@ -345,15 +348,17 @@ export const refreshWhatsAppQr = createServerFn({ method: "POST", strict: false 
     }
 
     const qrRes = await defaultOpenWAAdapter.getQrCode(record.provider_session_id);
-    const isReady = qrRes.status === "ready" || qrRes.status === "authenticated";
-    const newStatus = isReady ? "CONNECTED" : "QR_READY";
+    const qrProviderStatus = qrRes.status.toLowerCase();
+    const authenticated = ["authenticated", "connected"].includes(qrProviderStatus) ||
+      (qrProviderStatus === "ready" && !qrRes.qr);
+    const newStatus = authenticated ? "CONNECTED" : qrRes.qr ? "QR_READY" : "STARTING";
     const qrExpiresAt = new Date(Date.now() + 60 * 1000).toISOString();
 
     await insforgeServer.database
       .from("whatsapp_connections")
       .update({
         status: newStatus,
-        qr_code: qrRes.qr,
+        qr_code: authenticated ? null : qrRes.qr || null,
         qr_expires_at: qrExpiresAt,
         updated_at: new Date().toISOString(),
       })
@@ -361,7 +366,7 @@ export const refreshWhatsAppQr = createServerFn({ method: "POST", strict: false 
 
     return {
       success: true,
-      qr: qrRes.qr,
+      qr: newStatus === "CONNECTED" ? null : qrRes.qr || null,
       status: newStatus,
       qrExpiresAt,
     };

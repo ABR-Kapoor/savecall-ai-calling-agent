@@ -351,16 +351,9 @@ class EmbeddedBaileysEngine {
       }
     }
 
-    // If still pending, generate a valid pairing token data URL
-    if (!session.qr) {
-      const fallbackRaw = `2@wa-token-for-${sessionId}-${Date.now()}`;
-      session.rawQr = fallbackRaw;
-      session.qr = await QRCode.toDataURL(fallbackRaw, { margin: 1, scale: 8 });
-    }
-
     return {
       qr: session.qr || "",
-      status: "SCAN_QR_CODE",
+      status: session.qr ? "SCAN_QR_CODE" : "STARTING",
     };
   }
 

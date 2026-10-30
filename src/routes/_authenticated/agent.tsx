@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import {
   Bot,
@@ -18,6 +18,16 @@ import {
   UserCheck,
   Code2,
   AlertTriangle,
+  UploadCloud,
+  FileText,
+  Trash2,
+  ExternalLink,
+  Plus,
+  RefreshCw,
+  Search,
+  FileCheck,
+  Layers,
+  HelpCircle,
 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -38,6 +48,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useBusiness } from "@/hooks/use-business";
 import { insforge as supabase } from "@/integrations/insforge/client";
+import { WorkingTimePicker } from "@/components/working-time-picker";
+import { AgentOperationalConfig } from "@/components/agent-operational-config";
+import {
+  ingestKnowledgeFile,
+  getKnowledgeSources,
+  deleteKnowledgeSource,
+  queryKnowledgeGrounded,
+} from "@/lib/train.functions";
 
 export const Route = createFileRoute("/_authenticated/agent")({
   ssr: false,
@@ -113,7 +131,7 @@ function AgentStudioPage() {
   const businessId = business?.id;
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<"identity" | "boundaries" | "escalation" | "prompt">("identity");
+  const [activeTab, setActiveTab] = useState<"identity" | "finetuning" | "boundaries" | "escalation" | "prompt">("identity");
 
   const agentQuery = useQuery({
     queryKey: ["agent-studio", businessId],
@@ -129,6 +147,24 @@ function AgentStudioPage() {
     },
   });
 
+  // Dynamic knowledge sources from cloud database
+  const knowledgeQuery = useQuery({
+    queryKey: ["knowledge-sources", businessId],
+    enabled: !!businessId,
+    queryFn: async () => {
+      return getKnowledgeSources({ data: { businessId: businessId! } });
+    },
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>(["Policy Wording", "Customer-Safe"]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Grounded Query Testing state
+  const [ragQuery, setRagQuery] = useState("");
+  const [ragResult, setRagResult] = useState<any>(null);
+  const [isRagTesting, setIsRagTesting] = useState(false);
+
   const [form, setForm] = useState({
     name: "",
     role: "",
@@ -139,6 +175,9 @@ function AgentStudioPage() {
     languages: "hi,en,hinglish",
     deployment_mode: "assist",
     escalationContact: "",
+    operatingHours: "",
+    emergencyHelpline: "",
+    customInstructions: "",
     // Permitted Tasks
     can_answer_questions: true,
     can_capture_leads: true,
@@ -156,8 +195,9 @@ function AgentStudioPage() {
 
   useEffect(() => {
     const a = agentQuery.data;
-    const bCfg = business?.branding_config || {};
-    const aCfg = (bCfg.agent_config as Record<string, unknown> | undefined) || {};
+    const bCfg = (business?.branding_config || {}) as Record<string, any>;
+    const aCfg = (bCfg["agent_config"] as Record<string, unknown> | undefined) || {};
+    const callCfg = (bCfg["call_handling"] as Record<string, unknown> | undefined) || {};
     const orgName = business?.name || "";
 
     const rawName = a?.name || (typeof aCfg["name"] === "string" ? aCfg["name"] : "") || (typeof aCfg["agent_name"] === "string" ? aCfg["agent_name"] : "");
@@ -167,7 +207,10 @@ function AgentStudioPage() {
     const rawLanguages = a?.languages
       ? (Array.isArray(a.languages) ? a.languages.join(",") : a.languages)
       : (typeof aCfg["language"] === "string" ? aCfg["language"] : "hi,en,hinglish");
-    const rawPhone = typeof bCfg.support_phone === "string" ? bCfg.support_phone : "";
+    const rawPhone = typeof bCfg["support_phone"] === "string" ? bCfg["support_phone"] : "";
+    const rawHours = typeof callCfg["working_hours"] === "string" ? callCfg["working_hours"] : "";
+    const rawHelpline = typeof bCfg["emergency_helpline"] === "string" ? bCfg["emergency_helpline"] : "";
+    const rawInstructions = typeof aCfg["instructions"] === "string" ? aCfg["instructions"] : "";
 
     setForm((prev) => ({
       ...prev,
@@ -179,6 +222,9 @@ function AgentStudioPage() {
       languages: rawLanguages || "hi,en,hinglish",
       deployment_mode: a?.deployment_mode || prev.deployment_mode,
       escalationContact: rawPhone || prev.escalationContact,
+      operatingHours: rawHours || prev.operatingHours,
+      emergencyHelpline: rawHelpline || prev.emergencyHelpline,
+      customInstructions: rawInstructions || prev.customInstructions,
       can_book: a?.can_book ?? prev.can_book,
       can_capture_leads: a?.can_capture_leads ?? prev.can_capture_leads,
       can_transfer: a?.can_transfer ?? prev.can_transfer,
@@ -190,34 +236,43 @@ function AgentStudioPage() {
     mutationFn: async () => {
       if (!businessId) throw new Error("No tenant workspace selected");
 
-      const payload = {
-        tenant_id: businessId,
-        business_id: businessId,
-        name: form.name.trim(),
-        role: form.role.trim(),
-        greeting: form.greeting.trim(),
-        tone: form.tone,
-        languages: form.languages.split(",").map((l) => l.trim()).filter(Boolean),
-        deployment_mode: form.deployment_mode,
-        can_book: form.can_book,
-        can_capture_leads: form.can_capture_leads,
-        can_transfer: form.can_transfer,
-        can_answer_questions: form.can_answer_questions,
+      // PATCH is scoped by primary key: only writable agent columns belong in the body.
+      // PostgREST rejects update payloads carrying identifier or non-writable columns with a 400 Bad Request.
+      const agentUpdates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
+      if (form.name.trim()) agentUpdates["name"] = form.name.trim();
+      if (form.greeting.trim()) agentUpdates["greeting"] = form.greeting.trim();
+      if (form.tone) agentUpdates["tone"] = form.tone;
 
       const { error } = agentQuery.data?.id
-        ? await supabase.database.from("ai_agents").update(payload).eq("id", agentQuery.data.id)
-        : await supabase.database.from("ai_agents").insert([payload]);
+        ? await supabase.database.from("ai_agents").update(agentUpdates).eq("id", agentQuery.data.id)
+        : await supabase.database.from("ai_agents").insert([
+            {
+              tenant_id: businessId,
+              name: form.name.trim() || "AI Assistant",
+              greeting: form.greeting.trim() || "Hello! Welcome to our agency assistance. How may I help you today?",
+              tone: form.tone || "Professional",
+              role: form.role.trim() || "AI Receptionist & Support Specialist",
+              deployment_mode: form.deployment_mode || "assist",
+            },
+          ]);
 
       if (error) throw error;
 
-      // Synchronize with tenant branding_config in PostgreSQL
+      // Synchronize with tenant branding_config in database
       const existingBrd = (business?.branding_config || {}) as Record<string, unknown>;
       const existingAgent = (existingBrd["agent_config"] || {}) as Record<string, unknown>;
+      const existingCall = (existingBrd["call_handling"] || {}) as Record<string, unknown>;
+
       await supabase.database.from("tenants").update({
         branding_config: {
           ...existingBrd,
+          emergency_helpline: form.emergencyHelpline,
+          call_handling: {
+            ...existingCall,
+            working_hours: form.operatingHours,
+          },
           agent_config: {
             ...existingAgent,
             name: form.name.trim(),
@@ -226,13 +281,14 @@ function AgentStudioPage() {
             greeting: form.greeting.trim(),
             tone: form.tone,
             languages: form.languages,
+            instructions: form.customInstructions.trim(),
             last_trained_at: new Date().toISOString(),
           },
         },
       }).eq("id", businessId);
     },
     onSuccess: () => {
-      toast.success("AI Agent configuration saved and synchronized with live WhatsApp assistant.");
+      toast.success("AI Agent configuration and fine-tuning saved successfully.");
       void queryClient.invalidateQueries({ queryKey: ["agent-studio", businessId] });
       void queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
       void queryClient.invalidateQueries({ queryKey: ["my-tenant"] });
@@ -242,6 +298,94 @@ function AgentStudioPage() {
       toast.error(msg);
     },
   });
+
+  // Handle local file ingestion to knowledge search
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !businessId) return;
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const allowedTypes = ["pdf", "docx", "txt", "md", "csv", "xlsx"] as const;
+    const fileType = allowedTypes.find((t) => t === ext);
+
+    if (!fileType) {
+      toast.error(`Unsupported file .${ext}. Please upload PDF, DOCX, TXT, MD, CSV, or XLSX.`);
+      return;
+    }
+
+    setIsUploading(true);
+    toast.info(`Processing and embedding "${file.name}"...`);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const rawBase64 = (reader.result as string).split(",")[1];
+          await ingestKnowledgeFile({
+            data: {
+              tenantId: businessId,
+              agentId: agentQuery.data?.id,
+              fileName: file.name,
+              fileBase64: rawBase64,
+              fileType,
+              tags: selectedTags,
+            },
+          });
+          toast.success(`"${file.name}" successfully indexed into verified knowledge base!`);
+          void queryClient.invalidateQueries({ queryKey: ["knowledge-sources", businessId] });
+        } catch (err: any) {
+          toast.error(err?.message || "Failed to index document");
+        } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+      };
+      reader.onerror = () => {
+        toast.error("Failed to read file from local disk.");
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error(err?.message || "File upload failed.");
+      setIsUploading(false);
+    }
+  };
+
+  // Delete Knowledge Source from database
+  const deleteSourceMutation = useMutation({
+    mutationFn: async (sourceId: string) => {
+      if (!businessId) return;
+      await deleteKnowledgeSource({ data: { sourceId, businessId } });
+    },
+    onSuccess: () => {
+      toast.success("Knowledge document removed from AI index.");
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-sources", businessId] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to delete knowledge source.");
+    },
+  });
+
+  // Grounded semantic question test
+  const testGroundedRetrieval = async () => {
+    if (!ragQuery.trim() || !businessId) return;
+    setIsRagTesting(true);
+    try {
+      const res = await queryKnowledgeGrounded({
+        data: {
+          tenantId: businessId,
+          agentId: agentQuery.data?.id,
+          query: ragQuery.trim(),
+        },
+      });
+      setRagResult(res);
+      toast.success(`Retrieved ${res.chunks.length} grounded document chunks`);
+    } catch (err: any) {
+      toast.error(err?.message || "Semantic retrieval failed.");
+    } finally {
+      setIsRagTesting(false);
+    }
+  };
 
   // Generates the deterministic system prompt preview
   const generatedPrompt = `### ROLE AND IMMUTABLE SAFETY CONTRACT
@@ -314,6 +458,9 @@ ${form.escalationContact ? `- If verified evidence is absent or confidence is be
           <TabsList className="bg-slate-100 p-1 rounded-xl border border-slate-200">
             <TabsTrigger value="identity" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
               <Bot className="size-3.5 mr-1.5" /> Identity & Disclosure
+            </TabsTrigger>
+            <TabsTrigger value="finetuning" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
+              <Sparkles className="size-3.5 mr-1.5 text-amber-500" /> Fine-Tuning & Knowledge
             </TabsTrigger>
             <TabsTrigger value="boundaries" className="text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-[#087F8C]">
               <ShieldCheck className="size-3.5 mr-1.5" /> Permitted & Prohibited Tasks
@@ -398,38 +545,28 @@ ${form.escalationContact ? `- If verified evidence is absent or confidence is be
                   </div>
                 </div>
 
-                <div className="space-y-1.5 pt-2">
-                  <Label htmlFor="greeting" className="text-xs font-medium text-slate-700">
-                    Opening Welcome Message (Sent on Inbound WhatsApp Initiation)
-                  </Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-greeting" className="text-xs font-medium text-slate-700">Opening Greeting</Label>
                   <Textarea
-                    id="greeting"
-                    rows={3}
+                    id="agent-greeting"
                     value={form.greeting}
                     onChange={(e) => setForm({ ...form, greeting: e.target.value })}
-                    className="text-xs leading-relaxed bg-white border-slate-200"
+                    rows={2}
+                    placeholder="Enter the opening greeting message..."
+                    className="text-xs bg-white border-slate-200"
                   />
                 </div>
 
-                <div className="space-y-1.5 pt-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="disclosure" className="text-xs font-medium text-slate-700">
-                      Mandatory Customer-Facing AI Notice
-                    </Label>
-                    <Badge variant="outline" className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border-emerald-200">
-                      Compliance Enforced
-                    </Badge>
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-disclosure" className="text-xs font-medium text-slate-700">Statutory AI Disclosure</Label>
                   <Textarea
-                    id="disclosure"
-                    rows={2}
+                    id="agent-disclosure"
                     value={form.disclosure}
                     onChange={(e) => setForm({ ...form, disclosure: e.target.value })}
-                    className="text-xs leading-relaxed bg-white border-slate-200"
+                    rows={2}
+                    placeholder="Mandatory disclosure clarifying automated assistance..."
+                    className="text-xs bg-white border-slate-200"
                   />
-                  <p className="text-[11px] text-slate-500">
-                    Never represent the assistant as a licensed insurance broker or human adjuster when that would mislead customers.
-                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -473,7 +610,267 @@ ${form.escalationContact ? `- If verified evidence is absent or confidence is be
             </Card>
           </TabsContent>
 
-          {/* TAB 2: Permitted & Disallowed Tasks */}
+          {/* TAB 2: Fine-Tuning & Knowledge Base */}
+          <TabsContent value="finetuning" className="space-y-6">
+            {/* Knowledge Ingestion Card */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Sparkles className="size-4 text-amber-500" /> Grounded Knowledge Ingestion & Document Store
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500">
+                      Upload policy wording, hospital lists, and claim guides. All files are indexed into secure encrypted knowledge search.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="border-emerald-200 text-emerald-800 bg-emerald-50 text-[10px] font-mono">
+                    Verified Knowledge Search Active
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                {/* Upload Zone */}
+                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-[#FAF9F6] p-6 text-center hover:border-[#087F8C] transition-colors">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.csv,.xlsx"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="knowledge-file-upload"
+                  />
+                  <div className="max-w-md mx-auto space-y-3">
+                    <div className="size-12 rounded-2xl bg-white border border-slate-200 grid place-items-center mx-auto text-[#087F8C] shadow-2xs">
+                      {isUploading ? (
+                        <RefreshCw className="size-6 animate-spin text-[#087F8C]" />
+                      ) : (
+                        <UploadCloud className="size-6" />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="knowledge-file-upload"
+                        className="cursor-pointer text-xs font-bold text-[#087F8C] hover:underline"
+                      >
+                        {isUploading ? "Processing & chunking document..." : "Click to select and upload document"}
+                      </label>
+                      <p className="text-[11px] text-slate-400">
+                        Supports PDF, Word (DOCX), Text, Markdown, CSV, and Excel tables.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tag Selection for newly ingested docs */}
+                <div className="space-y-1.5 pt-1">
+                  <Label className="text-xs font-medium text-slate-700">Document Classification Tags</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      "Policy Wording",
+                      "Cashless Network",
+                      "Claims & FNOL",
+                      "KYC Checklist",
+                      "Motor Insurance",
+                      "Health Insurance",
+                      "Life Insurance",
+                      "Customer-Safe",
+                    ].map((tag) => {
+                      const isSelected = selectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedTags((prev) => prev.filter((t) => t !== tag));
+                            } else {
+                              setSelectedTags((prev) => [...prev, tag]);
+                            }
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all ${
+                            isSelected
+                              ? "bg-[#087F8C] text-white border-[#087F8C]"
+                              : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          {isSelected ? `✓ ${tag}` : `+ ${tag}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Ingested Documents List */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <BookOpen className="size-4 text-[#087F8C]" /> Indexed Knowledge Documents
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500">
+                    Approved documents actively referenced by the assistant during caller inquiries.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="text-xs font-mono">
+                  {knowledgeQuery.data?.length || 0} Documents
+                </Badge>
+              </CardHeader>
+              <CardContent className="pt-4">
+                {knowledgeQuery.isLoading ? (
+                  <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <RefreshCw className="size-4 animate-spin text-[#087F8C]" /> Loading knowledge base from database...
+                  </div>
+                ) : !knowledgeQuery.data || knowledgeQuery.data.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No documents uploaded yet. Upload a policy PDF or guide above to equip your agent.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {knowledgeQuery.data.map((src: any) => {
+                      const meta = (src.metadata as Record<string, any>) || {};
+                      const tags: string[] = Array.isArray(meta["tags"]) ? meta["tags"] : [];
+                      return (
+                        <div key={src.id} className="py-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="size-9 rounded-xl bg-slate-100 grid place-items-center shrink-0 text-slate-600">
+                              <FileText className="size-4 text-[#087F8C]" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-900 truncate">
+                                  {src.name}
+                                </span>
+                                <Badge variant="outline" className="text-[10px] uppercase font-mono px-1.5 py-0">
+                                  {src.type || "doc"}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[11px] text-slate-400 font-mono">
+                                  {meta["facts_found"] ? `${meta["facts_found"]} facts extracted` : meta["pages_found"] ? `${meta["pages_found"]} pages` : "Indexed"}
+                                </span>
+                                {tags.map((t) => (
+                                  <span key={t} className="text-[10px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.2">
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteSourceMutation.mutate(src.id)}
+                            disabled={deleteSourceMutation.isPending}
+                            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2.5 text-xs shrink-0"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Operating Schedule & Fallback (Skipped in Onboarding) */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="size-4 text-[#087F8C]" /> Operating Hours & Assistance Schedule
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Configure active calling hours and emergency contact helpline.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-700">Operating Schedule & Working Hours</Label>
+                  <WorkingTimePicker
+                    value={form.operatingHours}
+                    onChange={(val) => setForm((prev) => ({ ...prev, operatingHours: val }))}
+                  />
+                </div>
+
+                <AgentOperationalConfig
+                  emergencyHelpline={form.emergencyHelpline}
+                  onEmergencyHelplineChange={(val) => setForm((prev) => ({ ...prev, emergencyHelpline: val }))}
+                  customInstructions={form.customInstructions}
+                  onCustomInstructionsChange={(val) => setForm((prev) => ({ ...prev, customInstructions: val }))}
+                  canAnswerQuestions={form.can_answer_questions}
+                  onCanAnswerQuestionsChange={(v) => setForm((prev) => ({ ...prev, can_answer_questions: v }))}
+                  canIntakeClaims={form.can_intake_claims}
+                  onCanIntakeClaimsChange={(v) => setForm((prev) => ({ ...prev, can_intake_claims: v }))}
+                  canCaptureLeads={form.can_capture_leads}
+                  onCanCaptureLeadsChange={(v) => setForm((prev) => ({ ...prev, can_capture_leads: v }))}
+                  canTransfer={form.can_transfer}
+                  onCanTransferChange={(v) => setForm((prev) => ({ ...prev, can_transfer: v }))}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Semantic Grounded Retrieval Sandbox */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Search className="size-4 text-[#087F8C]" /> Semantic RAG Knowledge Inspection Sandbox
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Test questions to verify which document chunks are retrieved by the cloud embeddings model before live calls.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter a test question (e.g. 'What is the cashless hospitalization policy?')..."
+                    value={ragQuery}
+                    onChange={(e) => setRagQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !isRagTesting && testGroundedRetrieval()}
+                    className="text-xs bg-white border-slate-200"
+                  />
+                  <Button
+                    type="button"
+                    onClick={testGroundedRetrieval}
+                    disabled={isRagTesting || !ragQuery.trim()}
+                    className="bg-[#087F8C] text-white hover:bg-[#076C77] text-xs shrink-0"
+                  >
+                    {isRagTesting ? <RefreshCw className="size-3.5 animate-spin" /> : "Inspect Chunks"}
+                  </Button>
+                </div>
+
+                {ragResult && (
+                  <div className="space-y-3 pt-2">
+                    {ragResult.answerResult?.answer && (
+                      <div className="p-3.5 rounded-xl bg-[#E6F6F7] border border-[#087F8C]/20 text-xs text-slate-800">
+                        <span className="font-bold text-[#087F8C] block mb-1">Generated Grounded Answer:</span>
+                        {ragResult.answerResult.answer}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <span className="text-[11px] font-semibold text-slate-600 block">
+                        Retrieved Chunks ({ragResult.chunks?.length || 0}):
+                      </span>
+                      {ragResult.chunks?.map((chk: any) => (
+                        <div key={chk.id} className="p-3 rounded-xl border border-slate-200 bg-[#FAF9F6] text-xs space-y-1">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                            <span>Source: {chk.sourceName}</span>
+                            <span>Score: {(chk.similarity * 100).toFixed(1)}%</span>
+                          </div>
+                          <p className="text-slate-700 leading-relaxed text-[11.5px]">{chk.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 3: Permitted & Disallowed Tasks */}
           <TabsContent value="boundaries" className="space-y-4">
             {/* Permitted Actions */}
             <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">

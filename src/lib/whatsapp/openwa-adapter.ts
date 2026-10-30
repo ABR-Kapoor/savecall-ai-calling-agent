@@ -244,7 +244,7 @@ export class OpenWAAdapter implements IWhatsAppProvider {
       const res = await (await getEmbeddedEngine()).getQrCode(sessionId);
       return {
         qr: res.qr,
-        raw: res.raw || `2@wa-token-for-${sessionId}`,
+        ...(res.raw ? { raw: res.raw } : {}),
         status: res.status || "SCAN_QR_CODE",
         success: true,
       };
@@ -255,7 +255,7 @@ export class OpenWAAdapter implements IWhatsAppProvider {
     );
     return {
       qr: res.qr,
-      raw: res.raw || `2@wa-token-for-${sessionId}`,
+      ...(res.raw ? { raw: res.raw } : {}),
       status: res.status || "SCAN_QR_CODE",
       success: true,
     };

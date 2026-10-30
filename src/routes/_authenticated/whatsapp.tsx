@@ -719,7 +719,7 @@ function WhatsAppManagementPage() {
                       Real-Time Connection Diagnostic Panel
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500">
-                      Truthful socket health, Baileys multi-device synchronization, and PostgreSQL persistence evidence.
+                      Live socket health, multi-device synchronization, and verified conversation persistence.
                     </CardDescription>
                   </div>
                   <Button
@@ -967,7 +967,7 @@ function WhatsAppManagementPage() {
                     refetchMessages();
                   }}
                   className="text-xs h-7 border-slate-200 text-slate-700 hover:bg-slate-50"
-                  title="Refresh conversations from PostgreSQL"
+                  title="Refresh conversations from database"
                 >
                   <RefreshCw className="w-3 h-3 mr-1 text-slate-500" />
                   Refresh

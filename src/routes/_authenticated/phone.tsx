@@ -182,7 +182,7 @@ function WhatsAppCallingPage() {
   return (
     <AppShell
       title="WhatsApp Business Voice Calling"
-      subtitle="Genuine two-way AI voice calling on WhatsApp powered by LiveKit Cloud Connectors and Meta WhatsApp Cloud API"
+      subtitle="Autonomous two-way voice calling on WhatsApp configured directly through your carrier channel"
     >
       <div className="space-y-6 max-w-7xl mx-auto pb-16">
         {/* Navigation Tabs between WhatsApp (Primary) and Legacy PSTN/SIP */}
@@ -192,7 +192,7 @@ function WhatsAppCallingPage() {
               <TabsList className="bg-muted/60 p-1">
                 <TabsTrigger value="whatsapp" className="gap-2 font-medium text-xs sm:text-sm">
                   <Headphones className="size-4 text-emerald-600" />
-                  WhatsApp Voice Calling (LiveKit Cloud)
+                  WhatsApp Voice Calling (Cloud Telephony)
                 </TabsTrigger>
                 <TabsTrigger value="forwarding" className="gap-2 font-medium text-xs sm:text-sm">
                   <PhoneForwarded className="size-4 text-slate-500" />
@@ -227,11 +227,11 @@ function WhatsAppCallingPage() {
                 <Card className="border border-border/80 bg-card shadow-xs">
                   <CardContent className="p-4 flex items-center justify-between">
                     <div>
-                      <p className="text-xs text-muted-foreground font-medium">LiveKit Cloud Telephony</p>
+                      <p className="text-xs text-muted-foreground font-medium">Cloud Voice Telephony</p>
                       <div className="flex items-center gap-1.5 mt-1">
                         <span className={`size-2.5 rounded-full ${isLiveKitCloud ? "bg-emerald-500" : "bg-amber-500"}`} />
                         <span className="font-semibold text-sm">
-                          {isLiveKitCloud ? "LiveKit Cloud" : "Self-Hosted / Local"}
+                          {isLiveKitCloud ? "Cloud Telephony Active" : "Direct Mode"}
                         </span>
                       </div>
                     </div>
@@ -557,7 +557,7 @@ function WhatsAppCallingPage() {
                           <Server className="size-5" />
                         </div>
                         <div>
-                          <CardTitle className="text-base font-semibold">LiveKit Cloud Telephony</CardTitle>
+                          <CardTitle className="text-base font-semibold">Cloud Voice Telephony</CardTitle>
                           <CardDescription className="text-xs">
                             WebRTC audio bridge & agent dispatch
                           </CardDescription>
@@ -567,9 +567,9 @@ function WhatsAppCallingPage() {
 
                     <CardContent className="p-5 space-y-3">
                       <div>
-                        <Label className="text-xs text-muted-foreground">LiveKit Project Host</Label>
+                        <Label className="text-xs text-muted-foreground">Telephony Service Host</Label>
                         <p className="text-xs font-mono font-medium mt-0.5 truncate">
-                          {waStatus?.validation?.details?.livekitUrlHost || "Configured via LIVEKIT_URL"}
+                          {waStatus?.validation?.details?.livekitUrlHost || "Configured via Telephony Settings"}
                         </p>
                       </div>
 
@@ -587,7 +587,7 @@ function WhatsAppCallingPage() {
                         <div className="flex items-start gap-2">
                           <Info className="size-4 text-blue-600 shrink-0 mt-0.5" />
                           <p>
-                            The WhatsApp Connector is provided by <strong>LiveKit Cloud</strong>. The AI agent connects to the room and handles Silero VAD, Groq LLM, and insurance RAG tools.
+                            The WhatsApp Connector links your verified business phone number directly to your conversational AI agent.
                           </p>
                         </div>
                       </div>
@@ -646,7 +646,7 @@ function WhatsAppCallingPage() {
                       ) : (
                         <div className="text-center py-4 space-y-2">
                           <p className="text-xs text-muted-foreground">
-                            Click <strong>Validate Setup</strong> to safely test your LiveKit Cloud and Meta configuration without placing calls.
+                            Click <strong>Validate Setup</strong> to safely test your telephony and messaging configuration without placing calls.
                           </p>
                           <Button
                             size="sm"

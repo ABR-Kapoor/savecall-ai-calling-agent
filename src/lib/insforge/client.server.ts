@@ -8,9 +8,7 @@ const baseUrl =
 const serviceKey =
   process.env["INSFORGE_SERVICE_KEY"] ||
   process.env["INSFORGE_API_KEY"] ||
-  process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
-  process.env["SUPABASE_PUBLISHABLE_KEY"] ||
-  "ik_a401a725ebf5f66294d0042f7e2af2d0";
+  "";
 
 /**
  * Returns an InsForge client using the official @insforge/sdk.

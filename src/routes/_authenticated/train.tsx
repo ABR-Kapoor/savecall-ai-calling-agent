@@ -424,7 +424,7 @@ function KnowledgeAndTrainingPage() {
       return updateSourceTags({ data: { sourceId, tags } });
     },
     onSuccess: () => {
-      toast.success("Document tags updated. LLM retrieval filters synchronized.");
+      toast.success("Document tags updated. Assistant search filters synchronized.");
       invalidate();
     },
     onError: (err: unknown) => {
@@ -942,7 +942,7 @@ function KnowledgeAndTrainingPage() {
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                                   {source.tags.length === 0 ? (
                                     <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0">
-                                      <Tag className="size-2.5" /> + Add Tags for LLM
+                                      <Tag className="size-2.5" /> + Add Filter Tags
                                     </span>
                                   ) : (
                                     source.tags.map((t) => (
@@ -1007,7 +1007,7 @@ function KnowledgeAndTrainingPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                           <Tag className="size-3.5 text-[#087F8C]" />
-                          Document Tags for LLM Retrieval
+                          Document Tags for Assistant Lookup
                         </span>
                         <Badge variant="outline" className="text-[10px] font-semibold text-[#087F8C] bg-[#E6F6F7] border-[#087F8C]/20">
                           {selectedSource.tags.length} Active {selectedSource.tags.length === 1 ? "Tag" : "Tags"}
@@ -1021,7 +1021,7 @@ function KnowledgeAndTrainingPage() {
                       {/* Current Active Tags */}
                       <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-[#FAF9F6] rounded-xl border border-slate-100 items-center">
                         {selectedSource.tags.length === 0 ? (
-                          <span className="text-[11px] text-amber-700 italic">No tags attached. Add domain tags below so the LLM can fetch this document.</span>
+                          <span className="text-[11px] text-amber-700 italic">No tags attached. Add category tags below so the assistant can locate this document.</span>
                         ) : (
                           selectedSource.tags.map((t) => (
                             <span
@@ -1102,7 +1102,7 @@ function KnowledgeAndTrainingPage() {
                       {/* LLM Retrieval Scope Notice */}
                       <div className="rounded-xl bg-teal-50/70 border border-teal-200/70 p-2.5 text-[11px] text-teal-900 space-y-1">
                         <div className="font-semibold flex items-center gap-1 text-[#087F8C]">
-                          <Sparkles className="size-3" /> LLM Retrieval Guidance:
+                          <ShieldCheck className="size-3" /> Assistant Search Guidance:
                         </div>
                         <p className="text-[10px] text-teal-800 leading-relaxed">
                           {selectedSource.tags.length > 0

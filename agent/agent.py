@@ -1,6 +1,6 @@
 """
-SaveCall LiveKit AI Voice Agent: Secure Tool Layer
-Connects to self-hosted LiveKit rooms, performs real-time full-duplex conversational audio
+InsurCall LiveKit AI Voice Agent: Secure Tool Layer
+Connects to LiveKit Cloud rooms, performs real-time full-duplex conversational audio
 with sub-30ms Silero VAD barge-in/interruption, and dispatches authorized insurance tools.
 """
 
@@ -9,6 +9,8 @@ import json
 import logging
 import os
 from dotenv import load_dotenv
+
+load_dotenv()
 
 from livekit import rtc
 from livekit.agents import (
@@ -23,22 +25,21 @@ from livekit.agents import (
 from livekit.plugins import silero
 
 from pipeline import (
-    INSURANCE_SYSTEM_PROMPT,
     create_vad,
     create_stt,
     create_llm,
     create_tts,
-    TTS_BASE_URL,
 )
 from tools import execute_remote_tool
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("savecall-agent")
 
-LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "ws://127.0.0.1:7880")
-LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "devkey")
-LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")
+LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
+LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
+if not LIVEKIT_URL.startswith("wss://") or not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
+    raise RuntimeError("Set LIVEKIT_URL (wss://), LIVEKIT_API_KEY, and LIVEKIT_API_SECRET for LiveKit Cloud")
 
 async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {ctx.room.name}")
@@ -46,29 +47,29 @@ async def entrypoint(ctx: JobContext):
 
     # Wait for the customer participant to join
     participant = await ctx.wait_for_participant()
-    logger.info(f"Customer joined: {participant.identity} with metadata: {participant.metadata}")
+    logger.info(f"Voice participant joined: {participant.identity}")
 
-    # Extract non-sensitive session metadata securely attached at token generation
+    # Resolve scope only from the server-created LiveKit agent dispatch.
     metadata = {}
     try:
-        if participant.metadata:
-            metadata = json.loads(participant.metadata)
+        if ctx.job.metadata:
+            metadata = json.loads(ctx.job.metadata)
     except Exception as e:
-        logger.warning(f"Could not parse participant metadata: {e}")
+        raise RuntimeError("Could not parse trusted LiveKit session metadata") from e
 
-    session_id = metadata.get("voice_session_id", "demo-session")
-    tenant_id = metadata.get("tenant_id", "a0000000-0000-0000-0000-000000000001")
-    agent_id = metadata.get("agent_id", "")
-    customer_id = metadata.get("customer_id", "c0000000-0000-0000-0000-000000000001")
-    customer_name = metadata.get("customer_name") or participant.name or "Policyholder"
-    customer_number = metadata.get("customer_number", "")
-    customer_email = metadata.get("customer_email", "")
+    session_id = metadata.get("session_id")
+    tenant_id = metadata.get("tenant_id")
+    agent_id = metadata.get("agent_id")
+    customer_id = metadata.get("customer_id")
+    is_public_demo = metadata.get("public_demo") is True
+    rag_available = metadata.get("rag_available") is True
+    customer_name = "Public demo visitor" if is_public_demo else "Policyholder"
+    if not session_id or not tenant_id or not agent_id:
+        raise RuntimeError("LiveKit dispatch is missing trusted tenant or session scope")
 
     # Fetch dynamic company knowledge base, tone, and greeting from database
-    company_name = "SafeLife Insurance Co."
-    custom_system_prompt = ""
-    knowledge_base = ""
-    greeting_template = "Hello {{customer_name}}! Welcome to {{company_name}} assistance. How may I help you with your policies or claims today?"
+    company_name = "InsurCall"
+    greeting_template = "Hello. Welcome to {{company_name}} support. How may I help you today?"
 
     try:
         cfg_resp = await execute_remote_tool(session_id, tenant_id, customer_id, "get_agent_config", {})
@@ -76,16 +77,8 @@ async def entrypoint(ctx: JobContext):
             company_name = cfg_resp.get("company_name", company_name)
             b_cfg = cfg_resp.get("branding_config", {})
             agent_cfg = b_cfg.get("agent_config", {}) if isinstance(b_cfg, dict) else {}
-            custom_system_prompt = agent_cfg.get("system_prompt", "")
-            knowledge_base = agent_cfg.get("knowledge_base", "")
             greeting_template = agent_cfg.get("greeting", greeting_template)
-
-            db_cust = cfg_resp.get("customer")
-            if db_cust and isinstance(db_cust, dict):
-                customer_name = db_cust.get("name") or customer_name
-                customer_number = db_cust.get("customer_number") or customer_number
-                customer_email = db_cust.get("email") or customer_email
-            logger.info(f"Loaded dynamic agent config for {company_name} - Caller: {customer_name}")
+            logger.info(f"Loaded dynamic agent config for {company_name}")
     except Exception as e:
         logger.warning(f"Could not load dynamic agent config: {e}")
 
@@ -93,11 +86,7 @@ async def entrypoint(ctx: JobContext):
     stt = create_stt()
     ai_llm = create_llm()
     
-    tts = None
-    try:
-        tts = create_tts()
-    except Exception as e:
-        logger.warning(f"TTS not available: {e}")
+    tts = create_tts()
 
     logger.info(f"Agent initialized for session {session_id} under tenant {tenant_id} - Customer: {customer_name}")
 
@@ -157,12 +146,34 @@ async def entrypoint(ctx: JobContext):
             query: The specific customer question or policy coverage topic.
             tags: Optional domain tag or comma-separated tags to filter documents (e.g. 'Life', 'Motor', 'Health', 'Claims', 'FNOL', 'Customer-safe').
         """
+        if not rag_available:
+            return json.dumps({
+                "ok": True,
+                "rag_available": False,
+                "grounded": False,
+                "citations": [],
+                "answer": "No approved organisation knowledge is connected to this assistant yet.",
+            })
+
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
         res = await execute_remote_tool(session_id, tenant_id, customer_id, "search_policy_docs", {
             "query": query,
             "agent_id": agent_id,
             "tags": tag_list,
         })
+        citations = res.get("citations", []) if isinstance(res, dict) else []
+        valid_citations = [
+            {
+                "sourceName": item.get("sourceName"),
+                "pageNumber": item.get("pageNumber"),
+                "similarity": item.get("similarity"),
+            }
+            for item in citations
+            if isinstance(item, dict) and isinstance(item.get("sourceName"), str) and item.get("sourceName").strip()
+        ]
+        if valid_citations:
+            packet = json.dumps({"type": "sources", "citations": valid_citations}).encode("utf-8")
+            await ctx.room.local_participant.publish_data(packet)
         return json.dumps(res)
 
     @llm.function_tool
@@ -173,7 +184,7 @@ async def entrypoint(ctx: JobContext):
         })
         return json.dumps(res)
 
-    tools = [
+    tools = [search_policy_docs] if is_public_demo else [
         get_policy,
         get_claim_status,
         search_policy_docs,
@@ -185,28 +196,16 @@ async def entrypoint(ctx: JobContext):
         cancel_policy,
     ]
 
-    # Dynamically compose instructions incorporating company knowledge base
-    dynamic_instructions = f"""You are SaveCall AI, the official voice assistant for {company_name}.
-You are in a live phone call with policyholder {customer_name}.
-
-COMPANY KNOWLEDGE BASE & PRODUCT GUIDELINES:
-{knowledge_base if knowledge_base.strip() else "SafeLife provides comprehensive Health, Motor, and Life policies with instant claim filing and cashless hospital authorization."}
-
-AGENT BEHAVIOR RULES & PERSONA:
-{custom_system_prompt if custom_system_prompt.strip() else INSURANCE_SYSTEM_PROMPT}
-
-AUTHENTICATED CALLER PROFILE:
-- Name: {customer_name}
-- Customer Number: {customer_number}
-- Registered Email: {customer_email}
-- Carrier: {company_name}
-
-IMPORTANT OPERATIONAL RULES:
-- Greet the caller warmly by their name ({customer_name}).
-- When they inquire about policy or claim status, always call get_policy or get_claim_status tools.
-- Never invent policy numbers. Use their actual active policies retrieved through tools.
-- For sensitive updates (nominee change, cancellation, contact change), verify their identity via send_otp and verify_otp.
-- Speak naturally and keep voice replies concise (1 to 2 sentences per turn).
+    dynamic_instructions = f"""You are InsurCall, an insurance support assistant for {company_name}.
+APPROVED-KNOWLEDGE RULES:
+- Before answering any policy-specific insurance question, call search_policy_docs with the caller's question.
+- State coverage, exclusions, waiting periods, required documents, claim status, deadlines, prices, and insurer-specific processes only when supported by authorised evidence or a successful account tool.
+- If RAG is unavailable or returns no suitable evidence, you may explain a common insurance term at a high level, but explicitly label it as general information and say it does not confirm the caller's policy. For policy-specific questions, abstain and guide the caller to the insurer or an authorised representative.
+- Never fill missing policy evidence with standard-policy assumptions. Do not invent contacts, procedures, or expected outcomes.
+- Never make or imply a binding coverage or claim decision.
+- In public demo mode, do not ask for policy numbers, identity details, or other sensitive data.
+- Never claim that a handoff or other action succeeded unless its tool confirms success.
+- Keep responses concise and conversational.
 """
 
     agent = Agent(
@@ -223,12 +222,11 @@ IMPORTANT OPERATIONAL RULES:
         "min_endpointing_delay": 0.5,
         "max_endpointing_delay": 2.5,
     }
-    if tts:
-        session_kwargs["tts"] = tts
+    session_kwargs["tts"] = tts
 
     session = AgentSession(**session_kwargs)
     await session.start(agent, room=ctx.room)
-    logger.info(f"SaveCall voice session started with local VAD turn detection for {customer_name}")
+    logger.info(f"SaveCall voice session started with cloud speech and local VAD turn detection for {customer_name}")
 
     # Hook real-time conversation item additions to stream transcript to client
     orig_item_added = getattr(session, "_conversation_item_added", None)

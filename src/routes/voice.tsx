@@ -22,8 +22,6 @@ import {
   Maximize2,
   Grid,
   UserCheck,
-  Wifi,
-  Battery,
   Clock,
   X,
   RotateCcw,
@@ -31,6 +29,8 @@ import {
   Send,
   AlertTriangle,
   Loader2,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,116 +59,21 @@ export type VoiceConnectionState =
   | "disconnected"
   | "ended";
 
+type TranscriptMessage = {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  time: string;
+  citations?: Array<{ sourceName: string; pageNumber?: number; similarity?: number }>;
+  escalated?: boolean;
+  provider?: string;
+  model?: string;
+  modelType?: string;
+};
+
 /* =========================================================================
    SPEECH SYNTHESIS ENGINE (WITH GC RETENTION & WATCHDOG SAFETY)
    ========================================================================= */
-let activeUtterance: SpeechSynthesisUtterance | null = null;
-let speechWatchdogTimeout: any = null;
-
-export function stopSpeaking() {
-  if (speechWatchdogTimeout) {
-    clearTimeout(speechWatchdogTimeout);
-    speechWatchdogTimeout = null;
-  }
-  if (typeof window !== "undefined" && "speechSynthesis" in window) {
-    try {
-      window.speechSynthesis.cancel();
-    } catch (_) {}
-  }
-  activeUtterance = null;
-}
-
-function speakAi(text: string, isSpeakerMuted: boolean, onEnd?: () => void) {
-  stopSpeaking();
-
-  if (isSpeakerMuted || typeof window === "undefined" || !("speechSynthesis" in window) || !text) {
-    if (onEnd) onEnd();
-    return;
-  }
-
-  try {
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
-
-    const cleanText = text
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .replace(/[*_#`~>]/g, "")
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .trim();
-
-    if (!cleanText) {
-      if (onEnd) onEnd();
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    activeUtterance = utterance;
-
-    const voices = window.speechSynthesis.getVoices();
-    const preferred =
-      voices.find((v) => v.lang === "en-IN" || v.lang === "hi-IN") ||
-      voices.find(
-        (v) =>
-          v.name.includes("India") ||
-          v.name.includes("Neerja") ||
-          v.name.includes("Swara") ||
-          v.name.includes("Natural") ||
-          v.name.includes("Jenny")
-      ) ||
-      voices.find((v) => v.lang.startsWith("en-")) ||
-      voices[0];
-
-    if (preferred) utterance.voice = preferred;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    let finished = false;
-    const finalize = () => {
-      if (finished) return;
-      finished = true;
-      if (speechWatchdogTimeout) {
-        clearTimeout(speechWatchdogTimeout);
-        speechWatchdogTimeout = null;
-      }
-      activeUtterance = null;
-      if (onEnd) onEnd();
-    };
-
-    utterance.onend = finalize;
-    utterance.onerror = (e) => {
-      console.warn("Speech synthesis notice:", e);
-      finalize();
-    };
-
-    const estimatedDurationMs = Math.max(3000, (cleanText.length / 14) * 1000 + 3000);
-    speechWatchdogTimeout = setTimeout(() => {
-      console.warn("Speech synthesis watchdog triggered state release");
-      finalize();
-    }, estimatedDurationMs);
-
-    window.speechSynthesis.speak(utterance);
-  } catch (err) {
-    console.warn("Speech synthesis error:", err);
-    if (onEnd) onEnd();
-  }
-}
-
-interface TranscriptMessage {
-  id: string;
-  role: "agent" | "user" | "system";
-  text: string;
-  time: string;
-  citations?: Array<{
-    sourceName: string;
-    similarity: number;
-    pageNumber?: number | null;
-  }>;
-  grounded?: boolean;
-  escalated?: boolean;
-}
-
 class PhoneAudioFX {
   private static ctx: AudioContext | null = null;
   private static ringInterval: ReturnType<typeof setInterval> | null = null;
@@ -295,6 +200,29 @@ class PhoneAudioFX {
       console.warn("Beep notice:", e);
     }
   }
+
+  static speakText(text: string, onEnd?: () => void) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      if (onEnd) onEnd();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+
+    const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise/i.test(text);
+    utterance.lang = isHindi ? "hi-IN" : "en-IN";
+
+    utterance.onend = () => {
+      if (onEnd) onEnd();
+    };
+    utterance.onerror = () => {
+      if (onEnd) onEnd();
+    };
+    window.speechSynthesis.speak(utterance);
+  }
 }
 
 /* =========================================================================
@@ -314,10 +242,12 @@ function VoiceCallPage() {
     livekitUrl: string;
     roomName: string;
     callSessionId: string;
-    agentId?: string;
-    greeting?: string;
-    agentConfig?: any;
-    customer: { id: string | null; name: string; customerNumber: string | null; tenantId?: string; isVerified?: boolean };
+    ragAvailable: boolean;
+    isGeneralModel?: boolean;
+    cloudAI?: { activeProvider?: string };
+    agentName?: string;
+    tenantName?: string;
+    customer: { name: string; customerNumber: string | null; isVerified?: boolean };
     micStream?: MediaStream | null | undefined;
     skipMic: boolean;
   } | null>(null);
@@ -347,7 +277,6 @@ function VoiceCallPage() {
             },
           });
         } catch (micErr: any) {
-          console.warn("Microphone access error:", micErr);
           if (micErr.name === "NotAllowedError" || micErr.name === "PermissionDeniedError") {
             setConnectionState("permission_denied");
             setError(
@@ -368,13 +297,6 @@ function VoiceCallPage() {
       PhoneAudioFX.playDialTone();
 
       try {
-        const clerkEmail = user?.primaryEmailAddress?.emailAddress;
-        const clerkName =
-          user?.fullName ||
-          `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
-          clerkEmail?.split("@")[0] ||
-          "Valued Policyholder";
-
         const sessionAbort = new AbortController();
         const sessionTimeout = setTimeout(() => sessionAbort.abort(), 12000);
 
@@ -383,9 +305,7 @@ function VoiceCallPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clerkUserId: user?.id,
-            customerEmail: clerkEmail,
-            customerName: clerkName,
-            customerPhone: user?.primaryPhoneNumber?.phoneNumber,
+            publicDemo: !user?.id,
           }),
           signal: sessionAbort.signal,
         });
@@ -401,20 +321,22 @@ function VoiceCallPage() {
         if (data.error) throw new Error(data.error);
 
         // Always prioritize the official LiveKit Cloud WebSocket URL from server or env
-        const resolvedLivekitUrl =
-          data.livekitUrl ||
-          (typeof window !== "undefined" && (window as any).__LIVEKIT_URL__) ||
-          "wss://insurcall-agent-11ucbvws.livekit.cloud";
+        const resolvedLivekitUrl = data.livekitUrl;
+        if (!resolvedLivekitUrl?.startsWith("wss://")) {
+          throw new Error("The server did not return a configured LiveKit Cloud URL.");
+        }
 
         setSession({
           token: data.token,
           livekitUrl: resolvedLivekitUrl,
           roomName: data.roomName,
           callSessionId: data.callSessionId,
-          agentId: data.agentId,
+          ragAvailable: data.ragAvailable === true,
+          isGeneralModel: data.isGeneralModel === true,
+          cloudAI: data.cloudAI,
+          agentName: data.agentName,
+          tenantName: data.tenantName,
           customer: data.customer,
-          greeting: data.greeting,
-          agentConfig: data.agentConfig,
           micStream: mediaStream,
           skipMic,
         });
@@ -437,7 +359,6 @@ function VoiceCallPage() {
 
   const handleEndCall = useCallback(
     (stats?: { duration: number; turns: number }) => {
-      stopSpeaking();
       PhoneAudioFX.playEndCall();
 
       if (session?.micStream) {
@@ -502,14 +423,7 @@ function VoiceCallPage() {
             <span className="h-2.5 w-2.5 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
               <span className="h-1 w-1 rounded-full bg-[#10A6AE]" />
             </span>
-            {session ? (
-              <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[9px] font-mono font-medium text-emerald-400">LIVE</span>
-              </span>
-            ) : (
-              <span className="h-1 w-6 rounded-full bg-slate-800" />
-            )}
+            <span className="h-1 w-6 rounded-full bg-slate-800" />
           </div>
         </div>
 
@@ -564,13 +478,12 @@ function VoiceCallPage() {
             <ActivePhoneCallScreen
               connectionState={connectionState}
               setConnectionState={setConnectionState}
-              callSessionId={session.callSessionId}
-              agentId={session.agentId}
               customerName={session.customer.name}
-              customerId={session.customer.id}
-              tenantId={(session.customer as any).tenantId}
               customerNumber={session.customer.customerNumber}
-              initialGreeting={(session as any).greeting}
+              agentName={session.agentName || "InsurCall AI Assistant"}
+              tenantName={session.tenantName || session.customer.name}
+              ragAvailable={session.ragAvailable}
+              callSessionId={session.callSessionId}
               micStream={session.micStream}
               onEnd={handleEndCall}
             />
@@ -608,10 +521,7 @@ function PreCallDialerScreen({
       {/* Top Status Bar */}
       <div className="flex items-center justify-between text-[11px] text-[#344054] px-1 pt-1 font-medium">
         <span className="font-bold text-[#111827] tracking-tight">InsurCall</span>
-        <div className="flex items-center gap-1.5 text-[#667085]">
-          <Wifi className="h-3 w-3" />
-          <Battery className="h-3.5 w-3.5 text-emerald-600" />
-        </div>
+        <span className="text-[10px] font-medium text-[#667085]">Cloud voice simulator</span>
       </div>
 
       {/* Main Calling Contact Info: Single Official Logo / Emblem */}
@@ -628,15 +538,18 @@ function PreCallDialerScreen({
           </div>
         </div>
 
-        <div className="space-y-1 flex flex-col items-center">
+        <div className="space-y-1.5 flex flex-col items-center text-center">
           <h1 className="text-xl font-bold font-display text-[#111827] tracking-tight">
             Insur<span className="text-[#087F8C]">Call</span>
           </h1>
-          <p className="text-xs font-semibold text-[#087F8C] tracking-wide">
-            SafeLife 24/7 AI Voice Line
-          </p>
-          <p className="text-[11px] text-[#667085] max-w-[270px] mx-auto pt-0.5 leading-relaxed">
-            Policyholder voice assistant for benefits, claim status, and nominee service.
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-[#EBF5F0] px-3 py-1 text-[11px] font-semibold text-[#186F4D]">
+            <ShieldCheck className="size-3 text-[#2E8B4E]" /> Encrypted voice line
+          </div>
+          <h2 className="text-xs font-bold text-[#087F8C] tracking-wide">
+            Insurance support assistant
+          </h2>
+          <p className="text-[11px] text-[#667085] max-w-[300px] mx-auto pt-0.5 leading-relaxed">
+            Policy-specific answers depend on approved organisation information. Use text if voice is unavailable.
           </p>
         </div>
 
@@ -693,20 +606,20 @@ function PreCallDialerScreen({
           <div className="w-full rounded-2xl border border-[#E4E7EC] bg-white p-4 text-left text-xs space-y-2 shadow-xs">
             <div className="flex items-center gap-2 text-[#087F8C] font-semibold text-[11px]">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Verified Policy Assistant
+              Cloud voice assistant
             </div>
             <div className="space-y-1.5 text-[11px] text-[#344054]">
               <div className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span>Instant Policy Benefit & Expiry Lookup</span>
+                <span>Approved organisation knowledge is used when connected</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span>Real-Time Claim Status & Payout Updates</span>
+                <span>Policy-specific answers require matching approved evidence</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#087F8C]" />
-                <span>Nominee Updates with OTP Safeguards</span>
+                <span>Account actions use existing verification and review workflows</span>
               </div>
             </div>
           </div>
@@ -746,10 +659,13 @@ function PreCallDialerScreen({
           {connectionState === "requesting_microphone"
             ? "Click 'Allow' on the browser microphone prompt"
             : connectionState === "connecting"
-            ? "Connecting to secure voice line..."
+            ? "Connecting to Voice Line..."
             : connectionState === "permission_denied"
             ? "No microphone required • Listen & Type enabled"
-            : "Secure Voice Line • English & Hindi"}
+            : "Autonomous Voice Network · Real-time conversation"}
+        </p>
+        <p className="max-w-[310px] text-[9px] leading-relaxed text-[#7B8790]">
+          Your voice audio is securely processed in real time. Avoid sharing personal passwords or payment details.
         </p>
       </div>
     </div>
@@ -762,31 +678,29 @@ function PreCallDialerScreen({
 function ActivePhoneCallScreen({
   connectionState,
   setConnectionState,
-  callSessionId,
-  agentId,
   customerName,
-  customerId,
-  tenantId,
   customerNumber,
-  initialGreeting,
+  agentName,
+  tenantName,
+  ragAvailable,
+  callSessionId,
   micStream,
   onEnd,
 }: {
   connectionState: VoiceConnectionState;
   setConnectionState: React.Dispatch<React.SetStateAction<VoiceConnectionState>>;
-  callSessionId?: string | undefined;
-  agentId?: string | undefined;
   customerName: string;
-  customerId?: string | null;
-  tenantId?: string;
   customerNumber?: string | null;
-  initialGreeting?: string;
+  agentName?: string;
+  tenantName?: string;
+  ragAvailable: boolean;
+  callSessionId: string;
   micStream?: MediaStream | null | undefined;
   onEnd: (stats?: { duration: number; turns: number }) => void;
 }) {
   const room = useRoomContext();
   const roomConnectionState = useConnectionState();
-  const { state: _agentState } = useVoiceAssistant();
+  const { state: agentState } = useVoiceAssistant();
 
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerMuted, setIsSpeakerMuted] = useState(false);
@@ -796,21 +710,49 @@ function ActivePhoneCallScreen({
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
   const [duration, setDuration] = useState(0);
   const [textInput, setTextInput] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
   const [micVolume, setMicVolume] = useState(0);
 
-  const [messages, setMessages] = useState<TranscriptMessage[]>([
-    {
-      id: "initial-greeting",
-      role: "agent",
-      text:
-        initialGreeting ||
-        `Hello ${customerName || "there"}! Welcome to InsurCall insurance assistance. How may I help you today?`,
-      time: "00:00",
-    },
-  ]);
+  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const fullTranscriptEndRef = useRef<HTMLDivElement>(null);
+  const pendingCitationsRef = useRef<TranscriptMessage["citations"]>([]);
+  const recognitionRef = useRef<any>(null);
+  const speechDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasSpokenGreetingRef = useRef(false);
+
+  const speakAssistantText = useCallback(
+    (text: string) => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window) || isSpeakerMuted) {
+        setConnectionState("listening");
+        return;
+      }
+      try {
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.rate = 1.02;
+        utterance.pitch = 1.0;
+        const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise/i.test(text);
+        utterance.lang = isHindi ? "hi-IN" : "en-IN";
+        utterance.onstart = () => {
+          setConnectionState("speaking");
+        };
+        utterance.onend = () => {
+          setConnectionState("listening");
+        };
+        utterance.onerror = () => {
+          setConnectionState("listening");
+        };
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.warn("Speech playback notice:", e);
+        setConnectionState("listening");
+      }
+    },
+    [isSpeakerMuted, setConnectionState]
+  );
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -818,6 +760,44 @@ function ActivePhoneCallScreen({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (roomConnectionState === "connected" && !hasSpokenGreetingRef.current) {
+      hasSpokenGreetingRef.current = true;
+      const initialGreeting = `Namaste! Welcome to ${tenantName || "Kanhaji Insurance Agency"}. I am ${agentName || "Kashvi"}, your assistant. How can I assist you with your insurance or claim today?`;
+      setMessages([
+        {
+          id: `greeting-${Date.now()}`,
+          role: "agent",
+          text: initialGreeting,
+          time: "00:00",
+        },
+      ]);
+      speakAssistantText(initialGreeting);
+    }
+  }, [roomConnectionState, agentName, tenantName, speakAssistantText]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {}
+      }
+      if (speechDebounceRef.current) {
+        clearTimeout(speechDebounceRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (agentState === "speaking") setConnectionState("speaking");
+    else if (agentState === "thinking") setConnectionState("processing");
+    else if (agentState === "listening") setConnectionState("listening");
+  }, [agentState, setConnectionState]);
 
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -883,7 +863,15 @@ function ActivePhoneCallScreen({
       try {
         const text = new TextDecoder().decode(payload);
         const data = JSON.parse(text);
+        if (data.type === "sources" && Array.isArray(data.citations)) {
+          pendingCitationsRef.current = data.citations.filter(
+            (citation: { sourceName?: unknown }) =>
+              typeof citation?.sourceName === "string" && citation.sourceName.trim().length > 0,
+          );
+          return;
+        }
         if (data.type === "transcript" && data.text) {
+          const role = data.role === "user" ? "user" : "agent";
           setMessages((prev) => {
             if (prev.length > 0 && prev[prev.length - 1]?.text === data.text) {
               return prev;
@@ -892,12 +880,16 @@ function ActivePhoneCallScreen({
               ...prev,
               {
                 id: `${Date.now()}-${Math.random()}`,
-                role: data.role === "user" ? "user" : "agent",
+                role,
                 text: data.text,
                 time: formatTimer(duration),
+                ...(role === "agent" && pendingCitationsRef.current?.length
+                  ? { citations: pendingCitationsRef.current }
+                  : {}),
               },
             ];
           });
+          if (role === "agent") pendingCitationsRef.current = [];
         }
       } catch (err) {
         console.warn("Data parse error:", err);
@@ -946,205 +938,152 @@ function ActivePhoneCallScreen({
     });
   }, [isSpeakerMuted]);
 
-  // Watchdog fallback: auto-promote to connected state within 1.2s so greeting speaks immediately
-  useEffect(() => {
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    if (connectionState === "connecting") {
-      fallbackTimer = setTimeout(() => {
-        PhoneAudioFX.stopRinging();
-        PhoneAudioFX.playConnected();
-        setConnectionState("connected");
-      }, 1200);
-    }
-    return () => {
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-    };
-  }, [connectionState, setConnectionState]);
-
-  useEffect(() => {
-    if (connectionState !== "connected") return;
-    PhoneAudioFX.stopRinging();
-    const greeting =
-      initialGreeting ||
-      `Hello ${customerName || "there"}! Welcome to InsurCall insurance assistance. How may I help you today?`;
-
-    setConnectionState("speaking");
-    const t = setTimeout(() => {
-      speakAi(greeting, isSpeakerMuted, () => {
-        setConnectionState("listening");
-      });
-    }, 400);
-
-    return () => clearTimeout(t);
-  }, [connectionState, initialGreeting, customerName, isSpeakerMuted, setConnectionState]);
-
   const sendPrompt = useCallback(
     async (promptText: string) => {
-      stopSpeaking();
-      PhoneAudioFX.playBeep(587);
+      setSendError(null);
       setConnectionState("processing");
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-${Math.random()}`,
-          role: "user",
-          text: promptText,
-          time: formatTimer(duration),
-        },
-      ]);
-
-      if (room?.localParticipant) {
-        try {
-          const packet = new TextEncoder().encode(
-            JSON.stringify({ type: "user_query", text: promptText })
-          );
-          room.localParticipant.publishData(packet);
-        } catch (e) {
-          console.error("Failed to send prompt data:", e);
-        }
-      }
+      PhoneAudioFX.playBeep(587);
 
       try {
-        const res = await fetch("/api/voice/chat", {
+        const history = messages.slice(-8).map((m) => ({
+          role: m.role === "agent" ? "assistant" : "user",
+          content: m.text,
+        }));
+
+        const response = await fetch("/api/voice/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: promptText,
-            callSessionId,
-            tenantId,
-            agentId,
-            customerId,
-            customerName,
-            history: messages.slice(-4).map((m) => ({
-              role: m.role === "agent" ? "assistant" : "user",
-              content: m.text,
-            })),
-          }),
+          body: JSON.stringify({ query: promptText, callSessionId, history }),
         });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.reply) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `${Date.now()}-${Math.random()}`,
-                role: "agent",
-                text: data.reply,
-                time: formatTimer(duration),
-                citations: data.citations || [],
-                grounded: data.grounded,
-                escalated: data.escalated,
-              },
-            ]);
-            setConnectionState("speaking");
-            speakAi(data.reply, isSpeakerMuted, () => {
-              setConnectionState("listening");
-            });
-          } else {
-            setConnectionState("listening");
-          }
-        } else {
-          setConnectionState("listening");
-        }
-      } catch (err) {
-        console.warn("AI chat response notice:", err);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "The cloud assistant could not answer. Please retry.");
+        const reply = typeof data.reply === "string" ? data.reply.trim() : "";
+        if (!reply) throw new Error("The cloud assistant returned an empty response. Please retry.");
+        const citations = Array.isArray(data.citations)
+          ? data.citations.filter((item: unknown) =>
+              !!item && typeof item === "object" &&
+              typeof (item as { sourceName?: unknown }).sourceName === "string" &&
+              Boolean((item as { sourceName: string }).sourceName.trim())
+            )
+          : [];
+        setMessages((previous) => [
+          ...previous,
+          { id: `${Date.now()}-${Math.random()}`, role: "user", text: promptText, time: formatTimer(duration) },
+          {
+            id: `${Date.now()}-assistant`, role: "agent", text: reply, time: formatTimer(duration), citations,
+            ...(data.provider === "groq" || data.provider === "gemini" ? { provider: data.provider } : {}),
+            ...(typeof data.model === "string" ? { model: data.model } : {}),
+            ...(typeof data.modelType === "string" ? { modelType: data.modelType } : {}),
+          },
+        ]);
+        speakAssistantText(reply);
+        return true;
+      } catch (err: any) {
+        console.warn("Cloud text prompt notice:", err);
+        setSendError(err?.message || "The cloud voice assistant is unavailable. Please retry.");
         setConnectionState("listening");
+        return false;
       }
     },
-    [
-      room,
-      duration,
-      customerName,
-      tenantId,
-      customerId,
-      isSpeakerMuted,
-      messages,
-      callSessionId,
-      setConnectionState,
-    ]
+    [duration, setConnectionState, callSessionId, speakAssistantText]
   );
+
+  // Continuous speech recognition with immediate barge-in interruption
+  useEffect(() => {
+    if (connectionState === "ended" || isMuted) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {}
+      }
+      return;
+    }
+
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionClass();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-IN";
+
+      recognition.onspeechstart = () => {
+        if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          setConnectionState("listening");
+        }
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimText = "";
+        let finalChunk = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i]?.[0]?.transcript || "";
+          if (event.results[i]?.isFinal) {
+            finalChunk += transcript;
+          } else {
+            interimText += transcript;
+          }
+        }
+
+        if (interimText.trim() || finalChunk.trim()) {
+          if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+            setConnectionState("listening");
+          }
+        }
+
+        if (finalChunk.trim()) {
+          if (speechDebounceRef.current) clearTimeout(speechDebounceRef.current);
+          speechDebounceRef.current = setTimeout(() => {
+            sendPrompt(finalChunk.trim());
+          }, 450);
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        if (e.error !== "no-speech" && e.error !== "aborted") {
+          console.warn("Speech recognition notice:", e.error);
+        }
+      };
+
+      recognition.onend = () => {
+        if (!isMuted) {
+          try {
+            recognition.start();
+          } catch {}
+        }
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+
+      return () => {
+        try {
+          recognition.stop();
+        } catch {}
+      };
+    } catch (e) {
+      console.warn("Speech recognition setup notice:", e);
+      return;
+    }
+  }, [connectionState, isMuted, sendPrompt, setConnectionState]);
 
   const handleSendText = useCallback(
     (e?: React.FormEvent) => {
       if (e) e.preventDefault();
       const trimmed = textInput.trim();
       if (!trimmed || connectionState === "processing") return;
-      sendPrompt(trimmed);
-      setTextInput("");
+      void sendPrompt(trimmed).then((sent) => {
+        if (sent) setTextInput("");
+      });
     },
     [textInput, connectionState, sendPrompt]
   );
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isMuted || connectionState === "processing") return;
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    let reco: any = null;
-    let active = true;
-
-    try {
-      reco = new SpeechRecognition();
-      reco.continuous = true;
-      reco.interimResults = true;
-      reco.lang = "en-IN";
-
-      reco.onresult = (event: any) => {
-        if (!active) return;
-        const lastResult = event.results[event.results.length - 1];
-        if (lastResult) {
-          const speechText = lastResult[0]?.transcript?.trim();
-          if (speechText) {
-            if (connectionState === "speaking") {
-              stopSpeaking();
-              setConnectionState("listening");
-            }
-            if (lastResult.isFinal) {
-              sendPrompt(speechText);
-            }
-          }
-        }
-      };
-
-      reco.onerror = (e: any) => {
-        if (e.error === "not-allowed") {
-          setConnectionState("permission_denied");
-        } else if (e.error !== "no-speech" && e.error !== "aborted") {
-          console.warn("Speech recognition notice:", e.error);
-        }
-      };
-
-      reco.onend = () => {
-        if (active && !isMuted && connectionState === "listening") {
-          try {
-            reco.start();
-          } catch {}
-        }
-      };
-
-      try {
-        reco.start();
-      } catch (err) {
-        console.warn("Speech recognition start notice:", err);
-      }
-    } catch (e) {
-      console.warn("Speech recognition init notice:", e);
-    }
-
-    return () => {
-      active = false;
-      if (reco) {
-        try {
-          reco.stop();
-        } catch {}
-      }
-    };
-  }, [isMuted, connectionState, sendPrompt, setConnectionState]);
 
   const isSpeaking = connectionState === "speaking";
 
@@ -1157,14 +1096,13 @@ function ActivePhoneCallScreen({
           <span>{formatTimer(duration)}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-semibold">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Clear Audio
-          </span>
-          <Wifi className="h-3 w-3 text-[#667085]" />
-          <Battery className="h-3.5 w-3.5 text-emerald-600" />
-        </div>
+        <span className="text-[10px] text-[#667085] font-medium" role="status" aria-live="polite">
+          {roomConnectionState === "connected"
+            ? "Voice Line connected"
+            : roomConnectionState === "connecting"
+              ? "Connecting to Voice Line"
+              : "Voice Line disconnected"}
+        </span>
       </div>
 
       {/* 2. Caller Profile & Voice Aura */}
@@ -1196,11 +1134,22 @@ function ActivePhoneCallScreen({
 
         <div>
           <h2 className="text-base font-bold text-[#111827] tracking-tight">
-            InsurCall AI Assistant
+            {agentName || "InsurCall AI Concierge"}
           </h2>
           <p className="text-[11px] text-[#667085] pt-0.5">
-            {customerName} {customerNumber ? `• ${customerNumber}` : ""}
+            {tenantName || customerName} {customerNumber ? `• ${customerNumber}` : ""}
           </p>
+          <div className="mt-1 flex items-center justify-center gap-1.5 text-[10px]">
+            {ragAvailable ? (
+              <span className="inline-flex items-center gap-1 text-[#087F8C] font-semibold bg-[#E6F6F7] px-2.5 py-0.5 rounded-full border border-[#087F8C]/30">
+                <ShieldCheck className="h-3 w-3 text-[#087F8C]" /> Approved knowledge connected
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[#1D5E4A] font-semibold bg-[#EAF5EF] px-2.5 py-0.5 rounded-full border border-[#B6DEC9]">
+                <Sparkles className="h-3 w-3 text-[#2E8B4E]" /> General information mode · no approved policy data
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Speaking Status Badge & Real Audio Reactive Equalizer */}
@@ -1313,11 +1262,15 @@ function ActivePhoneCallScreen({
                   </span>
                   <p className="line-clamp-2 text-[11px] leading-snug flex-1">{m.text}</p>
                 </div>
-                {m.citations && m.citations.length > 0 && (
+                {m.citations && m.citations.length > 0 ? (
                   <span className="text-[9px] text-teal-700 bg-teal-50 border border-teal-200/80 rounded px-1.5 py-0.2 ml-7">
                     Grounded in: {m.citations[0]?.sourceName}
                   </span>
-                )}
+                ) : m.role === "agent" ? (
+                  <span className="text-[9px] text-[#1D5E4A] bg-[#EAF5EF] border border-[#B6DEC9] rounded px-1.5 py-0.2 ml-7">
+                    ✨ Carrier Voice Concierge
+                  </span>
+                ) : null}
                 {m.escalated && (
                   <span className="text-[9px] text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.2 ml-7 font-semibold">
                     Escalated to human supervisor
@@ -1327,6 +1280,8 @@ function ActivePhoneCallScreen({
             ))}
             <div ref={transcriptEndRef} />
           </div>
+
+          {sendError && <p role="alert" className="text-[10px] leading-relaxed text-rose-700">{sendError}</p>}
 
           <form
             onSubmit={handleSendText}
@@ -1538,12 +1493,12 @@ function ActivePhoneCallScreen({
                   <div>{m.text}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="mt-1.5 pt-1 border-t border-[#087F8C]/20 flex flex-wrap gap-1">
-                      {m.citations.map((c, ci) => (
+                      {m.citations.map((c: { sourceName: string; similarity?: number }, ci: number) => (
                         <span
                           key={ci}
                           className="inline-flex items-center text-[9px] font-medium text-teal-800 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5"
                         >
-                          Source: {c.sourceName} ({(c.similarity * 100).toFixed(0)}%)
+                          Source: {c.sourceName}{typeof c.similarity === "number" ? ` (${(c.similarity * 100).toFixed(0)}%)` : ""}
                         </span>
                       ))}
                     </div>
@@ -1559,6 +1514,8 @@ function ActivePhoneCallScreen({
             ))}
             <div ref={fullTranscriptEndRef} />
           </div>
+
+          {sendError && <p role="alert" className="text-xs leading-relaxed text-rose-700">{sendError}</p>}
 
           <form
             onSubmit={handleSendText}
@@ -1655,12 +1612,8 @@ function ActivePhoneCallScreen({
               </span>
             </div>
             <div className="flex justify-between py-1 border-b border-[#E4E7EC]/70">
-              <span className="text-[#667085]">Audio Line</span>
-              <span className="text-emerald-700 font-medium">Clear Audio</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-[#E4E7EC]/70">
-              <span className="text-[#667085]">Security</span>
-              <span className="text-emerald-700 font-medium">Private & Encrypted</span>
+              <span className="text-[#667085]">Voice service</span>
+              <span className="text-[#344054] font-medium">Autonomous Voice Line</span>
             </div>
           </div>
         </div>
@@ -1690,7 +1643,7 @@ function CallEndedScreen({
   return (
     <div className="flex-1 flex flex-col justify-between p-6 pt-12 pb-7 text-center bg-gradient-to-b from-[#F2F8F8] via-[#FAF9F6] to-[#FAF9F6] text-[#111827]">
       <div className="flex items-center justify-center text-xs text-[#667085] font-medium">
-        <span>Call Completed</span>
+        <span>Session ended</span>
       </div>
 
       <div className="my-auto space-y-4">
@@ -1715,8 +1668,8 @@ function CallEndedScreen({
             <span className="text-[#111827] font-medium">{stats.turns} conversational turns</span>
           </div>
           <div className="flex justify-between py-1">
-            <span className="text-[#667085]">Call Log</span>
-            <span className="text-emerald-700 font-semibold">Saved to Call Records</span>
+            <span className="text-[#667085]">Session record</span>
+            <span className="text-emerald-700 font-semibold">Created</span>
           </div>
         </div>
       </div>

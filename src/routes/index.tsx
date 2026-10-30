@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useUser } from "@clerk/clerk-react";
 import {
   PhoneCall,
   Mic,
@@ -82,6 +83,7 @@ const INSURANCE_FOOTER_COLUMNS = [
 ];
 
 function LandingPage() {
+  const { user } = useUser();
   const [showAuth, setShowAuth] = useState(false);
 
   useEffect(() => {
@@ -99,12 +101,19 @@ function LandingPage() {
         {/* 2. Hero: Insurance conversations, made actionable */}
         <section className="relative isolate overflow-hidden bg-[#FAF9F6]">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute -left-48 top-8 size-[34rem] rounded-full bg-[#087F8C]/[0.07] blur-[110px]" />
-            <div className="absolute -right-40 -top-48 size-[38rem] rounded-full bg-[#D9EBE8]/70 blur-[100px]" />
-            <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(#9CAFA9_0.7px,transparent_0.7px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
+            {/* Top Right Big Luminous Aurora Effect */}
+            <div className="absolute -top-36 -right-24 size-[48rem] rounded-full bg-gradient-to-br from-[#087F8C]/18 via-[#10A6AE]/14 to-[#4EA89D]/12 blur-[130px]" />
+            <div className="absolute top-8 right-16 size-[28rem] rounded-full bg-[#E3F4F3]/80 blur-[90px]" />
+
+            {/* Bottom Left Big Ambient Glow Effect */}
+            <div className="absolute -bottom-48 -left-36 size-[46rem] rounded-full bg-gradient-to-tr from-[#087F8C]/14 via-[#3A9E96]/10 to-transparent blur-[140px]" />
+            <div className="absolute bottom-12 left-10 size-[24rem] rounded-full bg-emerald-100/50 blur-[90px]" />
+
+            {/* Subtle Tech Dot Matrix Grid */}
+            <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(#9CAFA9_0.75px,transparent_0.75px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black_45%,transparent_80%)]" />
           </div>
 
-          <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-6 pb-16 pt-28 sm:pt-32 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16 lg:pb-24 lg:pt-36">
+          <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-6 pt-32 pb-20 sm:pt-36 sm:pb-24 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16 lg:pt-40 lg:pb-28">
             <div className="relative z-10 max-w-xl">
               <div className="landing-rise mb-7 inline-flex items-center gap-2.5 rounded-full border border-[#087F8C]/20 bg-white/80 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-[#087F8C] shadow-sm backdrop-blur" style={{ animationDelay: "0ms" }}>
                 <span className="relative flex size-2">
@@ -119,14 +128,14 @@ function LandingPage() {
               </h1>
 
               <p className="landing-rise mt-6 max-w-lg text-base leading-7 text-[#536466] sm:text-lg sm:leading-8" style={{ animationDelay: "240ms" }}>
-                InsurCall helps insurance teams handle policy questions and capture claims details—then brings people in when a decision needs human review.
+                InsurCall helps insurance teams handle policy questions and capture claims details - then brings people in when a decision needs human review.
               </p>
 
               <div className="landing-rise mt-8 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "360ms" }}>
                 <Button asChild size="lg" className="h-12 rounded-xl bg-[#087F8C] px-6 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(8,127,140,0.65)] transition-all hover:-translate-y-0.5 hover:bg-[#076C77] hover:shadow-[0_12px_24px_-8px_rgba(8,127,140,0.55)] active:translate-y-0">
-                  <Link to="/voice">
+                  <Link to={user ? "/voice" : "/auth"}>
                     <PhoneCall className="mr-2 size-4" />
-                    Start a voice demo
+                    {user ? "Launch Voice Studio" : "Try Voice Calling"}
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="h-12 rounded-xl border-[#D8E1DE] bg-white/70 px-5 text-sm font-semibold text-[#243B3D] transition-all hover:-translate-y-0.5 hover:border-[#087F8C]/40 hover:bg-white">
@@ -135,13 +144,13 @@ function LandingPage() {
               </div>
 
               <div className="landing-rise mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#DCE4E0] pt-5 text-xs font-medium text-[#536466]" style={{ animationDelay: "480ms" }}>
-                <span className="inline-flex items-center gap-2"><ShieldCheck className="size-4 text-[#087F8C]" /> Answers grounded in approved information</span>
+                <span className="inline-flex items-center gap-2"><ShieldCheck className="size-4 text-[#087F8C]" /> Policy answers use approved information when available</span>
                 <span className="inline-flex items-center gap-2"><UserCheck className="size-4 text-[#087F8C]" /> People review consequential actions</span>
               </div>
             </div>
 
             <div className="landing-rise relative z-10 mx-auto w-full max-w-[590px] lg:ml-auto" style={{ animationDelay: "220ms" }}>
-              <div aria-hidden="true" className="absolute -inset-5 -z-10 rounded-[2.5rem] bg-gradient-to-br from-[#CFE8E3]/70 via-white/20 to-[#E5EBDD]/60 blur-2xl" />
+              <div aria-hidden="true" className="absolute -inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-[#CFE8E3]/80 via-[#E8F5F2]/40 to-[#E5EBDD]/60 blur-3xl opacity-80" />
               <InsuranceHeroPanel />
             </div>
           </div>
@@ -248,7 +257,7 @@ function LandingPage() {
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-[#FAF9F6] p-3">
                     <span className="font-mono text-[10px] text-[#087F8C] font-bold block">02 : Output</span>
-                    <span className="text-slate-700 text-[11px] block mt-1">Zod-validated schema stored in PostgreSQL claims table.</span>
+                    <span className="text-slate-700 text-[11px] block mt-1">Structured claim schema securely verified and saved.</span>
                   </div>
                 </div>
               </div>

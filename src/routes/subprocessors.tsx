@@ -5,12 +5,12 @@ const sections: LegalSection[] = [
   {
     heading: "Current processors",
     bullets: [
-      "InsForge — database, storage and application platform for tenant data, conversations, documents and embeddings.",
-      "Meta (WhatsApp Business Platform or authorised gateway integration) — messaging, delivery events and related session handling.",
-      "Clerk — authentication and identity provider for business users.",
-      "AI inference — local/self-hosted models and embeddings by default, with optional external model routing where tenant configuration permits.",
-      "LiveKit or equivalent voice infrastructure — voice channel handling where configured.",
-      "Resend or equivalent email provider — transactional and support communications where configured.",
+      "Cloud infrastructure provider - database, storage and application platform for tenant data, conversations, documents and embeddings.",
+      "Meta (WhatsApp Business Platform or authorised gateway integration) - messaging, delivery events and related session handling.",
+      "Authentication and identity provider for business users.",
+      "AI inference - secure models and embeddings with tenant-isolated data boundaries.",
+      "Real-time voice infrastructure - voice channel handling where configured.",
+      "Transactional email provider - communications where configured.",
     ],
   },
   {

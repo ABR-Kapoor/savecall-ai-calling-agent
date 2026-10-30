@@ -8,22 +8,21 @@ import uuid
 import logging
 import edge_tts
 from livekit.agents import tts, APIConnectOptions
-from livekit.plugins import silero, openai, groq
+from livekit.plugins import silero, groq
+try:
+    from livekit.plugins import openai
+except ImportError:
+    openai = None
 
 logger = logging.getLogger("savecall-pipeline")
 
-STT_BASE_URL = os.environ.get("STT_BASE_URL", "http://localhost:9000/v1")
-STT_MODEL = os.environ.get("STT_MODEL", "Systran/faster-whisper-medium")
-
-LLM_BASE_URL = os.environ.get("LOCAL_LLM_BASE_URL", os.environ.get("LLM_BASE_URL", "http://localhost:11434"))
-LLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5:7b")
-
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "auto").lower()
 
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-IN-NeerjaNeural")
-TTS_BASE_URL = os.environ.get("TTS_BASE_URL", "http://localhost:8888")
-TTS_MODEL = os.environ.get("TTS_MODEL", "en_US-lessac-medium")
 
 INSURANCE_SYSTEM_PROMPT = """
 You are SaveCall, a friendly, professional, empathetic, and secure AI voice receptionist for insurance policyholders.
@@ -74,46 +73,35 @@ def create_vad():
     return silero.VAD.load()
 
 def create_stt():
-    if GROQ_API_KEY:
-        try:
-            logger.info("Initializing Groq Whisper STT")
-            return groq.STT(model="whisper-large-v3-turbo", api_key=GROQ_API_KEY)
-        except Exception as e:
-            logger.warning(f"Groq STT initialization notice: {e}. Falling back to local STT...")
-    
-    logger.info(f"Connecting STT to {STT_BASE_URL} ({STT_MODEL})")
-    return openai.STT(
-        base_url=STT_BASE_URL,
-        model=STT_MODEL,
-        api_key="none"
-    )
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY is required for cloud speech recognition")
+    logger.info("Initializing Groq Whisper STT")
+    return groq.STT(model="whisper-large-v3-turbo", api_key=GROQ_API_KEY)
 
 def create_llm():
+    providers = {}
     if GROQ_API_KEY:
-        try:
-            logger.info(f"Initializing Groq LLM ({GROQ_MODEL})")
-            return groq.LLM(model=GROQ_MODEL, api_key=GROQ_API_KEY)
-        except Exception as e:
-            logger.warning(f"Groq LLM initialization notice: {e}. Falling back to Ollama...")
+        providers["groq"] = groq.LLM(model=GROQ_MODEL, api_key=GROQ_API_KEY)
+    if GEMINI_API_KEY and openai is not None:
+        providers["gemini"] = openai.LLM(
+            model=GEMINI_MODEL,
+            api_key=GEMINI_API_KEY,
+            base_url=f"{os.environ.get('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta').rstrip('/')}/openai",
+        )
 
-    # Fallback to Local Ollama
-    ollama_v1 = f"{LLM_BASE_URL.rstrip('/')}/v1"
-    logger.info(f"Connecting LLM to Ollama at {ollama_v1} ({LLM_MODEL})")
-    return openai.LLM(
-        base_url=ollama_v1,
-        model=LLM_MODEL,
-        api_key="ollama"
-    )
+    if not providers:
+        raise RuntimeError("Configure GROQ_API_KEY or GEMINI_API_KEY for cloud language inference.")
+
+    preferred = AI_PROVIDER if AI_PROVIDER in providers else "groq" if "groq" in providers else "gemini"
+    ordered = [providers[preferred]] + [provider for name, provider in providers.items() if name != preferred]
+    if len(ordered) == 1:
+        logger.info(f"Initializing {preferred.title()} Cloud LLM")
+        return ordered[0]
+
+    logger.info(f"Initializing {preferred.title()} Cloud LLM with provider failover")
+    from livekit.agents import llm
+    return llm.FallbackAdapter(llm=ordered, attempt_timeout=12.0, max_retry_per_llm=0)
 
 def create_tts():
-    try:
-        logger.info(f"Initializing EdgeTTS (voice: {TTS_VOICE})")
-        return EdgeTTS(voice=TTS_VOICE)
-    except Exception as e:
-        logger.warning(f"EdgeTTS init failed: {e}. Attempting OpenAI/Piper fallback...")
-        tts_v1 = f"{TTS_BASE_URL.rstrip('/')}/v1"
-        return openai.TTS(
-            base_url=tts_v1,
-            model=TTS_MODEL,
-            api_key="none"
-        )
+    logger.info(f"Initializing cloud Edge TTS (voice: {TTS_VOICE})")
+    return EdgeTTS(voice=TTS_VOICE)

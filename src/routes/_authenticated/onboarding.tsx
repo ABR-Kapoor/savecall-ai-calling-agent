@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { getTenantSettings, updateTenantSettings } from "@/lib/insurance.functions";
 import { InsurCallLoadingScreen } from "@/components/loading-screen";
+import { WorkingTimePicker } from "@/components/working-time-picker";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   ssr: false,
@@ -238,12 +239,13 @@ function OnboardingPage() {
 
   // Audio test state (Step 7)
   const [micPermission, setMicPermission] = useState<"prompt" | "granted" | "denied">("prompt");
-  const [isTestSessionActive, setIsTestSessionActive] = useState(false);
+  const [isTestSessionActive, setIsTestSessionActive] = useState(true);
   const [testLog, setTestLog] = useState<{ sender: "user" | "agent"; text: string }[]>([]);
   const [testInput, setTestInput] = useState("");
+  const [isTestLoading, setIsTestLoading] = useState(false);
 
   // Step 2: "Build your receptionist by talking" conversational interview state
-  const [interviewMode, setInterviewMode] = useState<"voice" | "manual">("voice");
+  const [interviewMode, setInterviewMode] = useState<"voice" | "manual">("manual");
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [interviewAnswers, setInterviewAnswers] = useState<InterviewAnswersMap>({
     businessDescription: "",
@@ -496,14 +498,31 @@ function OnboardingPage() {
     }
   };
 
+  useEffect(() => {
+    if (testLog.length === 0) {
+      setTestLog([
+        {
+          sender: "agent",
+          text:
+            data.agentGreeting ||
+            "Hello! Welcome to our insurance office. How can I assist you with your policy or claim today?",
+        },
+      ]);
+    }
+  }, [data.agentGreeting]);
+
   const startTestSession = () => {
     setIsTestSessionActive(true);
-    setTestLog([
-      {
-        sender: "agent",
-        text: data.agentGreeting,
-      },
-    ]);
+    if (testLog.length === 0) {
+      setTestLog([
+        {
+          sender: "agent",
+          text:
+            data.agentGreeting ||
+            "Hello! Welcome to our insurance office. How can I assist you with your policy or claim today?",
+        },
+      ]);
+    }
   };
 
   const stopTestSession = () => {
@@ -513,23 +532,56 @@ function OnboardingPage() {
     }
   };
 
-  const sendTestMessage = () => {
-    if (!testInput.trim()) return;
-    const userText = testInput.trim();
+  const sendTestMessage = async (customPrompt?: string) => {
+    const rawText = typeof customPrompt === "string" ? customPrompt : testInput;
+    if (!rawText.trim() || isTestLoading) return;
+    const userText = rawText.trim();
     setTestInput("");
 
     setTestLog((prev) => [...prev, { sender: "user", text: userText }]);
+    setIsTestLoading(true);
 
-    // Assistant response simulation using entered greeting & instructions
+    try {
+      const res = await fetch("/api/voice/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userText,
+          tenantId: tenant?.id,
+          systemPrompt: `You are ${data.agentName || "InsurCall Assistant"}, the official insurance receptionist for ${data.organizationName || "the agency"}. Operating Schedule: ${data.operatingHours || "Monday - Saturday 9:00 AM - 8:00 PM IST"}. Emergency Helpline: ${data.emergencyHelpline || "Available 24x7"}. Core Knowledge: ${data.coreBusinessKnowledge || "We provide health, motor, and general insurance coverage."}. Tone: ${data.voiceStyle || "Empathetic & Professional"}.`,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const reply = json.reply || json.response || json.message;
+        if (reply) {
+          setTestLog((prev) => [...prev, { sender: "agent", text: reply }]);
+          if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            const u = new SpeechSynthesisUtterance(reply);
+            u.rate = 0.95;
+            window.speechSynthesis.speak(u);
+          }
+          setIsTestLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Cloud chat test fallback:", err);
+    }
+
+    // Local deterministic fallback
     setTimeout(() => {
       let agentReply = "";
       const lower = userText.toLowerCase();
       if (lower.includes("claim") || lower.includes("fnol") || lower.includes("accident")) {
         agentReply = `I can help file your claim immediately. Could you please share the date of the incident and policy number?`;
+      } else if (lower.includes("hour") || lower.includes("time") || lower.includes("open") || lower.includes("schedule")) {
+        agentReply = `Our office operating schedule is: ${data.operatingHours || "Monday to Saturday from 9:00 AM to 8:00 PM IST"}. Emergency assistance is active 24x7.`;
       } else if (lower.includes("coverage") || lower.includes("policy") || lower.includes("cashless")) {
         agentReply = `I am checking your coverage details. Our cashless network covers approved daycare and inpatient hospitalizations. What hospital are you inquiring about?`;
       } else {
-        agentReply = `Thank you for sharing that. I have noted this in your carrier profile. Our team operates ${data.operatingHours}. How else may I assist you today?`;
+        agentReply = `Thank you for asking. I am ${data.agentName || "your AI insurance receptionist"}. We operate ${data.operatingHours || "Mon-Sat 9 AM - 8 PM"}. How else may I assist you today?`;
       }
 
       setTestLog((prev) => [...prev, { sender: "agent", text: agentReply }]);
@@ -539,7 +591,8 @@ function OnboardingPage() {
         u.rate = 0.95;
         window.speechSynthesis.speak(u);
       }
-    }, 600);
+      setIsTestLoading(false);
+    }, 350);
   };
 
   // Save changes to backend
@@ -558,6 +611,7 @@ function OnboardingPage() {
             ? updated.organizationName.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/(^-|-$)/g, "")
             : "insurance-agency"),
         branding_config: {
+          plan: existingBrd.plan || "starter",
           ...existingBrd,
           onboarding_step: updated.step,
           onboarding_completed: Boolean(isFinal),
@@ -636,6 +690,18 @@ function OnboardingPage() {
     saveMutation.mutate({ updated: data, isFinal: true });
   };
 
+  const handleSkipToAgent = () => {
+    setSaveError("");
+    saveMutation.mutate(
+      { updated: data, isFinal: true },
+      {
+        onSuccess: () => {
+          navigate({ to: "/agent" });
+        },
+      }
+    );
+  };
+
   if (isLoading) {
     return (
       <InsurCallLoadingScreen
@@ -669,6 +735,15 @@ function OnboardingPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSkipToAgent}
+            className="text-xs text-[#087F8C] hover:bg-[#E6F6F7] font-semibold flex items-center gap-1 px-2.5 h-8"
+          >
+            Skip to AI Agent Studio <ArrowRight className="size-3" />
+          </Button>
           {saveStatus && (
             <span className="text-xs font-mono text-emerald-600 flex items-center gap-1 animate-in fade-in">
               <Check className="size-3.5" /> {saveStatus}
@@ -1263,12 +1338,12 @@ function OnboardingPage() {
 
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Operating Hours</label>
-                  <Input
-                    placeholder="e.g. Monday - Saturday 9:00 AM - 8:00 PM IST"
+                  <label className="text-xs font-semibold text-slate-700">
+                    Operating Schedule & Working Hours
+                  </label>
+                  <WorkingTimePicker
                     value={data.operatingHours}
-                    onChange={(e) => updateField("operatingHours", e.target.value)}
-                    className="border-slate-200"
+                    onChange={(val) => updateField("operatingHours", val)}
                   />
                 </div>
 
@@ -1382,74 +1457,71 @@ function OnboardingPage() {
           {/* STEP 7: TEST YOUR ASSISTANT */}
           {data.step === 6 && (
             <div className="space-y-6">
-              <div>
-                <h2 className="font-display text-xl font-bold text-slate-900">Test Your Assistant</h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Try an interactive voice test using the identity and greeting configured in previous steps.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-[#FAF9F6] p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-                  <div className="flex items-center gap-2.5">
-                    <span className="grid size-8 place-items-center rounded-xl bg-white border border-slate-200 text-[#087F8C] shadow-2xs">
-                      <Mic className="size-4" />
-                    </span>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">Microphone Status</div>
-                      <div className="text-[11px] font-mono text-slate-500">
-                        {micPermission === "granted"
-                          ? "Permission Granted (Ready)"
-                          : micPermission === "denied"
-                          ? "Permission Blocked in Browser"
-                          : "Not Requested Yet"}
-                      </div>
-                    </div>
-                  </div>
-
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
                   <div className="flex items-center gap-2">
-                    {micPermission !== "granted" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={checkMicPermission}
-                        className="text-xs border-slate-300"
-                      >
-                        Check Microphone
-                      </Button>
-                    ) : null}
-
-                    {!isTestSessionActive ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={startTestSession}
-                        className="text-xs bg-[#087F8C] text-white hover:bg-[#076C77] gap-1.5"
-                      >
-                        <Play className="size-3.5 fill-white" /> Start Interactive Test
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={stopTestSession}
-                        className="text-xs gap-1.5"
-                      >
-                        <Square className="size-3.5 fill-white" /> End Test
-                      </Button>
-                    )}
+                    <h2 className="font-display text-xl font-bold text-slate-900">Test Your Assistant</h2>
+                    <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono">
+                      Manual Mode (Primary)
+                    </Badge>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Directly test caller questions against your configured cloud receptionist, business schedule, and knowledge guidelines.
+                  </p>
                 </div>
 
+                <div className="flex items-center gap-2">
+                  {micPermission !== "granted" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={checkMicPermission}
+                      className="text-xs border-slate-300 gap-1.5 h-8 text-slate-700"
+                    >
+                      <Mic className="size-3.5 text-[#087F8C]" /> Enable Voice Mic
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300 bg-emerald-50 font-mono">
+                      Mic Ready
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Prompt Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">
+                  Quick Test Queries (Click to test instantly):
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "What are your operating hours?",
+                    "How do I file a cashless claim?",
+                    "What documents are required for accident claim?",
+                    "Can I update my policy nominee?",
+                  ].map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => sendTestMessage(chip)}
+                      disabled={isTestLoading}
+                      className="text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:border-[#087F8C] hover:bg-[#E6F6F7] text-slate-700 font-medium transition-all shadow-2xs text-left"
+                    >
+                      &ldquo;{chip}&rdquo;
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-[#FAF9F6] p-4 md:p-5 space-y-4">
                 {/* Conversation Box */}
-                <div className="min-h-48 max-h-64 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-white border border-slate-200 text-xs">
+                <div className="min-h-56 max-h-72 overflow-y-auto space-y-2.5 p-3.5 rounded-xl bg-white border border-slate-200 text-xs">
                   {testLog.length === 0 ? (
-                    <div className="h-40 grid place-items-center text-center text-slate-400">
+                    <div className="h-44 grid place-items-center text-center text-slate-400">
                       <div>
-                        <Bot className="size-6 text-slate-300 mx-auto mb-1" />
-                        <p>Click "Start Interactive Test" to initiate conversation with {data.agentName}.</p>
+                        <Bot className="size-7 text-slate-300 mx-auto mb-1.5" />
+                        <p className="text-xs">Type a question below or pick a query above to start testing.</p>
                       </div>
                     </div>
                   ) : (
@@ -1459,41 +1531,52 @@ function OnboardingPage() {
                         className={`flex gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                          className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
                             msg.sender === "user"
-                              ? "bg-[#172033] text-white rounded-br-xs"
-                              : "bg-[#E6F6F7] text-slate-900 rounded-bl-xs border border-[#087F8C]/20"
+                              ? "bg-[#172033] text-white rounded-br-xs shadow-2xs"
+                              : "bg-[#E6F6F7] text-slate-900 rounded-bl-xs border border-[#087F8C]/20 shadow-2xs"
                           }`}
                         >
-                          <span className="font-semibold block text-[10px] text-slate-400 mb-0.5">
-                            {msg.sender === "user" ? "Caller" : data.agentName}
+                          <span className="font-bold block text-[10px] text-slate-400 mb-0.5">
+                            {msg.sender === "user" ? "Caller (You)" : data.agentName || "Assistant"}
                           </span>
                           {msg.text}
                         </div>
                       </div>
                     ))
                   )}
+                  {isTestLoading && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400 font-mono italic">
+                      <RefreshCw className="size-3 animate-spin text-[#087F8C]" />
+                      Generating verified response from cloud AI...
+                    </div>
+                  )}
                 </div>
 
-                {isTestSessionActive && (
-                  <div className="flex gap-2 pt-1">
-                    <Input
-                      placeholder="Type a policy or claim test question (e.g. 'How do I file a cashless claim?')..."
-                      value={testInput}
-                      onChange={(e) => setTestInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && sendTestMessage()}
-                      className="text-xs bg-white border-slate-200"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={sendTestMessage}
-                      className="bg-[#087F8C] text-white hover:bg-[#076C77] text-xs font-mono"
-                    >
-                      Send
-                    </Button>
-                  </div>
-                )}
+                <div className="flex gap-2 pt-1">
+                  <Input
+                    placeholder="Type a policy, schedule, or claim question (e.g. 'Are you open on Saturdays?')..."
+                    value={testInput}
+                    onChange={(e) => setTestInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !isTestLoading && sendTestMessage()}
+                    disabled={isTestLoading}
+                    className="text-xs bg-white border-slate-200 h-10"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => sendTestMessage()}
+                    disabled={isTestLoading || !testInput.trim()}
+                    className="bg-[#087F8C] text-white hover:bg-[#076C77] text-xs font-mono h-10 px-5 gap-1.5 shrink-0"
+                  >
+                    {isTestLoading ? (
+                      <>
+                        <RefreshCw className="size-3 animate-spin" /> Thinking...
+                      </>
+                    ) : (
+                      "Send"
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -1600,19 +1683,29 @@ function OnboardingPage() {
 
           {/* Wizard Footer Controls */}
           <div className="mt-8 pt-4 border-t border-slate-200 flex items-center justify-between">
-            {data.step > 0 ? (
+            <div className="flex items-center gap-2">
+              {data.step > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBack}
+                  disabled={saveMutation.isPending}
+                  className="text-xs font-mono gap-1.5 border-slate-200"
+                >
+                  <ChevronLeft className="size-4" /> Back
+                </Button>
+              )}
               <Button
-                variant="outline"
+                type="button"
+                variant="ghost"
                 size="sm"
-                onClick={handleBack}
+                onClick={handleSkipToAgent}
                 disabled={saveMutation.isPending}
-                className="text-xs font-mono gap-1.5 border-slate-200"
+                className="text-xs text-slate-500 hover:text-[#087F8C] hover:bg-slate-100 font-mono"
               >
-                <ChevronLeft className="size-4" /> Back
+                Skip to AI Agent Studio &rarr;
               </Button>
-            ) : (
-              <div />
-            )}
+            </div>
 
             {data.step < STEPS.length - 1 ? (
               <Button

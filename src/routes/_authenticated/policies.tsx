@@ -71,7 +71,7 @@ function PoliciesPage() {
   return (
     <AppShell
       title="Policy Directory"
-      subtitle="Policyholder coverage records protected under InsForge tenant isolation"
+      subtitle="Policyholder coverage records protected under strict tenant isolation"
     >
       <div className="space-y-6">
         {/* Policy Category Filter Tiles */}
@@ -100,7 +100,7 @@ function PoliciesPage() {
         {error && (
           <ErrorState
             title="Failed to load policies"
-            message={(error as any)?.message || "PostgreSQL query failed"}
+            message={(error as any)?.message || "Failed to load policies. Please retry."}
             onRetry={() => refetch()}
           />
         )}
@@ -133,7 +133,7 @@ function PoliciesPage() {
                   description={
                     search || selectedCategory !== "all"
                       ? "No records matched your search or category filter. Try clearing your filters."
-                      : "New policies created in InsForge will automatically appear here."
+                      : "New policies created in your account will automatically appear here."
                   }
                   actionLabel={search || selectedCategory !== "all" ? "Reset Filters" : undefined}
                   onAction={() => {

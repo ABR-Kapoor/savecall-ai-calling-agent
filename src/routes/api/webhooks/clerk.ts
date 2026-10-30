@@ -70,6 +70,7 @@ export const Route = createFileRoute("/api/webhooks/clerk")({
                     slug: cleanSlug,
                     status: "active",
                     branding_config: {
+                      plan: "starter",
                       onboarding_step: 0,
                       onboarding_completed: false,
                       organization_details: {

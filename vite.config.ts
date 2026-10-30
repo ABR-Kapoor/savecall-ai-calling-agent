@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   define: {
     global: "globalThis",
   },
@@ -21,7 +21,19 @@ export default defineConfig({
     ],
   },
   ssr: {
-    external: ["pg", "livekit-server-sdk", "@whiskeysockets/baileys", "qrcode"],
+    external: [
+      "pg",
+      "pg-pool",
+      "livekit-server-sdk",
+      "@whiskeysockets/baileys",
+      "qrcode",
+      "sharp",
+      "mammoth",
+      "@xenova/transformers",
+      "unpdf",
+      "xlsx",
+      "resend",
+    ],
   },
   resolve: {
     alias: {
@@ -53,9 +65,15 @@ export default defineConfig({
             if (res && "writeHead" in res && !(res as any).headersSent) {
               try {
                 (res as any).writeHead(502, { "Content-Type": "text/plain" });
-                (res as any).end("LiveKit WebRTC gateway offline. Falling back to browser audio synthesis.");
+                (res as any).end(
+                  "LiveKit WebRTC gateway offline. Falling back to browser audio synthesis."
+                );
               } catch (_) {}
-            } else if (res && "destroy" in res && typeof (res as any).destroy === "function") {
+            } else if (
+              res &&
+              "destroy" in res &&
+              typeof (res as any).destroy === "function"
+            ) {
               try {
                 (res as any).destroy();
               } catch (_) {}
@@ -70,9 +88,10 @@ export default defineConfig({
     allowedHosts: [".e2b.app", ".localhost", "172.30.160.10"],
   },
   plugins: [
-    basicSsl(),
+    // basicSsl only for local dev — Vercel handles HTTPS natively
+    ...(mode !== "production" ? [basicSsl()] : []),
     tanstackStart(),
     react(),
     tailwindcss(),
   ],
-});
+}));

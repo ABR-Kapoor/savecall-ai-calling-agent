@@ -11,6 +11,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
+import { resolveCurrentTenantId } from "@/lib/insurance.functions";
 import {
   getWhatsAppCallingConfig,
   validateWhatsAppCallingSetup,
@@ -22,34 +23,6 @@ const ScopedCallingInput = z.object({
   clerkUserId: z.string().optional(),
   tenantId: z.string().optional(),
 });
-
-/**
- * Resolves current tenant ID for authenticated user.
- */
-async function resolveCurrentTenantId(
-  explicitTenantId?: string,
-  clerkUserId?: string
-): Promise<string | null> {
-  if (explicitTenantId) return explicitTenantId;
-  if (!clerkUserId) return null;
-
-  const { data: member } = await insforgeServer.database
-    .from("tenant_members")
-    .select("tenant_id")
-    .eq("clerk_user_id", clerkUserId)
-    .limit(1)
-    .maybeSingle();
-
-  if (member?.tenant_id) return member.tenant_id;
-
-  const { data: tenant } = await insforgeServer.database
-    .from("tenants")
-    .select("id")
-    .limit(1)
-    .maybeSingle();
-
-  return tenant?.id ?? null;
-}
 
 /**
  * GET: Retrieves WhatsApp Business Calling status & diagnostics.

@@ -3,12 +3,12 @@ import { z } from "zod";
 import { insforgeServer } from "@/lib/insforge/client.server";
 import { evaluateToolSecurity, TOOL_POLICIES } from "@/lib/risk/risk-engine";
 
-const internalSecret = process.env["AGENT_INTERNAL_SECRET"] || "insurcall_agent_secret_2026_dev";
+const internalSecret = process.env["AGENT_INTERNAL_SECRET"] || "";
 
 const ExecuteInput = z.object({
   call_session_id: z.string().uuid(),
   tenant_id: z.string().uuid(),
-  customer_id: z.string().uuid(),
+  customer_id: z.string().uuid().nullable(),
   tool_name: z.string(),
   arguments: z.record(z.unknown()).default({}),
 });
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/api/agent/tools")({
       POST: async ({ request }) => {
         // 1. Verify internal Agent authorization
         const authHeader = request.headers.get("x-agent-secret");
-        if (authHeader !== internalSecret) {
+        if (!internalSecret || !authHeader || authHeader !== internalSecret) {
           return json({ error: "401: Unauthorized Agent RPC" }, 401);
         }
 
@@ -39,7 +39,7 @@ export const Route = createFileRoute("/api/agent/tools")({
         // 2. Fetch call session to verify active state & OTP status
         const { data: session, error: sessErr } = await insforgeServer.database
           .from("call_sessions")
-          .select("id, tenant_id, customer_id, risk_state, otp_verified_until, status, agent_id")
+          .select("id, tenant_id, customer_id, risk_state, otp_verified_until, status, agent_id, metadata")
           .eq("id", call_session_id)
           .maybeSingle();
 
@@ -48,7 +48,7 @@ export const Route = createFileRoute("/api/agent/tools")({
         }
 
         // 3. Prevent cross-tenant / cross-customer access
-        if (session.tenant_id !== tenant_id || (session.customer_id && session.customer_id !== customer_id)) {
+        if (session.tenant_id !== tenant_id || session.customer_id !== customer_id) {
           // Log security breach attempt
           await insforgeServer.database.from("audit_logs").insert({
             tenant_id,
@@ -63,6 +63,13 @@ export const Route = createFileRoute("/api/agent/tools")({
             metadata: { attempted_tool: tool_name },
           });
           return json({ error: "403: Forbidden - Identity mismatch" }, 403);
+        }
+
+        if (
+          (session.metadata as Record<string, unknown> | null)?.["public_demo"] === true &&
+          !["get_agent_config", "search_policy_docs"].includes(tool_name)
+        ) {
+          return json({ error: "This public demo session cannot access customer or action tools." }, 403);
         }
 
         // 4. Authoritative Risk Engine Evaluation
@@ -95,17 +102,10 @@ export const Route = createFileRoute("/api/agent/tools")({
                 .eq("id", tenant_id)
                 .maybeSingle();
 
-              const { data: customer } = await insforgeServer.database
-                .from("customers")
-                .select("id, name, email, phone, customer_number")
-                .eq("id", customer_id)
-                .maybeSingle();
-
               result = {
                 ok: true,
-                company_name: tenant?.name || "SafeLife Insurance",
+                company_name: tenant?.name || "InsurCall",
                 branding_config: tenant?.branding_config || {},
-                customer: customer || null,
               };
               break;
             }
@@ -116,7 +116,7 @@ export const Route = createFileRoute("/api/agent/tools")({
                 .from("policies")
                 .select("id, policy_number, plan_name, policy_type, premium_amount, due_date, status, nominee_name")
                 .eq("tenant_id", tenant_id)
-                .eq("customer_id", customer_id);
+                .eq("customer_id", customer_id ?? "");
 
               const { data } = polNum
                 ? await query.eq("policy_number", polNum).maybeSingle()
@@ -132,7 +132,7 @@ export const Route = createFileRoute("/api/agent/tools")({
                 .from("claims")
                 .select("id, claim_number, status, amount, submitted_at, description")
                 .eq("tenant_id", tenant_id)
-                .eq("customer_id", customer_id);
+                .eq("customer_id", customer_id ?? "");
 
               const { data } = claimNum
                 ? await query.eq("claim_number", claimNum).maybeSingle()
@@ -147,7 +147,7 @@ export const Route = createFileRoute("/api/agent/tools")({
               const { createAndSendOtp } = await import("@/lib/risk/otp.server");
               const otpRes = await createAndSendOtp({
                 callSessionId: call_session_id,
-                customerId: customer_id,
+                customerId: customer_id || "",
                 purpose,
               });
               result = { ok: true, message: otpRes.message, destination: otpRes.maskedDestination };
@@ -159,7 +159,7 @@ export const Route = createFileRoute("/api/agent/tools")({
               const { verifyOtpCode } = await import("@/lib/risk/otp.server");
               const verified = await verifyOtpCode({
                 callSessionId: call_session_id,
-                customerId: customer_id,
+                customerId: customer_id || "",
                 code,
               });
               result = verified;
@@ -196,7 +196,7 @@ export const Route = createFileRoute("/api/agent/tools")({
                 .from("policies")
                 .select("id")
                 .eq("tenant_id", tenant_id)
-                .eq("customer_id", customer_id)
+                .eq("customer_id", customer_id ?? "")
                 .eq("policy_number", policyNumber)
                 .maybeSingle();
 
@@ -232,7 +232,7 @@ export const Route = createFileRoute("/api/agent/tools")({
                 .from("policies")
                 .select("id")
                 .eq("tenant_id", tenant_id)
-                .eq("customer_id", customer_id)
+                .eq("customer_id", customer_id ?? "")
                 .eq("policy_number", policyNumber)
                 .maybeSingle();
 
@@ -270,7 +270,7 @@ export const Route = createFileRoute("/api/agent/tools")({
                   .from("policies")
                   .select("id")
                   .eq("tenant_id", tenant_id)
-                  .eq("customer_id", customer_id)
+                  .eq("customer_id", customer_id ?? "")
                   .eq("policy_number", policyNumber)
                   .maybeSingle();
                 policyId = pol?.id || null;
@@ -380,16 +380,7 @@ export const Route = createFileRoute("/api/agent/tools")({
               const reason = String(args["reason"] || "Caller requested human supervisor or inquiry ungrounded");
               const callerNotes = String(args["caller_notes"] || args["notes"] || "");
 
-              await insforgeServer.database
-                .from("call_sessions")
-                .update({
-                  escalated: true,
-                  escalation_reason: reason,
-                  caller_notes: callerNotes || undefined,
-                })
-                .eq("id", call_session_id);
-
-              const { data: appReq } = await insforgeServer.database
+              const { data: appReq, error: requestError } = await insforgeServer.database
                 .from("approval_requests")
                 .insert({
                   tenant_id,
@@ -403,11 +394,29 @@ export const Route = createFileRoute("/api/agent/tools")({
                 .select("id")
                 .maybeSingle();
 
+              if (requestError || !appReq?.id) {
+                result = { ok: false, escalated: false, error: "Could not submit a human review request." };
+                break;
+              }
+
+              const { error: sessionUpdateError } = await insforgeServer.database
+                .from("call_sessions")
+                .update({
+                  escalated: true,
+                  escalation_reason: reason,
+                  caller_notes: callerNotes || undefined,
+                })
+                .eq("id", call_session_id)
+                .eq("tenant_id", tenant_id);
+              if (sessionUpdateError) {
+                console.warn("Human handoff session status update notice:", sessionUpdateError.message);
+              }
+
               result = {
                 ok: true,
                 escalated: true,
-                escalation_id: appReq?.id || null,
-                message: "Call has been escalated to our human claims desk. A representative will be with you shortly.",
+                escalation_id: appReq.id,
+                message: "Your request is in the human review queue.",
               };
               break;
             }

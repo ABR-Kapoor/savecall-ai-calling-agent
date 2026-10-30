@@ -28,14 +28,15 @@ const ensureCustomerFromClerk = createServerOnlyFn(async (
     const { clerkClient } = await import("@/lib/auth/clerk.server");
     const clerkUser = await clerkClient.users.getUser(clerkUserId).catch(() => null);
 
-    const email = clerkUser?.emailAddresses[0]?.emailAddress || userEmail || "user@example.com";
+    const email = clerkUser?.emailAddresses[0]?.emailAddress || userEmail;
+    if (!email) throw new Error("A verified email is required to create your account profile.");
     const name =
       [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ") ||
       userName ||
       email.split("@")[0] ||
       "Policyholder";
-    const phone = clerkUser?.phoneNumbers[0]?.phoneNumber || "+91 98765 43210";
-    const custNumber = "CUST-" + clerkUserId.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+    const phone = clerkUser?.phoneNumbers[0]?.phoneNumber || null;
+    const custNumber = "CUST-" + clerkUserId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toUpperCase();
 
     const { data: newCust } = await insforgeServer.database
       .from("customers")
@@ -57,30 +58,13 @@ const ensureCustomerFromClerk = createServerOnlyFn(async (
       .single();
 
     if (newCust?.id) {
-      const polNumber = "POL-" + custNumber.replace("CUST-", "") + "-HLT";
-      await insforgeServer.database.from("policies").upsert(
-        [
-          {
-            tenant_id: tenantId,
-            customer_id: newCust.id,
-            policy_number: polNumber,
-            policy_type: "health",
-            plan_name: "Comprehensive Health Shield Platinum",
-            nominee_name: "Designated Nominee",
-            nominee_relationship: "Spouse",
-            premium_amount: 18500.0,
-            due_date: "2026-11-30",
-            status: "active",
-          },
-        ],
-        { onConflict: "tenant_id,policy_number" }
-      );
       await ensureInsforgeUser(email, name);
       return newCust.id;
     }
     await ensureInsforgeUser(email, name);
   } catch (err: any) {
-    console.warn("ensureCustomerFromClerk notice:", err?.message);
+    console.error("Customer profile provisioning failed:", err?.message);
+    throw new Error("Your organisation is ready, but account profile setup failed. Retry setup or contact support.");
   }
   return null;
 });
@@ -133,12 +117,10 @@ export const resolveCurrentTenantId = createServerOnlyFn(async (
 ): Promise<string | null> => {
   // 1. Verify server-side authenticated identity if within web request context
   let authenticatedUserId: string | null = null;
-  let hasActiveRequestContext = false;
   try {
     const { getRequest } = await import("@tanstack/react-start/server");
     const req = getRequest();
     if (req) {
-      hasActiveRequestContext = true;
       const { extractAuthUserFromRequest } = await import("@/lib/auth/clerk.server");
       const auth = await extractAuthUserFromRequest(req);
       if (auth?.userId) {
@@ -149,18 +131,6 @@ export const resolveCurrentTenantId = createServerOnlyFn(async (
     // getRequest() throws if called outside of active TanStack Start server function request context
   }
 
-  if (!authenticatedUserId && clerkUserId) {
-    try {
-      const { clerkClient } = await import("@/lib/auth/clerk.server");
-      const verifiedClerkUser = await clerkClient.users.getUser(clerkUserId).catch(() => null);
-      if (verifiedClerkUser?.id) {
-        authenticatedUserId = verifiedClerkUser.id;
-      }
-    } catch {
-      // Clerk backend verification failed
-    }
-  }
-
   if (!authenticatedUserId) return null;
 
   if (clerkUserId && clerkUserId !== authenticatedUserId) {
@@ -169,12 +139,17 @@ export const resolveCurrentTenantId = createServerOnlyFn(async (
   }
   clerkUserId = authenticatedUserId;
 
-  if (clerkUserId) {
-    const { data: memberships } = await insforgeServer.database
+    const { data: memberships, error: membershipError } = await insforgeServer.database
       .from("tenant_members")
-      .select("tenant_id")
+      .select("tenant_id, role, created_at")
       .eq("clerk_user_id", clerkUserId)
-      .eq("status", "active");
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+
+    if (membershipError) {
+      console.error("Tenant membership lookup failed:", membershipError.message);
+      throw new Error("Could not load your organisation membership. Please retry.");
+    }
 
     if (memberships && memberships.length > 0) {
       if (explicitTenantId) {
@@ -188,17 +163,10 @@ export const resolveCurrentTenantId = createServerOnlyFn(async (
         return explicitTenantId;
       }
 
-      const firstMembership = memberships[0];
-      if (memberships.length === 1 && firstMembership) {
-        const memberTenantId = firstMembership.tenant_id;
-        return memberTenantId;
-      }
-
-      // User belongs to multiple tenants and did not supply an explicit authorized tenant selection
-      console.warn(
-        `[Security] Ambiguous tenant membership: user ${clerkUserId} belongs to ${memberships.length} tenants. Explicit authorized tenant selection required.`
-      );
-      return null;
+      // When user belongs to multiple tenants and no explicit selection is requested,
+      // seamlessly resolve to the user's most recent active tenant
+      const activeMembership = memberships[0];
+      return activeMembership?.tenant_id || null;
     }
 
     // New user signing up! Fetch user details directly from Clerk to register their organization
@@ -232,6 +200,7 @@ export const resolveCurrentTenantId = createServerOnlyFn(async (
           slug: cleanSlug,
           status: "active",
           branding_config: {
+            plan: "starter",
             onboarding_step: 0,
             onboarding_completed: false,
             organization_details: {
@@ -269,23 +238,50 @@ export const resolveCurrentTenantId = createServerOnlyFn(async (
       .select("id")
       .single();
 
-    if (!insertErr && newTenant?.id) {
-      await insforgeServer.database.from("tenant_members").insert([
+    if (insertErr || !newTenant?.id) {
+      console.error("Tenant provisioning failed:", insertErr?.message || "Tenant insert returned no ID");
+      // A concurrent registration may have created the same identity's tenant.
+      const { data: racedTenant } = await insforgeServer.database
+        .from("tenants")
+        .select("id")
+        .eq("slug", cleanSlug)
+        .maybeSingle();
+      if (!racedTenant?.id) {
+        throw new Error("Could not create your insurance organisation. Check tenant schema/service access and retry.");
+      }
+      const { error: racedMemberError } = await insforgeServer.database
+        .from("tenant_members")
+        .upsert([{ tenant_id: racedTenant.id, clerk_user_id: clerkUserId, role: "owner", status: "active" }], {
+          onConflict: "tenant_id,clerk_user_id",
+        });
+      if (racedMemberError) {
+        console.error("Tenant membership provisioning failed:", racedMemberError.message);
+        throw new Error("Organisation created, but owner access could not be set up. Please retry.");
+      }
+      return racedTenant.id;
+    }
+
+    if (newTenant?.id) {
+      const { error: memberError } = await insforgeServer.database.from("tenant_members").upsert([
         {
           tenant_id: newTenant.id,
           clerk_user_id: clerkUserId,
           role: "owner",
           status: "active",
         },
-      ]);
+      ], { onConflict: "tenant_id,clerk_user_id" });
+      if (memberError) {
+        console.error("Tenant membership provisioning failed:", memberError.message);
+        throw new Error("Organisation created, but owner access could not be set up. Please retry.");
+      }
 
       return newTenant.id;
     }
-  }
 
-  // Never fall back to arbitrary tenant selection without authenticated membership
-  return null;
-});
+    // Never fall back to arbitrary tenant selection without authenticated membership
+    return null;
+  }
+);
 
 export const DashboardMetricsInput = z.object({
   tenantId: z.string().uuid().optional(),

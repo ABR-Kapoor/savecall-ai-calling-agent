@@ -157,9 +157,9 @@ function DashboardPage() {
       title="Operations Overview"
       subtitle={`Customer Voice Calls, WhatsApp Messaging & Policy Operations: ${companyName}`}
     >
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Welcome & Multi-Channel Status Banner */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs">
           <div className="flex items-start gap-4">
             <div className="hidden sm:grid size-12 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-[#FAF9F6] p-2 shadow-2xs">
               <img
@@ -203,7 +203,7 @@ function DashboardPage() {
                   : "Your AI Operations Assistant is managing your customer voice & WhatsApp communications"}
               </h2>
               <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
-                Policy assistance and claims intake grounded in approved insurance guidelines. High-risk beneficiary updates and claim approvals require staff authorization.
+                Policy guidance runs on approved guidelines. High-risk actions require staff authorization.
               </p>
             </div>
           </div>
@@ -235,7 +235,7 @@ function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
           {/* 1. WhatsApp Conversations */}
           <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-4 px-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 WhatsApp Chats
               </span>
@@ -243,7 +243,7 @@ function DashboardPage() {
                 <MessageSquare className="size-3.5" />
               </span>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-3">
               <div className="text-2xl font-bold font-display tracking-tight text-slate-900">
                 {isMetricsLoading ? "..." : totalConversations}
               </div>
@@ -255,7 +255,7 @@ function DashboardPage() {
 
           {/* 2. Voice Calls Handled */}
           <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-4 px-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Voice Calls
               </span>
@@ -263,19 +263,19 @@ function DashboardPage() {
                 <PhoneCall className="size-3.5" />
               </span>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-3">
               <div className="text-2xl font-bold font-display tracking-tight text-slate-900">
                 {isMetricsLoading ? "..." : totalCalls}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                LiveKit WebRTC voice sessions
+                Real-time WebRTC voice sessions
               </p>
             </CardContent>
           </Card>
 
           {/* 3. Claims Awaiting Review */}
           <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-4 px-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Claims in Review
               </span>
@@ -283,7 +283,7 @@ function DashboardPage() {
                 <ShieldCheck className="size-3.5" />
               </span>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-3">
               <div className="text-2xl font-bold font-display tracking-tight text-purple-900">
                 {isMetricsLoading ? "..." : pendingClaimsCount}
               </div>
@@ -295,7 +295,7 @@ function DashboardPage() {
 
           {/* 4. Staff Takeovers & Enquiries */}
           <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-4 px-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Staff Takeover
               </span>
@@ -303,7 +303,7 @@ function DashboardPage() {
                 <ShieldAlert className="size-3.5" />
               </span>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-3">
               <div className={`text-2xl font-bold font-display tracking-tight ${takeoverCount > 0 ? "text-amber-700" : "text-slate-900"}`}>
                 {isMetricsLoading ? "..." : takeoverCount}
               </div>
@@ -315,7 +315,7 @@ function DashboardPage() {
 
           {/* 5. Dual-Control Approvals */}
           <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-4 px-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Staff Approvals
               </span>
@@ -323,7 +323,7 @@ function DashboardPage() {
                 <CheckSquare className="size-3.5" />
               </span>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-3">
               <div className="text-2xl font-bold font-display tracking-tight text-blue-700">
                 {isMetricsLoading ? "..." : pendingApprovals}
               </div>
@@ -335,7 +335,7 @@ function DashboardPage() {
 
           {/* 6. Approved Knowledge Store */}
           <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-4 px-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Knowledge Store
               </span>
@@ -343,7 +343,7 @@ function DashboardPage() {
                 <CheckCircle2 className="size-3.5" />
               </span>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-3">
               <div className="text-2xl font-bold font-display tracking-tight text-emerald-700">
                 {isMetricsLoading ? "..." : `${approvedKnowledge}`}
               </div>
@@ -359,13 +359,13 @@ function DashboardPage() {
           {/* Dual-Control Approvals Queue */}
           <div className="lg:col-span-7">
             <Card className="border border-slate-200 bg-white shadow-xs rounded-3xl h-full flex flex-col">
-              <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-slate-100">
                 <div>
                   <CardTitle className="text-base font-bold text-slate-900">
                     Dual-Control Staff Approvals
                   </CardTitle>
                   <CardDescription className="text-xs text-slate-500 mt-0.5">
-                    Critical policyholder operations requiring authorized staff review before updating records.
+                    Critical policyholder changes requiring staff authorization before record updates.
                   </CardDescription>
                 </div>
                 <Link to="/change-requests">
@@ -374,7 +374,7 @@ function DashboardPage() {
                   </Button>
                 </Link>
               </CardHeader>
-              <CardContent className="pt-4 flex-1">
+              <CardContent className="pt-3 flex-1">
                 {recentApprovals.length > 0 ? (
                   <div className="space-y-3">
                     {recentApprovals.map((req) => {
@@ -448,7 +448,7 @@ function DashboardPage() {
                     <div className="space-y-1">
                       <h4 className="text-sm font-semibold text-slate-900">No Pending Approvals</h4>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                        Customer inquiries and high-risk operations requiring staff sign-off will appear here automatically.
+                        High-risk actions requiring staff authorization will appear here.
                       </p>
                     </div>
                     <div className="pt-2">
@@ -467,7 +467,7 @@ function DashboardPage() {
           {/* Recent Voice Sessions & Operations Activity */}
           <div className="lg:col-span-5">
             <Card className="border border-slate-200 bg-white shadow-xs rounded-3xl h-full flex flex-col justify-between">
-              <CardHeader className="pb-3 border-b border-slate-100">
+              <CardHeader className="pb-2 border-b border-slate-100">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <PhoneCall className="size-4 text-[#087F8C]" />
@@ -484,7 +484,7 @@ function DashboardPage() {
                 </CardDescription>
               </CardHeader>
 
-              <CardContent className="pt-4 flex-1 space-y-3 text-xs">
+              <CardContent className="pt-3 flex-1 space-y-3 text-xs">
                 {recentSessions.length > 0 ? (
                   <div className="space-y-2.5">
                     {recentSessions.map((session) => (
@@ -521,7 +521,7 @@ function DashboardPage() {
                     <div className="space-y-1">
                       <h4 className="text-sm font-semibold text-slate-900">No Calls Recorded Yet</h4>
                       <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                        Start your first interactive AI voice consultation with the live call room.
+                        Start your first AI voice call from the call room.
                       </p>
                     </div>
                     <div className="pt-2">

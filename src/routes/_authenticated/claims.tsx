@@ -143,7 +143,7 @@ function ClaimsPage() {
         {error && (
           <ErrorState
             title="Failed to load claims"
-            message={(error as any)?.message || "PostgreSQL query failed"}
+            message={(error as any)?.message || "Failed to load claims. Please retry."}
             onRetry={() => refetch()}
           />
         )}
@@ -157,7 +157,7 @@ function ClaimsPage() {
                   Registered Claims Registry
                 </CardTitle>
                 <CardDescription className="text-xs text-muted-foreground">
-                  Synchronized with InsForge PostgreSQL records and verified against active policy limits
+                  Synchronized with encrypted policyholder records and verified against active policy limits
                 </CardDescription>
               </div>
             </div>
