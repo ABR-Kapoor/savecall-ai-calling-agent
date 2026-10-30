@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { nitro } from "nitro/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig(({ mode }) => ({
@@ -91,6 +92,7 @@ export default defineConfig(({ mode }) => ({
     // basicSsl only for local dev — Vercel handles HTTPS natively
     ...(mode !== "production" ? [basicSsl()] : []),
     tanstackStart(),
+    nitro(),
     react(),
     tailwindcss(),
   ],
