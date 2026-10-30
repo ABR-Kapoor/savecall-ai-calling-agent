@@ -381,10 +381,10 @@ export function InsuranceHeroPanel() {
         <div className="h-1 w-full bg-gradient-to-r from-[#087F8C]/20 via-[#087F8C] to-[#10A6AE]/30" />
 
         {/* Top Clean Header */}
-        <div className="flex items-center justify-between border-b border-[#E8EFEA] bg-[#FAFBF9]/90 px-4 py-3.5 sm:px-5">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between border-b border-[#E8EFEA] bg-[#FAFBF9]/90 px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
             {/* Real Official InsurCall Logo */}
-            <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-white border border-[#DCE6E1] p-1.5 shadow-2xs">
+            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-white border border-[#DCE6E1] p-2 shadow-2xs">
               <img
                 src="/01_logo_only_transparent.png"
                 alt="InsurCall"
@@ -392,11 +392,11 @@ export function InsuranceHeroPanel() {
               />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-bold text-[#142D2B] leading-none">InsurCall</h3>
-                <span className="flex size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-[#142D2B] leading-none">InsurCall</h3>
+                <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
-              <p className="text-[11px] text-[#637A73] mt-0.5">Policy & Claims AI Concierge</p>
+              <p className="text-xs text-[#637A73] mt-1 font-medium">Policy & Claims AI Concierge</p>
             </div>
           </div>
 
@@ -461,19 +461,19 @@ export function InsuranceHeroPanel() {
         )}
 
         {/* Main Conversation Stream */}
-        <div className="p-4 sm:p-5">
+        <div className="p-5 sm:p-6">
           <div
             ref={threadRef}
             role="log"
             aria-label="Conversation"
-            className="max-h-[220px] min-h-[105px] space-y-2.5 overflow-y-auto overscroll-contain pr-1"
+            className="max-h-[250px] min-h-[120px] space-y-3 overflow-y-auto overscroll-contain pr-1"
           >
             {messages.length === 0 ? (
-              <div className="py-2">
-                <h4 className="text-sm font-semibold text-[#152F2C]">
+              <div className="py-2.5">
+                <h4 className="text-base sm:text-lg font-bold text-[#152F2C]">
                   Hi, how can we help you today?
                 </h4>
-                <p className="mt-1 text-xs text-[#637972] leading-relaxed">
+                <p className="mt-1 text-xs sm:text-sm text-[#5B736B] leading-relaxed">
                   Ask a question below or tap Call Now to speak directly.
                 </p>
               </div>
@@ -596,33 +596,29 @@ export function InsuranceHeroPanel() {
         </Link>
 
         {/* Curvy arrow gesture pointing to button from right */}
-        <div className="flex items-center gap-2.5 self-end sm:self-center">
-          {/* Whimsical hand-drawn dashed swoop arching from text curving down into the button */}
+        <div className="flex items-center gap-2 self-end sm:self-center">
+          {/* Exact loop arrow from user image: arcs up and loops counter-clockwise with arrowhead pointing down-left */}
           <svg
-            className="w-12 h-9 text-[#087F8C] shrink-0 drop-shadow-sm -mr-1"
-            viewBox="0 0 54 36"
+            className="w-10 h-10 text-[#087F8C] shrink-0 drop-shadow-xs"
+            viewBox="0 0 100 100"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            {/* Smooth arch: starts near text at right, curves up and sweeps left-down into button */}
+            {/* Curving tail looping overhead from text down to button */}
             <path
-              d="M 50 14 C 44 4, 26 2, 8 18"
+              d="M 20 40 C 26 22, 45 14, 68 18 C 84 22, 92 36, 88 56 C 84 72, 70 82, 54 84"
               stroke="currentColor"
-              strokeWidth="2.2"
+              strokeWidth="9"
               strokeLinecap="round"
-              strokeDasharray="4 3"
             />
-            {/* Arrowhead pointing left-down directly into the button pill */}
-            <path
-              d="M 18 13 L 7 18 L 10 27"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            {/* Arrowhead pointing down-left directly into button */}
+            <polygon
+              points="38,82 60,66 62,94"
+              fill="currentColor"
             />
           </svg>
-          <span className="text-[12.5px] font-medium text-[#2d4a44] italic whitespace-nowrap tracking-tight font-serif select-none">
+          <span className="text-[13px] font-semibold text-[#24433B] italic whitespace-nowrap select-none">
             Want this exact AI agent for your business?
           </span>
         </div>
