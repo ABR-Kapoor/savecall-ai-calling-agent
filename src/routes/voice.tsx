@@ -487,9 +487,9 @@ function VoiceCallPage() {
               connectionState={connectionState}
               setConnectionState={setConnectionState}
               customerName={session.customer.name}
-              customerNumber={session.customer.customerNumber}
+              customerNumber={session.tenantName ? session.customer.customerNumber : null}
               agentName={session.tenantName ? (session.agentName || "InsurCall Agent") : "InsurCall Agent"}
-              tenantName={session.tenantName || session.customer.name}
+              tenantName={session.tenantName || ""}
               ragAvailable={session.ragAvailable}
               callSessionId={session.callSessionId}
               micStream={session.micStream}
@@ -797,7 +797,15 @@ function ActivePhoneCallScreen({
   useEffect(() => {
     if (roomConnectionState === "connected" && !hasSpokenGreetingRef.current) {
       hasSpokenGreetingRef.current = true;
-      const initialGreeting = `Namaste! Welcome to ${tenantName || "Kanhaji Insurance Agency"}. I am ${agentName || "Kashvi"}, your assistant. How can I assist you with your insurance or claim today?`;
+      // If LiveKit remote agent is in the room, it handles its own greeting over WebRTC
+      const remoteCount = room?.remoteParticipants?.size || 0;
+      if (remoteCount > 0) {
+        setConnectionState("listening");
+        return;
+      }
+      const initialGreeting = tenantName
+        ? `Namaste! Welcome to ${tenantName}. I am ${agentName || "InsurCall Agent"}, your assistant. How can I assist you with your insurance or claim today?`
+        : `Hello! Welcome to InsurCall. I am your InsurCall AI Assistant. How can I assist you with your insurance questions or claims today?`;
       setMessages([
         {
           id: `greeting-${Date.now()}`,
@@ -808,7 +816,7 @@ function ActivePhoneCallScreen({
       ]);
       speakAssistantText(initialGreeting);
     }
-  }, [roomConnectionState, agentName, tenantName, speakAssistantText]);
+  }, [roomConnectionState, agentName, tenantName, speakAssistantText, room, setConnectionState]);
 
   // Cleanup all audio/speech resources on unmount
   useEffect(() => {
@@ -955,18 +963,10 @@ function ActivePhoneCallScreen({
   }, [room, duration]);
 
   useEffect(() => {
-    if (room?.localParticipant && roomConnectionState === "connected" && micStream) {
-      room.localParticipant
-        .setMicrophoneEnabled(true, {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        })
-        .catch((err) => {
-          console.warn("Microphone auto-enable notice:", err);
-        });
+    if (room?.localParticipant && isMuted) {
+      room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
     }
-  }, [room, roomConnectionState, micStream]);
+  }, [room, isMuted]);
 
   const toggleMute = useCallback(() => {
     if (room?.localParticipant) {
@@ -996,6 +996,23 @@ function ActivePhoneCallScreen({
       setConnectionState("processing");
       PhoneAudioFX.playBeep(587);
 
+      // 1. If LiveKit WebRTC agent is connected in the room, send via WebRTC DataChannel!
+      const remoteCount = room?.remoteParticipants?.size || 0;
+      if (remoteCount > 0 && room?.localParticipant) {
+        try {
+          const packet = new TextEncoder().encode(JSON.stringify({ type: "user_query", text: promptText }));
+          await room.localParticipant.publishData(packet, { reliable: true });
+          setMessages((previous) => [
+            ...previous,
+            { id: `${Date.now()}-${Math.random()}`, role: "user", text: promptText, time: formatTimer(duration) },
+          ]);
+          return true;
+        } catch (err) {
+          console.warn("LiveKit data publish notice:", err);
+        }
+      }
+
+      // 2. Cloud inference fallback
       try {
         const history = messages.slice(-8).map((m) => ({
           role: m.role === "agent" ? "assistant" : "user",
@@ -1037,14 +1054,22 @@ function ActivePhoneCallScreen({
         return false;
       }
     },
-    [duration, setConnectionState, callSessionId, speakAssistantText]
+    [duration, setConnectionState, callSessionId, speakAssistantText, room, messages]
   );
 
-  // Continuous speech recognition with strict audio guard
-  // Key fix: only run when connectionState is "listening" AND agent is NOT speaking
-  // This prevents the connect/disconnect cycling caused by recognition restarting during agent speech
+  // Clean speech recognition:
+  // When LiveKit WebRTC agent is present, audio is 100% WebRTC — browser recognition is disabled!
+  // In fallback mode, recognition starts when listening and does NOT endlessly restart on silence.
   useEffect(() => {
-    // Hard stop conditions — never run recognition in these states
+    const remoteCount = room?.remoteParticipants?.size || 0;
+    if (remoteCount > 0) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+        recognitionRef.current = null;
+      }
+      return;
+    }
+
     if (
       connectionState === "ended" ||
       connectionState === "speaking" ||
@@ -1061,15 +1086,11 @@ function ActivePhoneCallScreen({
       return;
     }
 
-    // Only start recognition when actively listening
     if (connectionState !== "listening") return;
 
     const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) return;
-
-    let isUnmounted = false;
-    let restartTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     try {
       const recognition = new SpeechRecognitionClass();
@@ -1079,8 +1100,7 @@ function ActivePhoneCallScreen({
       recognition.maxAlternatives = 1;
 
       recognition.onspeechstart = () => {
-        // User started speaking — if agent TTS is playing, cancel it
-        if (agentSpeakingRef.current) return; // Don't interrupt if it's echo
+        if (agentSpeakingRef.current) return;
         if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
           window.speechSynthesis.cancel();
           agentSpeakingRef.current = false;
@@ -1093,7 +1113,6 @@ function ActivePhoneCallScreen({
       };
 
       recognition.onresult = (event: any) => {
-        // If agent is speaking, ignore all results (echo protection)
         if (agentSpeakingRef.current) return;
 
         let finalChunk = "";
@@ -1121,27 +1140,13 @@ function ActivePhoneCallScreen({
       };
 
       recognition.onend = () => {
-        // Delayed restart to prevent rapid restart loop
-        if (
-          !isUnmounted &&
-          !isMuted &&
-          !agentSpeakingRef.current &&
-          connectionState === "listening"
-        ) {
-          restartTimeoutId = setTimeout(() => {
-            if (!isUnmounted && !agentSpeakingRef.current) {
-              try { recognition.start(); } catch {}
-            }
-          }, 500); // 500ms gap between recognition sessions
-        }
+        recognitionRef.current = null;
       };
 
       recognition.start();
       recognitionRef.current = recognition;
 
       return () => {
-        isUnmounted = true;
-        if (restartTimeoutId) clearTimeout(restartTimeoutId);
         try { recognition.stop(); } catch {}
         recognitionRef.current = null;
       };
@@ -1149,7 +1154,7 @@ function ActivePhoneCallScreen({
       console.warn("Speech recognition setup notice:", e);
       return;
     }
-  }, [connectionState, isMuted, sendPrompt, setConnectionState]);
+  }, [connectionState, isMuted, sendPrompt, setConnectionState, room]);
 
   const handleSendText = useCallback(
     (e?: React.FormEvent) => {
@@ -1212,19 +1217,19 @@ function ActivePhoneCallScreen({
 
         <div>
           <h2 className="text-base font-bold text-[#111827] tracking-tight">
-            {agentName || "InsurCall AI Concierge"}
+            {tenantName ? (agentName || "InsurCall Agent") : "InsurCall Agent"}
           </h2>
           <p className="text-[11px] text-[#667085] pt-0.5">
-            {tenantName || customerName} {customerNumber ? `• ${customerNumber}` : ""}
+            {tenantName ? `${tenantName}${customerNumber ? ` • ${customerNumber}` : ""}` : "InsurCall Public Demo"}
           </p>
           <div className="mt-1 flex items-center justify-center gap-1.5 text-[10px]">
-            {ragAvailable ? (
+            {ragAvailable && tenantName ? (
               <span className="inline-flex items-center gap-1 text-[#087F8C] font-semibold bg-[#E6F6F7] px-2.5 py-0.5 rounded-full border border-[#087F8C]/30">
                 <ShieldCheck className="h-3 w-3 text-[#087F8C]" /> Approved knowledge connected
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[#1D5E4A] font-semibold bg-[#EAF5EF] px-2.5 py-0.5 rounded-full border border-[#B6DEC9]">
-                <Sparkles className="h-3 w-3 text-[#2E8B4E]" /> General information mode · no approved policy data
+                <Sparkles className="h-3 w-3 text-[#2E8B4E]" /> Autonomous Voice Concierge · LiveKit WebRTC
               </span>
             )}
           </div>
@@ -1385,23 +1390,23 @@ function ActivePhoneCallScreen({
         </div>
       )}
 
-      {/* Quick Topic Chips */}
-      <div className="py-1 flex items-center justify-between gap-1 overflow-x-auto no-scrollbar">
+      {/* Quick Topic Chips with Distinct Colors */}
+      <div className="py-1 flex items-center justify-between gap-1.5 overflow-x-auto no-scrollbar">
         <button
           onClick={() => sendPrompt("Check my policy details")}
-          className="text-[10px] whitespace-nowrap bg-white hover:bg-[#E6F6F7] border border-[#E4E7EC] hover:border-[#087F8C]/40 text-[#344054] hover:text-[#087F8C] px-2.5 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer"
+          className="text-[10px] whitespace-nowrap bg-blue-50/90 hover:bg-blue-100 border border-blue-200/90 text-blue-900 hover:border-blue-400 px-3 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer font-semibold"
         >
           📋 Policy Status
         </button>
         <button
           onClick={() => sendPrompt("What is the status of my claim?")}
-          className="text-[10px] whitespace-nowrap bg-white hover:bg-[#E6F6F7] border border-[#E4E7EC] hover:border-[#087F8C]/40 text-[#344054] hover:text-[#087F8C] px-2.5 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer"
+          className="text-[10px] whitespace-nowrap bg-amber-50/90 hover:bg-amber-100 border border-amber-200/90 text-amber-900 hover:border-amber-400 px-3 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer font-semibold"
         >
           🛡️ Claim Update
         </button>
         <button
           onClick={() => sendPrompt("I want to update my policy nominee")}
-          className="text-[10px] whitespace-nowrap bg-white hover:bg-[#E6F6F7] border border-[#E4E7EC] hover:border-[#087F8C]/40 text-[#344054] hover:text-[#087F8C] px-2.5 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer"
+          className="text-[10px] whitespace-nowrap bg-emerald-50/90 hover:bg-emerald-100 border border-emerald-200/90 text-emerald-900 hover:border-emerald-400 px-3 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer font-semibold"
         >
           👤 Change Nominee
         </button>
@@ -1467,7 +1472,7 @@ function ActivePhoneCallScreen({
           </span>
         </button>
 
-        {/* Captions Toggle */}
+        {/* Captions / Show Button with Distinct Color */}
         <button
           onClick={() => {
             PhoneAudioFX.playBeep(600);
@@ -1478,13 +1483,13 @@ function ActivePhoneCallScreen({
           <div
             className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
               showTranscript
-                ? "bg-[#E6F6F7] border border-[#087F8C]/50 text-[#087F8C]"
-                : "bg-white border border-[#E4E7EC] text-[#667085] hover:bg-[#FAF9F6] shadow-2xs"
+                ? "bg-[#E6F6F7] border-2 border-[#087F8C] text-[#087F8C] shadow-sm shadow-[#087F8C]/20"
+                : "bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 shadow-2xs"
             }`}
           >
             <MessageSquare className="h-5 w-5" />
           </div>
-          <span className="text-[10px] font-medium text-[#344054]">
+          <span className={`text-[10px] font-semibold ${showTranscript ? "text-[#087F8C]" : "text-amber-800"}`}>
             {showTranscript ? "Captions" : "Show Text"}
           </span>
         </button>

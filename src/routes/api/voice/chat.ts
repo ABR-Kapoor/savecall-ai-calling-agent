@@ -127,9 +127,10 @@ export const Route = createFileRoute("/api/voice/chat")({
             }
 
             activeSession = session;
-            resolvedTenantId = session.tenant_id;
-            resolvedCustomerId = session.customer_id;
-            resolvedAgentId = session.agent_id;
+            const isPublicDemo = session.metadata?.public_demo === true || !auth;
+            resolvedTenantId = isPublicDemo ? null : session.tenant_id;
+            resolvedCustomerId = isPublicDemo ? null : session.customer_id;
+            resolvedAgentId = isPublicDemo ? null : session.agent_id;
           } else if (body.tenantId) {
             if (!auth) return json({ error: "Sign in to use organisation-specific assistant settings." }, 401);
             const { data: member } = await insforgeServer.database

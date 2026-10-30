@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
-import { Mic, ArrowRight, Menu, X, Lock } from "lucide-react";
+import { Mic, ArrowRight, Menu, X, Lock, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface FloatingNavbarProps {
@@ -94,8 +94,8 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
                 to="/voice"
                 className="group flex items-center gap-1.5 bg-[#087F8C] hover:bg-[#066772] text-white font-mono text-[11px] tracking-wider uppercase px-4 py-2 rounded-full transition-all shadow-xs active:scale-95"
               >
-                <Mic className="size-3 text-white" />
-                <span>TRY DEMO</span>
+                <Phone className="size-3 fill-current text-white" />
+                <span>CALL NOW</span>
                 <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5 text-white/70 group-hover:text-white" />
               </Link>
             </div>
@@ -105,9 +105,10 @@ export function FloatingNavbar({ onOpenAuth }: FloatingNavbarProps) {
           <div className="md:hidden flex items-center gap-2 rounded-full bg-white/90 border border-slate-200/90 shadow-sm backdrop-blur-xl p-1.5">
             <Link
               to="/voice"
-              className="bg-[#087F8C] text-white font-mono text-[10px] tracking-wider uppercase px-3 py-1.5 rounded-full font-semibold"
+              className="bg-[#087F8C] hover:bg-[#066772] text-white text-xs tracking-wide px-3.5 py-1.5 rounded-full font-bold inline-flex items-center gap-1.5 shadow-xs"
             >
-              DEMO
+              <Phone className="size-3 fill-current" />
+              <span>Call Now</span>
             </Link>
             <button
               type="button"

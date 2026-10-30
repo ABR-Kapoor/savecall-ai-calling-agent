@@ -6,6 +6,7 @@ import {
   Mic,
   ShieldCheck,
   ArrowRight,
+  ArrowDown,
   CheckCircle2,
   LogIn,
   Award,
@@ -111,17 +112,37 @@ function LandingPage() {
 
             {/* Subtle Tech Dot Matrix Grid */}
             <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(#9CAFA9_0.75px,transparent_0.75px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black_45%,transparent_80%)]" />
+
+            {/* Gradient transparent to white from top of the hero to chatbox component */}
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/80 to-[#FAF9F6] pointer-events-none" />
           </div>
 
-          <div className="relative mx-auto grid max-w-7xl items-center gap-8 lg:gap-16 px-3 sm:px-6 pt-24 pb-16 sm:pt-36 sm:pb-24 lg:grid-cols-[0.92fr_1.08fr] lg:pt-40 lg:pb-28">
-            {/* 1. Interactive Concierge Chat/Voice Panel - Centered on Mobile! */}
-            <div className="landing-rise order-1 lg:order-2 relative z-10 w-full max-w-[590px] mx-auto flex flex-col items-center lg:items-end" style={{ animationDelay: "100ms" }}>
-              <div aria-hidden="true" className="absolute -inset-4 sm:-inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-[#CFE8E3]/80 via-[#E8F5F2]/40 to-[#E5EBDD]/60 blur-3xl opacity-80" />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-8 lg:gap-16 px-2 sm:px-6 pt-16 sm:pt-24 pb-8 sm:pb-24 lg:grid-cols-[0.92fr_1.08fr] lg:pt-36 lg:pb-28">
+            {/* 1. HERO CENTERPIECE: The Beautifully Redesigned Chat & Voice Box */}
+            {/* On mobile: First in DOM order, occupies hero viewport centered! On desktop: Column 2 (Right) */}
+            <div
+              className="landing-rise order-1 lg:order-2 lg:col-start-2 lg:row-start-1 relative z-10 w-full max-w-[660px] mx-auto flex flex-col items-center justify-center min-h-[calc(100svh-4.25rem)] lg:min-h-0 py-2 sm:py-6 lg:py-0"
+              style={{ animationDelay: "100ms" }}
+            >
+              <div aria-hidden="true" className="absolute -inset-4 sm:-inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-[#CFE8E3]/60 via-[#E8F5F2]/30 to-[#E5EBDD]/50 blur-3xl opacity-70" />
               <InsuranceHeroPanel />
+
+              {/* Mobile scroll-down cue */}
+              <a
+                href="#platform-overview"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-2xs backdrop-blur-sm transition-all hover:border-[#087F8C]/40 hover:text-[#087F8C] lg:hidden"
+              >
+                <span>Explore platform</span>
+                <ArrowDown className="size-3 animate-bounce" />
+              </a>
             </div>
 
-            {/* 2. Headline & Copy - Second on Mobile */}
-            <div className="landing-rise order-2 lg:order-1 relative z-10 max-w-xl mx-auto lg:mx-0 text-center lg:text-left">
+            {/* 2. NEXT DATA (Scrolled into view on mobile): Headline, Story & Action buttons */}
+            {/* On mobile: Appears below chatbox after scrolling down! On desktop: Column 1 (Left) */}
+            <div
+              id="platform-overview"
+              className="landing-rise order-2 lg:order-1 lg:col-start-1 lg:row-start-1 relative z-10 max-w-xl mx-auto lg:mx-0 text-center lg:text-left pt-14 sm:pt-16 lg:pt-0 scroll-mt-20"
+            >
               <div className="mb-5 sm:mb-7 inline-flex items-center gap-2.5 rounded-full border border-[#087F8C]/20 bg-white/80 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-[#087F8C] shadow-sm backdrop-blur" style={{ animationDelay: "0ms" }}>
                 <span className="relative flex size-2">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#087F8C]/45 motion-reduce:animate-none" />
@@ -161,61 +182,84 @@ function LandingPage() {
         {/* Subtle Waveform Motif Divider */}
         <SoundWaveMotif variant="divider" />
 
-        {/* 3. Trust and Product Status Statement */}
-        <section id="trust" className="py-14 bg-white border-y border-slate-200/80">
-          <div className="max-w-5xl mx-auto px-6 text-center space-y-4">
+        {/* 3. Visual Trust & Operational Governance Section */}
+        <section id="trust" className="py-12 bg-white border-y border-slate-200/80">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center space-y-4">
             <span className="font-mono text-xs font-bold text-[#087F8C] tracking-widest uppercase">
               Operational Governance
             </span>
             <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
               Built with care. Designed for real insurance conversations.
             </h2>
-            <p className="text-sm sm:text-base text-[#475467] leading-relaxed max-w-3xl mx-auto">
-              InsurCall is developed specifically to support insurance operations teams, claims adjusters, and brokers. Answers are strictly grounded in your approved policy schedules, policyholder identities are verified through OTP, and consequential actions remain subject to human supervisor review.
-            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 text-left">
+              <div className="p-4 rounded-2xl border border-slate-200/90 bg-[#FAF9F6] flex items-start gap-3 shadow-2xs">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#E6F6F7] text-[#087F8C]">
+                  <ShieldCheck className="size-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900">100% Policy Grounded</h4>
+                  <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-snug">Answers strictly cite authorized policy schedules.</p>
+                </div>
+              </div>
+              <div className="p-4 rounded-2xl border border-slate-200/90 bg-[#FAF9F6] flex items-start gap-3 shadow-2xs">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <UserCheck className="size-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900">OTP 2FA Identity</h4>
+                  <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-snug">Caller verified through cryptographic SMS OTP.</p>
+                </div>
+              </div>
+              <div className="p-4 rounded-2xl border border-slate-200/90 bg-[#FAF9F6] flex items-start gap-3 shadow-2xs">
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <CheckCircle2 className="size-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900">Human Supervisor Review</h4>
+                  <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-snug">Autonomous AI cannot disburse payouts without sign-off.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* 4. Signature Editorial Campaign Section (Image A) */}
-        <section className="py-24 bg-white relative overflow-hidden">
+        <section className="py-20 sm:py-24 bg-white relative overflow-hidden">
           <div className="absolute top-0 right-1/4 -translate-y-1/2 w-[600px] h-[600px] bg-[#087F8C]/10 rounded-full blur-[140px] pointer-events-none" />
 
-          <div className="max-w-7xl mx-auto px-6 sm:px-8 relative z-10">
-            <div className="grid lg:grid-cols-12 gap-12 items-center">
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 relative z-10">
+            <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-center">
               {/* Editorial Campaign Photography (Image A) */}
               <div className="lg:col-span-7">
-                <div className="relative rounded-[32px] overflow-hidden border border-slate-700/80 shadow-2xl group">
+                <div className="relative rounded-2xl sm:rounded-[32px] overflow-hidden border border-slate-700/80 shadow-2xl group">
                   <img
                     src="/insurance_hero_campaign.jpg"
                     alt="Indian insurance specialist calmly reviewing policy documents with a policyholder in natural daylight"
                     className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-[1.02]"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#172033]/70 via-transparent to-transparent pointer-events-none" />
-                  <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between text-xs text-slate-300 font-mono">
-                    <span>Modern Indian Insurance Service Environment</span>
-                    <span className="text-[#10A6AE]">Grounded Policy Intelligence</span>
+                  <div className="absolute bottom-3 left-4 right-4 sm:bottom-4 sm:left-6 sm:right-6 flex items-center justify-between text-[11px] sm:text-xs text-slate-300 font-mono">
+                    <span>Modern Indian Insurance Service</span>
+                    <span className="text-[#10A6AE]">Grounded AI</span>
                   </div>
                 </div>
               </div>
 
               {/* Campaign Story Copy */}
-              <div className="lg:col-span-5 space-y-6">
+              <div className="lg:col-span-5 space-y-4 sm:space-y-6">
                 <Badge
                   variant="outline"
                   className="border-[#087E8B]/30 bg-[#E6F5F6] text-[#087E8B] text-[11px] font-mono tracking-widest uppercase font-semibold"
                 >
                   Insurance-Only Architecture
                 </Badge>
-                <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-[#111827] leading-tight">
-                  Built for the calls that protect Indian policyholders.
+                <h2 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-[#111827] leading-tight">
+                  Built for the calls that protect policyholders.
                 </h2>
-                <p className="text-base text-slate-600 leading-relaxed">
-                  Technology designed around how Indian insurance operations actually work.
+                <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+                  When a vehicle is damaged or a family arrives at hospital reception, InsurCall provides an autonomous voice employee that speaks with empathy, captures First Notice of Loss with precision, and escalates complex disputes seamlessly.
                 </p>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  When a vehicle is damaged on a highway or a family arrives at a hospital reception, every second matters. InsurCall provides an autonomous voice employee that speaks with empathy, verifies policyholder identity, captures First Notice of Loss with precision, and escalates complex requests to human adjusters without losing context.
-                </p>
-                <div className="pt-2">
+                <div className="pt-1">
                   <Button
                     asChild
                     className="bg-[#087F8C] hover:bg-[#076C77] text-white font-mono text-xs tracking-wider uppercase h-11 px-6 rounded-xl shadow-xs"

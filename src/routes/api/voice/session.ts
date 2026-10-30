@@ -280,21 +280,23 @@ export const Route = createFileRoute("/api/voice/session")({
             return json({ error: "The LiveKit Cloud voice agent could not be started. Please retry." }, 502);
           }
 
+          const isAnonymous = !auth || body.publicDemo;
+
           return json({
             token,
             roomName,
             callSessionId,
             livekitUrl,
-            agentName: agentData.name,
-            tenantName: tenant.name,
-            ragAvailable,
-            isGeneralModel: !ragAvailable,
+            agentName: isAnonymous ? "InsurCall Agent" : (agentData.name || "InsurCall Agent"),
+            tenantName: isAnonymous ? "" : (tenant.name || ""),
+            ragAvailable: isAnonymous ? false : ragAvailable,
+            isGeneralModel: isAnonymous ? true : !ragAvailable,
             cloudAI: getCloudAIStatus(),
             customer: {
               id: customer.id,
-              name: customer.name,
-              customerNumber: customer.customerNumber,
-              isVerified: customer.isVerified,
+              name: isAnonymous ? "Guest Caller" : customer.name,
+              customerNumber: isAnonymous ? null : customer.customerNumber,
+              isVerified: isAnonymous ? false : customer.isVerified,
             },
           });
         } catch (err: any) {

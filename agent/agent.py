@@ -71,16 +71,17 @@ async def entrypoint(ctx: JobContext):
     company_name = "InsurCall"
     greeting_template = "Hello. Welcome to {{company_name}} support. How may I help you today?"
 
-    try:
-        cfg_resp = await execute_remote_tool(session_id, tenant_id, customer_id, "get_agent_config", {})
-        if cfg_resp.get("ok"):
-            company_name = cfg_resp.get("company_name", company_name)
-            b_cfg = cfg_resp.get("branding_config", {})
-            agent_cfg = b_cfg.get("agent_config", {}) if isinstance(b_cfg, dict) else {}
-            greeting_template = agent_cfg.get("greeting", greeting_template)
-            logger.info(f"Loaded dynamic agent config for {company_name}")
-    except Exception as e:
-        logger.warning(f"Could not load dynamic agent config: {e}")
+    if not is_public_demo:
+        try:
+            cfg_resp = await execute_remote_tool(session_id, tenant_id, customer_id, "get_agent_config", {})
+            if cfg_resp.get("ok"):
+                company_name = cfg_resp.get("company_name", company_name)
+                b_cfg = cfg_resp.get("branding_config", {})
+                agent_cfg = b_cfg.get("agent_config", {}) if isinstance(b_cfg, dict) else {}
+                greeting_template = agent_cfg.get("greeting", greeting_template)
+                logger.info(f"Loaded dynamic agent config for {company_name}")
+        except Exception as e:
+            logger.warning(f"Could not load dynamic agent config: {e}")
 
     vad = create_vad()
     stt = create_stt()

@@ -12,6 +12,10 @@ import {
   ShieldCheck,
   Sparkles,
   Volume2,
+  Car,
+  Building2,
+  Activity,
+  Brain,
 } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
 
@@ -22,10 +26,26 @@ type Message = {
 };
 
 const suggestions = [
-  "Car damage claim",
-  "Deductible vs premium",
-  "Cashless hospital admission",
-  "Water leak damage",
+  {
+    label: "File a claim",
+    icon: Car,
+    color: "text-amber-600 bg-amber-50 border-amber-200/60",
+  },
+  {
+    label: "Coverage & deductible",
+    icon: ShieldCheck,
+    color: "text-blue-600 bg-blue-50 border-blue-200/60",
+  },
+  {
+    label: "Cashless hospital",
+    icon: Building2,
+    color: "text-emerald-600 bg-emerald-50 border-emerald-200/60",
+  },
+  {
+    label: "Track claim status",
+    icon: Activity,
+    color: "text-cyan-600 bg-cyan-50 border-cyan-200/60",
+  },
 ];
 
 export function InsuranceHeroPanel() {
@@ -374,217 +394,204 @@ export function InsuranceHeroPanel() {
   }, [endVoiceCall]);
 
   return (
-    <div className="w-full flex flex-col">
-      {/* 1. Uplifted Main Card */}
-      <div className="relative overflow-hidden rounded-[26px] border border-[#CFDFD8] bg-white/95 backdrop-blur-xl shadow-[0_24px_65px_-18px_rgba(8,127,140,0.18),0_10px_28px_-6px_rgba(15,61,57,0.06)] ring-1 ring-black/[0.02] transition-all">
-        {/* Subtle top brand hairline */}
-        <div className="h-1 w-full bg-gradient-to-r from-[#087F8C]/20 via-[#087F8C] to-[#10A6AE]/30" />
+    <div className="w-full flex flex-col items-center">
+      {/* 1. Uplifted Main Card with Ambient Glow */}
+      <div className="relative w-full">
+        {/* Soft Ambient Card Backlight */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-2 rounded-[32px] bg-gradient-to-tr from-[#087F8C]/20 via-[#10A6AE]/15 to-[#34D399]/20 blur-xl -z-10 opacity-75"
+        />
 
-        {/* Top Clean Header with minimal padding on mobile */}
-        <div className="flex items-center justify-between border-b border-[#E8EFEA] bg-[#FAFBF9]/90 px-3 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Real Official InsurCall Logo */}
-            <div className="grid size-9 sm:size-11 shrink-0 place-items-center rounded-xl bg-white border border-[#DCE6E1] p-1.5 sm:p-2 shadow-2xs">
-              <img
-                src="/01_logo_only_transparent.png"
-                alt="InsurCall"
-                className="size-full object-contain"
-              />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-[#142D2B] leading-none">InsurCall</h3>
-                <span className="flex size-1.5 sm:size-2 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-              <p className="text-[11px] sm:text-xs text-[#637A73] mt-0.5 sm:mt-1 font-medium">Policy & Claims AI Concierge</p>
-            </div>
-          </div>
+        <div className="relative overflow-hidden rounded-[26px] border border-[#CFDFD8] bg-white/98 backdrop-blur-2xl shadow-[0_24px_65px_-18px_rgba(8,127,140,0.2),0_10px_28px_-6px_rgba(15,61,57,0.06)] ring-1 ring-black/[0.03] transition-all">
+          {/* Top Brand Gradient Accent Bar */}
+          <div className="h-1 w-full bg-gradient-to-r from-[#087F8C] via-[#10A6AE] to-[#34D399]" />
 
-          {/* Call Now Button -> Redirect to Interactive Voice Demo (/voice) */}
-          <Link
-            to="/voice"
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#087F8C] hover:bg-[#076C77] px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-[0_4px_14px_-2px_rgba(8,127,140,0.5)] transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer shrink-0"
-          >
-            <Phone className="size-3.5 fill-current" />
-            <span>Call Now</span>
-          </Link>
-        </div>
-
-        {/* In-Call Active Strip */}
-        {isCallActive && (
-          <div className="flex items-center justify-between border-b border-[#D8E6E0] bg-[#EFF6F3] px-4 py-2 sm:px-5 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              {/* Visualizer Aura Indicator */}
-              <div className="relative flex size-4 items-center justify-center">
-                <span
-                  className="absolute size-4 rounded-full bg-[#087F8C]/25 transition-transform"
-                  style={{ transform: `scale(${1 + audioLevel * 0.015})` }}
-                />
-                <span className="size-2 rounded-full bg-[#087F8C] animate-pulse" />
-              </div>
-              <p className="truncate font-medium text-[#20453D]">
-                {liveTranscript
-                  ? `"${liveTranscript}"`
-                  : isAiSpeaking
-                  ? "Speaking (interrupt anytime)"
-                  : isInterrupted
-                  ? "Listening..."
-                  : "Listening to you..."}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={toggleMic}
-              className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${
-                isMicMuted
-                  ? "bg-rose-100 text-rose-700"
-                  : "bg-white text-[#2B453E] border border-[#CFDDD7] hover:bg-slate-50"
-              }`}
-            >
-              {isMicMuted ? <MicOff className="size-3 text-rose-600" /> : <Mic className="size-3" />}
-              <span>{isMicMuted ? "Unmute" : "Mute"}</span>
-            </button>
-          </div>
-        )}
-
-        {/* Main Conversation Stream with minimal mobile padding */}
-        <div className="px-3 py-3.5 sm:p-6">
-          <div
-            ref={threadRef}
-            role="log"
-            aria-label="Conversation"
-            className="max-h-[250px] min-h-[120px] space-y-3 overflow-y-auto overscroll-contain pr-1"
-          >
-            {messages.length === 0 ? (
-              <div className="py-2.5">
-                <h4 className="text-base sm:text-lg font-bold text-[#152F2C]">
-                  Hi, how can we help you today?
-                </h4>
-                <p className="mt-1 text-xs sm:text-sm text-[#5B736B] leading-relaxed">
-                  Ask a question below or tap Call Now to speak directly.
+          {/* In-Call Active Strip */}
+          {isCallActive && (
+            <div className="flex items-center justify-between border-b border-[#D8E6E0] bg-[#EFF6F3] px-4 py-2 sm:px-5 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Visualizer Aura Indicator */}
+                <div className="relative flex size-4 items-center justify-center">
+                  <span
+                    className="absolute size-4 rounded-full bg-[#087F8C]/25 transition-transform"
+                    style={{ transform: `scale(${1 + audioLevel * 0.015})` }}
+                  />
+                  <span className="size-2 rounded-full bg-[#087F8C] animate-pulse" />
+                </div>
+                <p className="truncate font-medium text-[#20453D]">
+                  {liveTranscript
+                    ? `"${liveTranscript}"`
+                    : isAiSpeaking
+                    ? "Speaking (interrupt anytime)"
+                    : isInterrupted
+                    ? "Listening..."
+                    : "Listening to you..."}
                 </p>
               </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed ${
-                      message.role === "user"
-                        ? "bg-[#143B39] text-white shadow-xs"
-                        : "border border-[#DFECE6] bg-[#F7FAF8] text-[#243D36]"
-                    }`}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="mb-1.5 flex items-center justify-between border-b border-[#E3EDE8] pb-1 text-[11px] font-medium text-[#4B7365]">
-                        <span>InsurCall</span>
-                        <button
-                          type="button"
-                          onClick={() => speakText(message.text)}
-                          title="Listen"
-                          className="p-0.5 text-[#52776A] hover:text-[#087F8C]"
-                        >
-                          <Volume2 className="size-3.5" />
-                        </button>
-                      </div>
-                    )}
-                    <p>{message.text}</p>
-                  </div>
-                </div>
-              ))
-            )}
-            {isLoading && (
-              <div className="flex items-center gap-2 text-xs sm:text-sm text-[#627770]">
-                <LoaderCircle className="size-4 animate-spin text-[#087F8C]" /> Checking information...
-              </div>
-            )}
-          </div>
 
-          {/* Short Question Chips */}
-          {messages.length === 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2" aria-label="Quick questions">
-              {suggestions.map((question) => (
-                <button
-                  key={question}
-                  type="button"
-                  disabled={isLoading}
-                  onClick={() => void sendMessage(question, isCallActive)}
-                  className="rounded-full border border-[#D5E3DD] bg-white hover:bg-[#EBF7F7] hover:border-[#087F8C]/40 hover:text-[#087F8C] px-3 py-1 sm:px-4 sm:py-1.5 text-left text-[11px] sm:text-[13px] font-medium text-[#38514A] transition-all hover:-translate-y-0.5 shadow-2xs disabled:opacity-50 cursor-pointer"
-                >
-                  {question}
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={toggleMic}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${
+                  isMicMuted
+                    ? "bg-rose-100 text-rose-700"
+                    : "bg-white text-[#2B453E] border border-[#CFDDD7] hover:bg-slate-50"
+                }`}
+              >
+                {isMicMuted ? <MicOff className="size-3 text-rose-600" /> : <Mic className="size-3" />}
+                <span>{isMicMuted ? "Unmute" : "Mute"}</span>
+              </button>
             </div>
           )}
 
-          {/* Input Bar */}
-          <form
-            className="mt-3.5 sm:mt-4 flex items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void sendMessage(draft, isCallActive);
-            }}
-          >
-            <label className="sr-only" htmlFor="hero-message-input">
-              Ask a question
-            </label>
-            <input
-              id="hero-message-input"
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              maxLength={350}
-              placeholder={isCallActive ? "Type or speak naturally..." : "Ask about policies, deductibles, or claims..."}
-              disabled={isLoading}
-              className="h-10 sm:h-12 min-w-0 flex-1 rounded-xl border border-[#D2E2DC] bg-[#FAFBF9] hover:bg-white focus:bg-white px-3 sm:px-4 text-xs sm:text-sm text-[#1B3630] outline-none placeholder:text-[#889B93] focus:border-[#087F8C] focus:ring-2 focus:ring-[#087F8C]/15 disabled:bg-[#F5F8F6] transition-all"
-            />
-            <button
-              type="submit"
-              disabled={!draft.trim() || isLoading}
-              aria-label="Send"
-              className="grid size-10 sm:size-12 shrink-0 place-items-center rounded-xl bg-[#087F8C] text-white transition-all hover:bg-[#076C77] active:scale-95 disabled:cursor-not-allowed disabled:bg-[#B5C7C0] shadow-2xs cursor-pointer"
-            >
-              <Send className="size-4" />
-            </button>
-          </form>
-          {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
-        </div>
+          {/* Main Conversation Stream */}
+          <div className="px-4 py-4 sm:p-6">
+            {/* Seamless Title inside Chatbox Canvas */}
+            <div className="pb-1.5">
+              <p className="text-xs sm:text-sm font-bold tracking-wider uppercase text-slate-900">
+                Policy & Claims AI Concierge
+              </p>
+            </div>
 
-        {/* Footer with Dedicated Phone Line leading to /phone (WhatsApp calling channel) requiring login */}
-        <div className="flex items-center justify-between border-t border-[#E8EFEA] bg-[#FAFBF9] px-3.5 py-2.5 text-[11px] text-[#697D76] sm:px-5">
-          <span className="flex items-center gap-1.5 font-medium">
-            <ShieldCheck className="size-3.5 text-emerald-600" />
-            Verified policy guidance
-          </span>
-          <Link
-            to={user ? "/phone" : "/auth"}
-            className="inline-flex items-center gap-1 font-semibold text-[#087F8C] hover:text-[#076C77] hover:underline cursor-pointer"
-          >
-            <span>Dedicated Phone Line</span>
-            <ArrowUpRight className="size-3" />
-          </Link>
+            <div
+              ref={threadRef}
+              role="log"
+              aria-label="Conversation"
+              className="max-h-[280px] min-h-[140px] sm:max-h-[340px] sm:min-h-[180px] space-y-3 overflow-y-auto overscroll-contain pr-1"
+            >
+              {messages.length === 0 ? (
+                <div className="py-2 sm:py-3 text-left">
+                  <h4 className="text-xl sm:text-2xl font-bold text-[#111827] tracking-tight">
+                    What can I help with today?
+                  </h4>
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed ${
+                        message.role === "user"
+                          ? "bg-[#143B39] text-white shadow-xs"
+                          : "border border-[#DFECE6] bg-[#F7FAF8] text-[#243D36]"
+                      }`}
+                    >
+                      {message.role === "assistant" && (
+                        <div className="mb-1.5 flex items-center justify-between border-b border-[#E3EDE8] pb-1 text-[11px] font-medium text-[#4B7365]">
+                          <span>InsurCall</span>
+                          <button
+                            type="button"
+                            onClick={() => speakText(message.text)}
+                            title="Listen"
+                            className="p-0.5 text-[#52776A] hover:text-[#087F8C]"
+                          >
+                            <Volume2 className="size-3.5" />
+                          </button>
+                        </div>
+                      )}
+                      <p>{message.text}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+              {isLoading && (
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-[#627770]">
+                  <LoaderCircle className="size-4 animate-spin text-[#087F8C]" /> Checking information...
+                </div>
+              )}
+            </div>
+
+            {/* Quick Suggestion Chips - ChatGPT Style with Lucide Icons */}
+            {messages.length === 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-2" aria-label="Quick questions">
+                {suggestions.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => void sendMessage(item.label, isCallActive)}
+                      className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white/95 hover:bg-slate-50/90 px-3 py-2 text-left text-[11px] sm:text-xs font-medium text-slate-800 transition-all hover:border-[#087F8C]/40 active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs group"
+                    >
+                      <div className={`grid size-6 shrink-0 place-items-center rounded-lg border ${item.color}`}>
+                        <Icon className="size-3.5" />
+                      </div>
+                      <span className="truncate group-hover:text-[#087F8C] transition-colors">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Message Input Bar - Sleek ChatGPT Rounded Full Pill */}
+            <form
+              className="mt-3.5 flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sendMessage(draft, isCallActive);
+              }}
+            >
+              <label className="sr-only" htmlFor="hero-message-input">
+                Ask a question
+              </label>
+              <div className="relative flex-1 flex items-center">
+                <input
+                  id="hero-message-input"
+                  type="text"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  maxLength={350}
+                  placeholder={isCallActive ? "Type or speak..." : "Ask anything about policies or claims..."}
+                  disabled={isLoading}
+                  className="h-11 sm:h-12 w-full rounded-full border border-slate-200 bg-slate-50/80 hover:bg-white focus:bg-white px-4 text-xs sm:text-sm text-[#111827] outline-none placeholder:text-slate-400 focus:border-[#087F8C] focus:ring-2 focus:ring-[#087F8C]/15 disabled:bg-slate-100 transition-all shadow-inner/10"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!draft.trim() || isLoading}
+                aria-label="Send"
+                className="grid size-11 sm:size-12 shrink-0 place-items-center rounded-full bg-[#087F8C] hover:bg-[#076C77] text-white transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 shadow-2xs cursor-pointer"
+              >
+                <Send className="size-4" />
+              </button>
+            </form>
+            {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
+          </div>
+
+          {/* Footer with Verified badge & Dedicated Phone Line */}
+          <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-3.5 py-2.5 text-[11px] text-slate-500 sm:px-5">
+            <span className="flex items-center gap-1.5 font-medium">
+              <ShieldCheck className="size-3.5 text-emerald-600" />
+              Verified policy data
+            </span>
+            <Link
+              to={user ? "/phone" : "/auth"}
+              className="font-semibold text-[#087F8C] hover:text-[#076C77] hover:underline cursor-pointer"
+            >
+              Dedicated line →
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* 2. Curvy Arrow & Catchy Onboarding CTA */}
-      <div className="mt-5 flex flex-col items-center sm:items-start justify-center gap-1.5 px-1 sm:px-3 w-full">
+      {/* 2. Catchy Onboarding CTA with Curved Arrow */}
+      <div className="mt-4 flex flex-col items-center justify-center gap-1.5 px-2 w-full">
         {/* 'Want this...' tag + Downward curved arrow pointing directly down into the button */}
-        <div className="flex items-center justify-center gap-2 pl-0 sm:pl-2">
-          <span className="text-xs sm:text-[13px] font-semibold text-[#24433B] italic select-none text-center">
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-xs sm:text-[13px] font-semibold text-[#142D2B] italic select-none">
             Want this exact AI agent for your business?
           </span>
-          {/* Hand-drawn downward swooping arrow pointing down into the button */}
           <svg
-            className="w-6 h-6 text-[#087F8C] shrink-0 drop-shadow-xs -rotate-12 translate-y-0.5"
+            className="w-5 h-5 text-[#087F8C] shrink-0 drop-shadow-xs -rotate-12 translate-y-0.5"
             viewBox="0 0 32 32"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            {/* Smooth curve arching from top-left curving down */}
             <path
               d="M 6 6 C 14 6, 22 12, 18 24"
               stroke="currentColor"
@@ -592,7 +599,6 @@ export function InsuranceHeroPanel() {
               strokeLinecap="round"
               strokeDasharray="4 3"
             />
-            {/* Arrowhead pointing down */}
             <path
               d="M 12 19 L 18 25 L 24 19"
               stroke="currentColor"
@@ -606,11 +612,11 @@ export function InsuranceHeroPanel() {
         {/* Catchy Onboarding Button */}
         <Link
           to={user ? "/onboarding" : "/auth"}
-          className="group w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#087F8C] via-[#098D9B] to-[#0AA0AE] hover:from-[#076C77] hover:to-[#087F8C] px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(8,127,140,0.55)] hover:shadow-[0_12px_30px_-6px_rgba(8,127,140,0.65)] hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer text-center"
+          className="group inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#087F8C] via-[#098D9B] to-[#0AA0AE] hover:from-[#076C77] hover:to-[#087F8C] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-[0_6px_20px_-4px_rgba(8,127,140,0.5)] hover:shadow-[0_10px_25px_-4px_rgba(8,127,140,0.6)] hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer text-center"
         >
-          <Sparkles className="size-4 text-emerald-200 animate-pulse shrink-0" />
+          <Brain className="size-4 text-white shrink-0" />
           <span>Get This Agent For My Company</span>
-          <div className="size-5 rounded-full bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 shrink-0">
+          <div className="size-4.5 rounded-full bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 shrink-0">
             <ArrowRight className="size-3 text-white" />
           </div>
         </Link>

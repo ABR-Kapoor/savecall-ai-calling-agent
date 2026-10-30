@@ -1,266 +1,229 @@
 import React, { useState } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   PhoneIncoming,
   ShieldCheck,
   Brain,
   Database,
   CheckCircle2,
   UserCheck,
-  FileText,
   Lock,
-  ArrowRight,
-  Info,
-  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 
-interface StepDetail {
+interface WorkflowSlide {
   id: string;
   stepNumber: string;
-  name: string;
-  shortDesc: string;
-  agentRole: string;
-  requiredData: string;
-  sourceSystem: string;
-  validationRule: string;
-  humanApproval: string;
-  persistedRecord: string;
+  badge: string;
+  tabLabel: string;
+  title: string;
+  subtitle: string;
+  image: string;
+  icon: any;
 }
 
-const WORKFLOW_STEPS: StepDetail[] = [
+const WORKFLOW_SLIDES: WorkflowSlide[] = [
   {
     id: "step-1",
     stepNumber: "01",
-    name: "Incoming Call",
-    shortDesc: "Inbound customer telephone line or WebRTC connection receives policyholder call.",
-    agentRole: "Answers instantly, speaks natural greeting in English, Hindi, or conversational Hinglish.",
-    requiredData: "Caller phone number (CLI) and inbound carrier routing trunk.",
-    sourceSystem: "Carrier telephony gateway & secure real-time media server.",
-    validationRule: "Verify line is active and map carrier trunk to authenticated insurance tenant.",
-    humanApproval: "No. Autonomous instant connection without wait queue.",
-    persistedRecord: "Initial call session row in call_sessions table with room ID and start timestamp.",
+    tabLabel: "01 Call Gateway",
+    badge: "Carrier Telephony Trunk",
+    title: "Instant Inbound Call Answering",
+    subtitle: "Inbound customer telephone line or WebRTC connection receives calls with sub-second latency in natural English, Hindi, or Hinglish.",
+    image: "/campaign_indian_business.jpg",
+    icon: PhoneIncoming,
   },
   {
     id: "step-2",
     stepNumber: "02",
-    name: "Identity Verification",
-    shortDesc: "Verifies policyholder identity through phone lookup and cryptographic SMS OTP.",
-    agentRole: "Prompts for customer name and policy number. Sends OTP when accessing sensitive records.",
-    requiredData: "Customer full name, date of birth or last 4 digits of Aadhaar/PAN, and mobile number.",
-    sourceSystem: "Customers table & SMS delivery gateway.",
-    validationRule: "6-digit OTP verification with 5-minute expiry and rate-limiting against brute force.",
-    humanApproval: "Required if OTP fails twice or high-risk nominee modification is requested.",
-    persistedRecord: "otp_verified_until timestamp updated in call_sessions and risk_state evaluated.",
+    tabLabel: "02 Identity OTP",
+    badge: "Cryptographic 2FA",
+    title: "Cryptographic OTP Identity Verification",
+    subtitle: "Verifies policyholder identity via phone lookup and 6-digit SMS OTP with strict rate-limiting before accessing sensitive records.",
+    image: "/insurance_service_desk.jpg",
+    icon: ShieldCheck,
   },
   {
     id: "step-3",
     stepNumber: "03",
-    name: "Intent Detection",
-    shortDesc: "Categorizes conversation into exact insurance workflow paths.",
-    agentRole: "Listens with polite turn-taking, extracts key entities (claim ID, date, vehicle damage).",
-    requiredData: "Caller utterances, spoken keywords, and conversational context.",
-    sourceSystem: "Enterprise Conversational AI & NLP engine.",
-    validationRule: "Classification against approved insurance taxonomy: FNOL, Claim Status, Policy Inquiry, Renewal.",
-    humanApproval: "No. Autonomous intent classification.",
-    persistedRecord: "Structured metadata updated in call_sessions.metadata.",
+    tabLabel: "03 Intent NLP",
+    badge: "InsurTech AI Engine",
+    title: "Conversational Intent & Entity Extraction",
+    subtitle: "Listens with polite turn-taking, classifies caller queries into insurance taxonomy, and extracts critical entities.",
+    image: "/insurance_workstreams.jpg",
+    icon: Brain,
   },
   {
     id: "step-4",
     stepNumber: "04",
-    name: "Approved Policy / Claim Lookup",
-    shortDesc: "Retrieves ground-truth coverage terms and active claim history.",
-    agentRole: "Executes typed database tool lookup_policy or get_claim_status.",
-    requiredData: "Validated tenant_id, customer_id, and policy_number.",
-    sourceSystem: "Encrypted policy & claims database (isolated tenant storage).",
-    validationRule: "Strict multi-tenant row-level security (RLS). Cross-tenant queries are blocked.",
-    humanApproval: "No. Read-only retrieval of approved policy clauses and active claim stage.",
-    persistedRecord: "Audit row inserted into agent_actions with parameters and verified outcome.",
+    tabLabel: "04 Grounded RAG",
+    badge: "Isolated Tenant RLS",
+    title: "Approved Policy & Active Claim Retrieval",
+    subtitle: "Retrieves ground-truth coverage terms and active claim history with multi-tenant row-level security and zero cross-tenant leakage.",
+    image: "/usecase_insurance.jpg",
+    icon: Database,
   },
   {
     id: "step-5",
     stepNumber: "05",
-    name: "Validated Next Action",
-    shortDesc: "Performs permitted operations such as filing FNOL report or sending claim summary.",
-    agentRole: "Structures First Notice of Loss incident details or sends official summary via SMS.",
-    requiredData: "Incident timestamp, incident location, damage description, third-party details.",
-    sourceSystem: "Claims API & carrier notification services.",
-    validationRule: "Strict schema validation via Zod; fields checked for completeness before ingestion.",
-    humanApproval: "Required for payouts, policy cancellations, or binding endorsements.",
-    persistedRecord: "New claim intake row created in claims table with status 'submitted'.",
+    tabLabel: "05 Validated Action",
+    badge: "Schema Enforced",
+    title: "Validated Next Action & Claims Intake",
+    subtitle: "Structures First Notice of Loss incident details with Zod validation or dispatches official claim status summaries via SMS.",
+    image: "/insurance_fnol_workflow.jpg",
+    icon: CheckCircle2,
   },
   {
     id: "step-6",
     stepNumber: "06",
-    name: "Human Review When Required",
-    shortDesc: "Seamless handoff to human claims adjuster or policy underwriter.",
-    agentRole: "Prepares complete executive summary, verified facts, and transfers call or queues review ticket.",
-    requiredData: "Conversation summary, flagged risk reason, extracted claim reference.",
-    sourceSystem: "Human escalation queue (human_escalations & change_requests tables).",
-    validationRule: "Mandatory human review for coverage disputes, high claims amounts, or caller distress.",
-    humanApproval: "Yes. Claims supervisor or underwriter must review and sign off.",
-    persistedRecord: "Human escalation row with urgency, reason, and assigned team member.",
+    tabLabel: "06 Human Review",
+    badge: "Supervisor Dual-Control",
+    title: "Seamless Human Supervisor Review",
+    subtitle: "Prepares executive summaries and transfers high-consequence disputes or large claims to licensed adjusters without losing context.",
+    image: "/insurance_human_review.jpg",
+    icon: UserCheck,
   },
   {
     id: "step-7",
     stepNumber: "07",
-    name: "Audit & Compliance Record",
-    shortDesc: "Stores immutable call recording, verbatim transcript, and compliance trail.",
-    agentRole: "Closes session cleanly, writes final disposition, and triggers webhook to carrier CRM.",
-    requiredData: "Complete turn-by-turn transcript, latency metrics, tool execution logs.",
-    sourceSystem: "Audit trail database & carrier compliance archival.",
-    validationRule: "Cryptographic hash verification of call events for regulatory auditability.",
-    humanApproval: "No. Automated compliance logging.",
-    persistedRecord: "Final ended_at timestamp, duration_sec, and full JSON transcript array persisted.",
+    tabLabel: "07 Audit Trail",
+    badge: "Regulatory Compliance",
+    title: "Immutable Audio & Transcript Archival",
+    subtitle: "Stores complete turn-by-turn verbatim transcripts, audio recordings, latency logs, and triggers webhooks to carrier CRM.",
+    image: "/insurance_hero_campaign.jpg",
+    icon: Lock,
   },
 ];
 
 export function InsuranceWorkflowShowcase() {
-  const [selectedStep, setSelectedStep] = useState<StepDetail | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const prevSlide = () => {
+    setCurrentIndex((prev) => (prev === 0 ? WORKFLOW_SLIDES.length - 1 : prev - 1));
+  };
+
+  const nextSlide = () => {
+    setCurrentIndex((prev) => (prev === WORKFLOW_SLIDES.length - 1 ? 0 : prev + 1));
+  };
+
+  const activeSlide = WORKFLOW_SLIDES[currentIndex] ?? WORKFLOW_SLIDES[0]!;
+  const Icon = activeSlide.icon;
 
   return (
-    <section id="claims-workflow" className="py-24 bg-white border-y border-slate-200/80">
-      <div className="max-w-7xl mx-auto px-6 sm:px-8">
+    <section id="claims-workflow" className="py-20 sm:py-24 bg-white border-y border-slate-200/80">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="max-w-3xl mb-16">
+        <div className="max-w-3xl mb-8 sm:mb-12">
           <Badge
             variant="outline"
             className="border-[#087F8C]/30 bg-[#E6F6F7] text-[#087F8C] text-[11px] font-mono tracking-wider uppercase mb-3 font-semibold"
           >
-            End-to-End Governance
+            End-to-End Governance Carousel
           </Badge>
-          <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-[#111827]">
+          <h2 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-[#111827]">
             From a conversation to a traceable insurance workflow.
           </h2>
-          <p className="mt-4 text-base sm:text-lg text-[#344054] leading-relaxed">
-            Every customer call moves through an auditable, step-by-step pipeline. Click any phase below to inspect the data requirements, validation checks, and compliance rules applied.
+          <p className="mt-2.5 sm:mt-3 text-sm sm:text-base text-[#475467] leading-relaxed">
+            Every customer call moves through an auditable, step-by-step pipeline. Tap through the phases to explore the workflow.
           </p>
         </div>
 
-        {/* Illustrated Workflow Horizontal Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
-          {WORKFLOW_STEPS.map((step) => {
-            const isSelected = selectedStep?.id === step.id;
+        {/* Phase Pill Strip Navigation */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-4 mb-4">
+          {WORKFLOW_SLIDES.map((slide, idx) => {
+            const SlideIcon = slide.icon;
+            const isActive = idx === currentIndex;
             return (
-              <div
-                key={step.id}
-                onClick={() => setSelectedStep(step)}
-                className={`group relative rounded-2xl border p-5 cursor-pointer transition-all flex flex-col justify-between ${
-                  isSelected
-                    ? "bg-[#E6F5F6] border-[#087E8B]/50 text-[#111827] shadow-lg scale-[1.02]"
-                    : "bg-[#FAF9F6] border-slate-200/90 text-slate-800 hover:border-[#087F8C]/50 hover:bg-white hover:shadow-md"
+              <button
+                key={slide.id}
+                type="button"
+                onClick={() => setCurrentIndex(idx)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-[#087F8C] text-white shadow-sm ring-2 ring-[#087F8C]/20"
+                    : "bg-[#FAF9F6] border border-slate-200 text-slate-700 hover:bg-slate-100 shadow-2xs"
                 }`}
               >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-xs font-bold text-[#087E8B]">
-                      {step.stepNumber}
-                    </span>
-                    <Info
-                      className={`size-3.5 transition-opacity ${
-                        isSelected ? "text-[#087E8B] opacity-80" : "text-slate-400 opacity-60 group-hover:opacity-100"
-                      }`}
-                    />
-                  </div>
-                  <h3 className="font-display text-sm font-bold leading-tight text-[#111827]">
-                    {step.name}
-                  </h3>
-                  <p
-                    className={`mt-2 text-[11px] leading-relaxed line-clamp-3 ${
-                      isSelected ? "text-slate-600" : "text-[#667085]"
-                    }`}
-                  >
-                    {step.shortDesc}
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center gap-1 font-mono text-[10px]">
-                  <span className="text-[#087E8B]">Inspect Details</span>
-                  <ArrowRight className="size-2.5 text-[#087E8B]" />
-                </div>
-              </div>
+                <SlideIcon className={`size-3.5 ${isActive ? "text-white" : "text-[#087F8C]"}`} />
+                <span>{slide.tabLabel}</span>
+              </button>
             );
           })}
         </div>
 
-        {/* Selected Step Detail Panel */}
-        {selectedStep && (
-          <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-xs font-bold bg-[#087F8C] text-white px-2.5 py-1 rounded-lg">
-                  PHASE {selectedStep.stepNumber}
-                </span>
-                <h4 className="font-display text-xl font-bold text-[#111827]">
-                  {selectedStep.name} Detail Specification
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedStep(null)}
-                className="size-8 rounded-full border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-black hover:bg-slate-100"
-              >
-                <X className="size-4" />
-              </button>
+        {/* Main Cinematic Workflow Carousel Card */}
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-[32px] border border-slate-800/80 bg-slate-950 shadow-2xl group">
+          {/* Main Image */}
+          <div className="relative h-[360px] sm:h-[500px] w-full overflow-hidden">
+            <img
+              src={activeSlide.image}
+              alt={activeSlide.title}
+              className="size-full object-cover transition-all duration-700 transform group-hover:scale-[1.02]"
+            />
+
+            {/* Gradient Dark Backdrop for Text Legibility */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10 pointer-events-none" />
+
+            {/* Top Right Phase Step Badge */}
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 rounded-full bg-black/50 backdrop-blur-md border border-white/15 px-3 py-1 font-mono text-xs font-semibold text-white">
+              <span className="text-[#10A6AE]">PHASE {activeSlide.stepNumber}</span>
+              <span className="text-white/40">/</span>
+              <span className="text-white/70">0{WORKFLOW_SLIDES.length}</span>
             </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 text-xs">
-              <div className="space-y-1">
-                <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider block">
-                  Agent Operational Role
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200">
-                  {selectedStep.agentRole}
-                </p>
+            {/* Bottom Content: Badge, Title, Subtitle */}
+            <div className="absolute bottom-0 inset-x-0 p-5 sm:p-10 space-y-2 sm:space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full bg-[#087F8C]/90 backdrop-blur-md px-3 py-1 text-[11px] font-semibold text-white border border-white/20">
+                <Icon className="size-3.5" />
+                <span>{activeSlide.badge}</span>
               </div>
 
-              <div className="space-y-1">
-                <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider block">
-                  Required Input Data
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200">
-                  {selectedStep.requiredData}
-                </p>
-              </div>
+              <h3 className="font-display text-xl sm:text-3xl lg:text-4xl font-extrabold text-white leading-tight">
+                {activeSlide.title}
+              </h3>
 
-              <div className="space-y-1">
-                <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider block">
-                  Authorised System Source
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200">
-                  {selectedStep.sourceSystem}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider block">
-                  Validation & Risk Rule
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200">
-                  {selectedStep.validationRule}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider block">
-                  Human Approval Required?
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200">
-                  {selectedStep.humanApproval}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider block">
-                  Persisted Database Record
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200">
-                  {selectedStep.persistedRecord}
-                </p>
-              </div>
+              <p className="text-xs sm:text-base text-slate-200 leading-relaxed max-w-2xl">
+                {activeSlide.subtitle}
+              </p>
             </div>
           </div>
-        )}
+
+          {/* Previous / Next Arrow Controls */}
+          <div className="absolute bottom-5 right-5 sm:bottom-8 sm:right-8 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={prevSlide}
+              aria-label="Previous phase"
+              className="grid size-10 sm:size-12 place-items-center rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md border border-white/30 transition-all active:scale-95 cursor-pointer shadow-lg"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={nextSlide}
+              aria-label="Next phase"
+              className="grid size-10 sm:size-12 place-items-center rounded-full bg-[#087F8C] hover:bg-[#076C77] text-white backdrop-blur-md border border-white/30 transition-all active:scale-95 cursor-pointer shadow-lg"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Indicator Dots */}
+        <div className="mt-4 flex items-center justify-center gap-2">
+          {WORKFLOW_SLIDES.map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setCurrentIndex(idx)}
+              aria-label={`Go to phase ${idx + 1}`}
+              className={`h-2 rounded-full transition-all cursor-pointer ${
+                idx === currentIndex ? "w-8 bg-[#087F8C]" : "w-2 bg-slate-300 hover:bg-slate-400"
+              }`}
+            />
+          ))}
+        </div>
       </div>
     </section>
   );
