@@ -596,33 +596,33 @@ export function InsuranceHeroPanel() {
         </Link>
 
         {/* Curvy arrow gesture pointing to button from right */}
-        <div className="flex items-center gap-2 self-end sm:self-center">
-          {/* Hand-drawn arrow curving down and pointing directly left toward button */}
+        <div className="flex items-center gap-2.5 self-end sm:self-center">
+          {/* Whimsical hand-drawn dashed swoop arching from text curving down into the button */}
           <svg
-            className="w-10 h-8 text-[#087F8C] shrink-0"
-            viewBox="0 0 44 32"
+            className="w-12 h-9 text-[#087F8C] shrink-0 drop-shadow-sm -mr-1"
+            viewBox="0 0 54 36"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            {/* Swoop from top-right down toward left */}
+            {/* Smooth arch: starts near text at right, curves up and sweeps left-down into button */}
             <path
-              d="M38 6 C28 4, 14 8, 8 20"
+              d="M 50 14 C 44 4, 26 2, 8 18"
               stroke="currentColor"
               strokeWidth="2.2"
               strokeLinecap="round"
-              strokeDasharray="3.5 3.5"
+              strokeDasharray="4 3"
             />
-            {/* Arrowhead pointing left toward the button */}
+            {/* Arrowhead pointing left-down directly into the button pill */}
             <path
-              d="M14 14 L 6 20 L 12 26"
+              d="M 18 13 L 7 18 L 10 27"
               stroke="currentColor"
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
-          <span className="text-[12px] font-medium text-[#3D5A53] italic whitespace-nowrap">
+          <span className="text-[12.5px] font-medium text-[#2d4a44] italic whitespace-nowrap tracking-tight font-serif select-none">
             Want this exact AI agent for your business?
           </span>
         </div>
