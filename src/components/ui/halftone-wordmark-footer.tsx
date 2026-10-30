@@ -171,8 +171,19 @@ const HWF_CSS = `
   font-family: var(--hwf-mono); font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
 }
 .hwf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (max-width: 720px) {
-  .hwf-top { grid-template-columns: minmax(0, 1fr); row-gap: 18px; }
+@media (max-width: 900px) {
+  .hwf-top { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 22px; }
+  .hwf-brand { grid-column: span 2; }
+}
+@media (max-width: 640px) {
+  .hwf-root { min-height: 420px; height: auto !important; padding-bottom: 32px; }
+  .hwf-root canvas { opacity: 0.35; }
+  .hwf-top { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 18px; column-gap: 16px; padding: 24px 20px 0; font-size: 10px; }
+  .hwf-brand { grid-column: span 2; margin-bottom: 4px; }
+  .hwf-rule { margin: 24px 20px 0; padding-top: 14px; }
+}
+@media (max-width: 380px) {
+  .hwf-top { grid-template-columns: 1fr; }
   .hwf-brand { grid-column: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -255,14 +266,18 @@ export default function HalftoneWordmarkFooter({
       const face = o.fontWeight + " 100px " + o.fontFamily
       m.font = face
       const word = o.wordmark || " "
-      const fit = hwfFitSize(m.measureText(word).width, w * 1.02)
+      // In mobile/small screens, scale wordmark down so it sits comfortably at the very bottom
+      const isMobile = w < 640
+      const targetWidth = isMobile ? w * 0.92 : w * 1.02
+      const fit = hwfFitSize(m.measureText(word).width, targetWidth)
       m.font = o.fontWeight + " " + fit + "px " + o.fontFamily
       const box = m.measureText(word)
       const cap = box.actualBoundingBoxAscent || fit * 0.72
-      const c = Math.max(0, Math.min(0.6, o.crop))
+      const c = isMobile ? 0.05 : Math.max(0, Math.min(0.6, o.crop))
       m.fillStyle = "#000"
       m.textBaseline = "alphabetic"
-      m.fillText(word, (w - box.width) / 2, h + cap * c)
+      // Position wordmark strictly at the baseline so it never overlaps the navigation links above
+      m.fillText(word, (w - box.width) / 2, isMobile ? h - 10 : h + cap * c)
       const img = m.getImageData(0, 0, w, h).data
 
       const gap = Math.max(3, o.dotGap)

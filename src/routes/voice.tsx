@@ -461,6 +461,7 @@ function VoiceCallPage() {
             }}
             onError={(err) => {
               console.warn("Audio connection notice:", err?.message || err);
+              // Only fail if we haven't connected yet
               if (connectionState === "connecting") {
                 setConnectionState("connection_failed");
                 setError(
@@ -469,25 +470,31 @@ function VoiceCallPage() {
               }
             }}
             onDisconnected={() => {
+              // Only mark disconnected if we didn't intentionally end
               if (connectionState !== "ended") {
                 setConnectionState("disconnected");
               }
             }}
+            options={{
+              disconnectOnPageLeave: true,
+              adaptiveStream: true,
+              dynacast: true,
+            }}
             className="w-full h-full flex flex-col"
           >
+            <RoomAudioRenderer />
             <ActivePhoneCallScreen
               connectionState={connectionState}
               setConnectionState={setConnectionState}
               customerName={session.customer.name}
               customerNumber={session.customer.customerNumber}
-              agentName={session.agentName || "InsurCall AI Assistant"}
+              agentName={session.tenantName ? (session.agentName || "InsurCall Agent") : "InsurCall Agent"}
               tenantName={session.tenantName || session.customer.name}
               ragAvailable={session.ragAvailable}
               callSessionId={session.callSessionId}
               micStream={session.micStream}
               onEnd={handleEndCall}
             />
-            <RoomAudioRenderer />
           </LiveKitRoom>
         )}
 
@@ -700,7 +707,13 @@ function ActivePhoneCallScreen({
 }) {
   const room = useRoomContext();
   const roomConnectionState = useConnectionState();
-  const { state: agentState } = useVoiceAssistant();
+  let agentState: string = "connecting";
+  try {
+    const va = useVoiceAssistant();
+    agentState = va.state;
+  } catch {
+    // VoiceAssistant not available yet — agent hasn't joined
+  }
 
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerMuted, setIsSpeakerMuted] = useState(false);
@@ -712,6 +725,9 @@ function ActivePhoneCallScreen({
   const [textInput, setTextInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [micVolume, setMicVolume] = useState(0);
+  // Track if agent is speaking to block recognition pickup
+  const agentSpeakingRef = useRef(false);
+  const speakCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
 
@@ -728,6 +744,11 @@ function ActivePhoneCallScreen({
         setConnectionState("listening");
         return;
       }
+      // Stop any active recognition before speaking to prevent echo loop
+      agentSpeakingRef.current = true;
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
       try {
         window.speechSynthesis.cancel();
         const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
@@ -737,17 +758,29 @@ function ActivePhoneCallScreen({
         const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise/i.test(text);
         utterance.lang = isHindi ? "hi-IN" : "en-IN";
         utterance.onstart = () => {
+          agentSpeakingRef.current = true;
           setConnectionState("speaking");
         };
         utterance.onend = () => {
-          setConnectionState("listening");
+          // Add cooldown before allowing speech recognition to restart
+          // This prevents echo pickup of the last syllable
+          if (speakCooldownRef.current) clearTimeout(speakCooldownRef.current);
+          speakCooldownRef.current = setTimeout(() => {
+            agentSpeakingRef.current = false;
+            setConnectionState("listening");
+          }, 1200);
         };
         utterance.onerror = () => {
-          setConnectionState("listening");
+          if (speakCooldownRef.current) clearTimeout(speakCooldownRef.current);
+          speakCooldownRef.current = setTimeout(() => {
+            agentSpeakingRef.current = false;
+            setConnectionState("listening");
+          }, 800);
         };
         window.speechSynthesis.speak(utterance);
       } catch (e) {
         console.warn("Speech playback notice:", e);
+        agentSpeakingRef.current = false;
         setConnectionState("listening");
       }
     },
@@ -777,8 +810,10 @@ function ActivePhoneCallScreen({
     }
   }, [roomConnectionState, agentName, tenantName, speakAssistantText]);
 
+  // Cleanup all audio/speech resources on unmount
   useEffect(() => {
     return () => {
+      agentSpeakingRef.current = false;
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
@@ -786,17 +821,34 @@ function ActivePhoneCallScreen({
         try {
           recognitionRef.current.stop();
         } catch {}
+        recognitionRef.current = null;
       }
       if (speechDebounceRef.current) {
         clearTimeout(speechDebounceRef.current);
+        speechDebounceRef.current = null;
+      }
+      if (speakCooldownRef.current) {
+        clearTimeout(speakCooldownRef.current);
+        speakCooldownRef.current = null;
       }
     };
   }, []);
 
+  // Sync LiveKit agent state with our local connection state
+  // Only update if we're not in the middle of our own TTS cooldown
   useEffect(() => {
-    if (agentState === "speaking") setConnectionState("speaking");
-    else if (agentState === "thinking") setConnectionState("processing");
-    else if (agentState === "listening") setConnectionState("listening");
+    if (agentSpeakingRef.current) return; // Our TTS is active, don't override
+    if (agentState === "speaking") {
+      agentSpeakingRef.current = true;
+      setConnectionState("speaking");
+    } else if (agentState === "thinking") {
+      setConnectionState("processing");
+    } else if (agentState === "listening") {
+      // Only transition to listening if agent isn't in TTS cooldown
+      if (!agentSpeakingRef.current) {
+        setConnectionState("listening");
+      }
+    }
   }, [agentState, setConnectionState]);
 
   const formatTimer = (totalSeconds: number) => {
@@ -988,60 +1040,77 @@ function ActivePhoneCallScreen({
     [duration, setConnectionState, callSessionId, speakAssistantText]
   );
 
-  // Continuous speech recognition with immediate barge-in interruption
+  // Continuous speech recognition with strict audio guard
+  // Key fix: only run when connectionState is "listening" AND agent is NOT speaking
+  // This prevents the connect/disconnect cycling caused by recognition restarting during agent speech
   useEffect(() => {
-    if (connectionState === "ended" || isMuted) {
+    // Hard stop conditions — never run recognition in these states
+    if (
+      connectionState === "ended" ||
+      connectionState === "speaking" ||
+      connectionState === "processing" ||
+      connectionState === "connecting" ||
+      connectionState === "connected" ||
+      isMuted ||
+      agentSpeakingRef.current
+    ) {
       if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
+        try { recognitionRef.current.stop(); } catch {}
+        recognitionRef.current = null;
       }
       return;
     }
 
+    // Only start recognition when actively listening
+    if (connectionState !== "listening") return;
+
     const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) {
-      return;
-    }
+    if (!SpeechRecognitionClass) return;
+
+    let isUnmounted = false;
+    let restartTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     try {
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-IN";
+      recognition.maxAlternatives = 1;
 
       recognition.onspeechstart = () => {
+        // User started speaking — if agent TTS is playing, cancel it
+        if (agentSpeakingRef.current) return; // Don't interrupt if it's echo
         if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
           window.speechSynthesis.cancel();
+          agentSpeakingRef.current = false;
+          if (speakCooldownRef.current) {
+            clearTimeout(speakCooldownRef.current);
+            speakCooldownRef.current = null;
+          }
           setConnectionState("listening");
         }
       };
 
       recognition.onresult = (event: any) => {
-        let interimText = "";
+        // If agent is speaking, ignore all results (echo protection)
+        if (agentSpeakingRef.current) return;
+
         let finalChunk = "";
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const transcript = event.results[i]?.[0]?.transcript || "";
           if (event.results[i]?.isFinal) {
             finalChunk += transcript;
-          } else {
-            interimText += transcript;
-          }
-        }
-
-        if (interimText.trim() || finalChunk.trim()) {
-          if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
-            window.speechSynthesis.cancel();
-            setConnectionState("listening");
           }
         }
 
         if (finalChunk.trim()) {
           if (speechDebounceRef.current) clearTimeout(speechDebounceRef.current);
           speechDebounceRef.current = setTimeout(() => {
-            sendPrompt(finalChunk.trim());
-          }, 450);
+            if (!agentSpeakingRef.current) {
+              sendPrompt(finalChunk.trim());
+            }
+          }, 600);
         }
       };
 
@@ -1052,10 +1121,18 @@ function ActivePhoneCallScreen({
       };
 
       recognition.onend = () => {
-        if (!isMuted) {
-          try {
-            recognition.start();
-          } catch {}
+        // Delayed restart to prevent rapid restart loop
+        if (
+          !isUnmounted &&
+          !isMuted &&
+          !agentSpeakingRef.current &&
+          connectionState === "listening"
+        ) {
+          restartTimeoutId = setTimeout(() => {
+            if (!isUnmounted && !agentSpeakingRef.current) {
+              try { recognition.start(); } catch {}
+            }
+          }, 500); // 500ms gap between recognition sessions
         }
       };
 
@@ -1063,9 +1140,10 @@ function ActivePhoneCallScreen({
       recognitionRef.current = recognition;
 
       return () => {
-        try {
-          recognition.stop();
-        } catch {}
+        isUnmounted = true;
+        if (restartTimeoutId) clearTimeout(restartTimeoutId);
+        try { recognition.stop(); } catch {}
+        recognitionRef.current = null;
       };
     } catch (e) {
       console.warn("Speech recognition setup notice:", e);

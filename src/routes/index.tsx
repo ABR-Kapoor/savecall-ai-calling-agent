@@ -113,9 +113,16 @@ function LandingPage() {
             <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(#9CAFA9_0.75px,transparent_0.75px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black_45%,transparent_80%)]" />
           </div>
 
-          <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-6 pt-32 pb-20 sm:pt-36 sm:pb-24 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16 lg:pt-40 lg:pb-28">
-            <div className="relative z-10 max-w-xl">
-              <div className="landing-rise mb-7 inline-flex items-center gap-2.5 rounded-full border border-[#087F8C]/20 bg-white/80 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-[#087F8C] shadow-sm backdrop-blur" style={{ animationDelay: "0ms" }}>
+          <div className="relative mx-auto grid max-w-7xl items-center gap-8 lg:gap-16 px-3 sm:px-6 pt-24 pb-16 sm:pt-36 sm:pb-24 lg:grid-cols-[0.92fr_1.08fr] lg:pt-40 lg:pb-28">
+            {/* 1. Interactive Concierge Chat/Voice Panel - Centered on Mobile! */}
+            <div className="landing-rise order-1 lg:order-2 relative z-10 w-full max-w-[590px] mx-auto flex flex-col items-center lg:items-end" style={{ animationDelay: "100ms" }}>
+              <div aria-hidden="true" className="absolute -inset-4 sm:-inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-[#CFE8E3]/80 via-[#E8F5F2]/40 to-[#E5EBDD]/60 blur-3xl opacity-80" />
+              <InsuranceHeroPanel />
+            </div>
+
+            {/* 2. Headline & Copy - Second on Mobile */}
+            <div className="landing-rise order-2 lg:order-1 relative z-10 max-w-xl mx-auto lg:mx-0 text-center lg:text-left">
+              <div className="mb-5 sm:mb-7 inline-flex items-center gap-2.5 rounded-full border border-[#087F8C]/20 bg-white/80 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-[#087F8C] shadow-sm backdrop-blur" style={{ animationDelay: "0ms" }}>
                 <span className="relative flex size-2">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#087F8C]/45 motion-reduce:animate-none" />
                   <span className="relative inline-flex size-2 rounded-full bg-[#087F8C]" />
@@ -123,15 +130,15 @@ function LandingPage() {
                 VOICE AI, BUILT FOR INSURANCE
               </div>
 
-              <h1 className="landing-rise text-balance-tight font-display text-[2.75rem] font-semibold leading-[1.06] tracking-[-0.055em] text-[#142B2D] sm:text-6xl lg:text-[4.2rem]" style={{ animationDelay: "120ms" }}>
+              <h1 className="text-balance-tight font-display text-[2.25rem] font-semibold leading-[1.08] tracking-[-0.05em] text-[#142B2D] sm:text-6xl lg:text-[4.2rem]" style={{ animationDelay: "120ms" }}>
                 Every call can move a claim <span className="text-[#087F8C]">forward.</span>
               </h1>
 
-              <p className="landing-rise mt-6 max-w-lg text-base leading-7 text-[#536466] sm:text-lg sm:leading-8" style={{ animationDelay: "240ms" }}>
+              <p className="mt-4 sm:mt-6 max-w-lg mx-auto lg:mx-0 text-sm leading-6 text-[#536466] sm:text-lg sm:leading-8" style={{ animationDelay: "240ms" }}>
                 InsurCall helps insurance teams handle policy questions and capture claims details - then brings people in when a decision needs human review.
               </p>
 
-              <div className="landing-rise mt-8 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "360ms" }}>
+              <div className="mt-6 sm:mt-8 flex flex-col gap-3 sm:flex-row justify-center lg:justify-start" style={{ animationDelay: "360ms" }}>
                 <Button asChild size="lg" className="h-12 rounded-xl bg-[#087F8C] px-6 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(8,127,140,0.65)] transition-all hover:-translate-y-0.5 hover:bg-[#076C77] hover:shadow-[0_12px_24px_-8px_rgba(8,127,140,0.55)] active:translate-y-0">
                   <Link to={user ? "/voice" : "/auth"}>
                     <PhoneCall className="mr-2 size-4" />
@@ -143,15 +150,10 @@ function LandingPage() {
                 </Button>
               </div>
 
-              <div className="landing-rise mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#DCE4E0] pt-5 text-xs font-medium text-[#536466]" style={{ animationDelay: "480ms" }}>
+              <div className="mt-8 sm:mt-9 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-3 border-t border-[#DCE4E0] pt-5 text-xs font-medium text-[#536466]" style={{ animationDelay: "480ms" }}>
                 <span className="inline-flex items-center gap-2"><ShieldCheck className="size-4 text-[#087F8C]" /> Policy answers use approved information when available</span>
                 <span className="inline-flex items-center gap-2"><UserCheck className="size-4 text-[#087F8C]" /> People review consequential actions</span>
               </div>
-            </div>
-
-            <div className="landing-rise relative z-10 mx-auto w-full max-w-[590px] lg:ml-auto" style={{ animationDelay: "220ms" }}>
-              <div aria-hidden="true" className="absolute -inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-[#CFE8E3]/80 via-[#E8F5F2]/40 to-[#E5EBDD]/60 blur-3xl opacity-80" />
-              <InsuranceHeroPanel />
             </div>
           </div>
         </section>

@@ -380,11 +380,11 @@ export function InsuranceHeroPanel() {
         {/* Subtle top brand hairline */}
         <div className="h-1 w-full bg-gradient-to-r from-[#087F8C]/20 via-[#087F8C] to-[#10A6AE]/30" />
 
-        {/* Top Clean Header */}
-        <div className="flex items-center justify-between border-b border-[#E8EFEA] bg-[#FAFBF9]/90 px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
+        {/* Top Clean Header with minimal padding on mobile */}
+        <div className="flex items-center justify-between border-b border-[#E8EFEA] bg-[#FAFBF9]/90 px-3 py-3 sm:px-6">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             {/* Real Official InsurCall Logo */}
-            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-white border border-[#DCE6E1] p-2 shadow-2xs">
+            <div className="grid size-9 sm:size-11 shrink-0 place-items-center rounded-xl bg-white border border-[#DCE6E1] p-1.5 sm:p-2 shadow-2xs">
               <img
                 src="/01_logo_only_transparent.png"
                 alt="InsurCall"
@@ -392,34 +392,22 @@ export function InsuranceHeroPanel() {
               />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-[#142D2B] leading-none">InsurCall</h3>
-                <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-[#142D2B] leading-none">InsurCall</h3>
+                <span className="flex size-1.5 sm:size-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
-              <p className="text-xs text-[#637A73] mt-1 font-medium">Policy & Claims AI Concierge</p>
+              <p className="text-[11px] sm:text-xs text-[#637A73] mt-0.5 sm:mt-1 font-medium">Policy & Claims AI Concierge</p>
             </div>
           </div>
 
-          {/* Single Call Button */}
-          {isCallActive ? (
-            <button
-              type="button"
-              onClick={endVoiceCall}
-              className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 hover:bg-rose-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs animate-pulse transition-all active:scale-95 cursor-pointer"
-            >
-              <PhoneOff className="size-3.5" />
-              <span>End ({formatTimer(callDuration)})</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void startVoiceCall()}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#087F8C] hover:bg-[#076C77] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_4px_14px_-2px_rgba(8,127,140,0.5)] transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-            >
-              <Phone className="size-3.5 fill-current" />
-              <span>Call Now</span>
-            </button>
-          )}
+          {/* Call Now Button -> Redirect to Interactive Voice Demo (/voice) */}
+          <Link
+            to="/voice"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#087F8C] hover:bg-[#076C77] px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-[0_4px_14px_-2px_rgba(8,127,140,0.5)] transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer shrink-0"
+          >
+            <Phone className="size-3.5 fill-current" />
+            <span>Call Now</span>
+          </Link>
         </div>
 
         {/* In-Call Active Strip */}
@@ -460,8 +448,8 @@ export function InsuranceHeroPanel() {
           </div>
         )}
 
-        {/* Main Conversation Stream */}
-        <div className="p-5 sm:p-6">
+        {/* Main Conversation Stream with minimal mobile padding */}
+        <div className="px-3 py-3.5 sm:p-6">
           <div
             ref={threadRef}
             role="log"
@@ -484,14 +472,14 @@ export function InsuranceHeroPanel() {
                   className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                    className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed ${
                       message.role === "user"
                         ? "bg-[#143B39] text-white shadow-xs"
                         : "border border-[#DFECE6] bg-[#F7FAF8] text-[#243D36]"
                     }`}
                   >
                     {message.role === "assistant" && (
-                      <div className="mb-1 flex items-center justify-between border-b border-[#E3EDE8] pb-1 text-[10px] font-medium text-[#4B7365]">
+                      <div className="mb-1.5 flex items-center justify-between border-b border-[#E3EDE8] pb-1 text-[11px] font-medium text-[#4B7365]">
                         <span>InsurCall</span>
                         <button
                           type="button"
@@ -499,7 +487,7 @@ export function InsuranceHeroPanel() {
                           title="Listen"
                           className="p-0.5 text-[#52776A] hover:text-[#087F8C]"
                         >
-                          <Volume2 className="size-3" />
+                          <Volume2 className="size-3.5" />
                         </button>
                       </div>
                     )}
@@ -509,22 +497,22 @@ export function InsuranceHeroPanel() {
               ))
             )}
             {isLoading && (
-              <div className="flex items-center gap-2 text-xs text-[#627770]">
-                <LoaderCircle className="size-3.5 animate-spin text-[#087F8C]" /> Checking information...
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-[#627770]">
+                <LoaderCircle className="size-4 animate-spin text-[#087F8C]" /> Checking information...
               </div>
             )}
           </div>
 
           {/* Short Question Chips */}
           {messages.length === 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Quick questions">
+            <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2" aria-label="Quick questions">
               {suggestions.map((question) => (
                 <button
                   key={question}
                   type="button"
                   disabled={isLoading}
                   onClick={() => void sendMessage(question, isCallActive)}
-                  className="rounded-full border border-[#D5E3DD] bg-white hover:bg-[#EBF7F7] hover:border-[#087F8C]/40 hover:text-[#087F8C] px-3.5 py-1 text-left text-[11px] font-medium text-[#38514A] transition-all hover:-translate-y-0.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                  className="rounded-full border border-[#D5E3DD] bg-white hover:bg-[#EBF7F7] hover:border-[#087F8C]/40 hover:text-[#087F8C] px-3 py-1 sm:px-4 sm:py-1.5 text-left text-[11px] sm:text-[13px] font-medium text-[#38514A] transition-all hover:-translate-y-0.5 shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
                   {question}
                 </button>
@@ -534,7 +522,7 @@ export function InsuranceHeroPanel() {
 
           {/* Input Bar */}
           <form
-            className="mt-3.5 flex items-center gap-2"
+            className="mt-3.5 sm:mt-4 flex items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void sendMessage(draft, isCallActive);
@@ -551,13 +539,13 @@ export function InsuranceHeroPanel() {
               maxLength={350}
               placeholder={isCallActive ? "Type or speak naturally..." : "Ask about policies, deductibles, or claims..."}
               disabled={isLoading}
-              className="h-10 min-w-0 flex-1 rounded-xl border border-[#D2E2DC] bg-[#FAFBF9] hover:bg-white focus:bg-white px-3.5 text-xs text-[#1B3630] outline-none placeholder:text-[#889B93] focus:border-[#087F8C] focus:ring-2 focus:ring-[#087F8C]/15 disabled:bg-[#F5F8F6] transition-all"
+              className="h-10 sm:h-12 min-w-0 flex-1 rounded-xl border border-[#D2E2DC] bg-[#FAFBF9] hover:bg-white focus:bg-white px-3 sm:px-4 text-xs sm:text-sm text-[#1B3630] outline-none placeholder:text-[#889B93] focus:border-[#087F8C] focus:ring-2 focus:ring-[#087F8C]/15 disabled:bg-[#F5F8F6] transition-all"
             />
             <button
               type="submit"
               disabled={!draft.trim() || isLoading}
               aria-label="Send"
-              className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#087F8C] text-white transition-all hover:bg-[#076C77] active:scale-95 disabled:cursor-not-allowed disabled:bg-[#B5C7C0] shadow-2xs"
+              className="grid size-10 sm:size-12 shrink-0 place-items-center rounded-xl bg-[#087F8C] text-white transition-all hover:bg-[#076C77] active:scale-95 disabled:cursor-not-allowed disabled:bg-[#B5C7C0] shadow-2xs cursor-pointer"
             >
               <Send className="size-4" />
             </button>
@@ -565,15 +553,15 @@ export function InsuranceHeroPanel() {
           {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-[#E8EFEA] bg-[#FAFBF9] px-4 py-2.5 text-[11px] text-[#697D76] sm:px-5">
+        {/* Footer with Dedicated Phone Line leading to /phone (WhatsApp calling channel) requiring login */}
+        <div className="flex items-center justify-between border-t border-[#E8EFEA] bg-[#FAFBF9] px-3.5 py-2.5 text-[11px] text-[#697D76] sm:px-5">
           <span className="flex items-center gap-1.5 font-medium">
             <ShieldCheck className="size-3.5 text-emerald-600" />
             Verified policy guidance
           </span>
           <Link
-            to={user ? "/voice" : "/auth"}
-            className="inline-flex items-center gap-1 font-semibold text-[#087F8C] hover:text-[#076C77] hover:underline"
+            to={user ? "/phone" : "/auth"}
+            className="inline-flex items-center gap-1 font-semibold text-[#087F8C] hover:text-[#076C77] hover:underline cursor-pointer"
           >
             <span>Dedicated Phone Line</span>
             <ArrowUpRight className="size-3" />
@@ -582,46 +570,50 @@ export function InsuranceHeroPanel() {
       </div>
 
       {/* 2. Curvy Arrow & Catchy Onboarding CTA */}
-      <div className="mt-4 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 px-2 sm:px-3">
-        {/* Catchy Onboarding Button */}
-        <Link
-          to={user ? "/onboarding" : "/auth"}
-          className="group inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#087F8C] via-[#098D9B] to-[#0AA0AE] hover:from-[#076C77] hover:to-[#087F8C] px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(8,127,140,0.55)] hover:shadow-[0_12px_30px_-6px_rgba(8,127,140,0.65)] hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer shrink-0"
-        >
-          <Sparkles className="size-4 text-emerald-200 animate-pulse" />
-          <span>Get This Agent For My Company</span>
-          <div className="size-5 rounded-full bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5">
-            <ArrowRight className="size-3 text-white" />
-          </div>
-        </Link>
-
-        {/* Curvy arrow gesture pointing to button from right */}
-        <div className="flex items-center gap-2 self-end sm:self-center">
-          {/* Exact loop arrow from user image: arcs up and loops counter-clockwise with arrowhead pointing down-left */}
+      <div className="mt-5 flex flex-col items-center sm:items-start justify-center gap-1.5 px-1 sm:px-3 w-full">
+        {/* 'Want this...' tag + Downward curved arrow pointing directly down into the button */}
+        <div className="flex items-center justify-center gap-2 pl-0 sm:pl-2">
+          <span className="text-xs sm:text-[13px] font-semibold text-[#24433B] italic select-none text-center">
+            Want this exact AI agent for your business?
+          </span>
+          {/* Hand-drawn downward swooping arrow pointing down into the button */}
           <svg
-            className="w-10 h-10 text-[#087F8C] shrink-0 drop-shadow-xs"
-            viewBox="0 0 100 100"
+            className="w-6 h-6 text-[#087F8C] shrink-0 drop-shadow-xs -rotate-12 translate-y-0.5"
+            viewBox="0 0 32 32"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            {/* Curving tail looping overhead from text down to button */}
+            {/* Smooth curve arching from top-left curving down */}
             <path
-              d="M 20 40 C 26 22, 45 14, 68 18 C 84 22, 92 36, 88 56 C 84 72, 70 82, 54 84"
+              d="M 6 6 C 14 6, 22 12, 18 24"
               stroke="currentColor"
-              strokeWidth="9"
+              strokeWidth="2.5"
               strokeLinecap="round"
+              strokeDasharray="4 3"
             />
-            {/* Arrowhead pointing down-left directly into button */}
-            <polygon
-              points="38,82 60,66 62,94"
-              fill="currentColor"
+            {/* Arrowhead pointing down */}
+            <path
+              d="M 12 19 L 18 25 L 24 19"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
-          <span className="text-[13px] font-semibold text-[#24433B] italic whitespace-nowrap select-none">
-            Want this exact AI agent for your business?
-          </span>
         </div>
+
+        {/* Catchy Onboarding Button */}
+        <Link
+          to={user ? "/onboarding" : "/auth"}
+          className="group w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#087F8C] via-[#098D9B] to-[#0AA0AE] hover:from-[#076C77] hover:to-[#087F8C] px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(8,127,140,0.55)] hover:shadow-[0_12px_30px_-6px_rgba(8,127,140,0.65)] hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer text-center"
+        >
+          <Sparkles className="size-4 text-emerald-200 animate-pulse shrink-0" />
+          <span>Get This Agent For My Company</span>
+          <div className="size-5 rounded-full bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 shrink-0">
+            <ArrowRight className="size-3 text-white" />
+          </div>
+        </Link>
       </div>
     </div>
   );
