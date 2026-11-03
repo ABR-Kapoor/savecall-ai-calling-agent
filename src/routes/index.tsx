@@ -100,7 +100,7 @@ function LandingPage() {
 
       <main className="flex-1">
         {/* 2. Hero: Insurance conversations, made actionable */}
-        <section className="relative isolate overflow-hidden bg-[#FAF9F6]">
+        <section className="relative isolate overflow-hidden bg-[#FAF9F6] min-h-[calc(100svh-4.25rem)] lg:min-h-screen lg:flex lg:flex-col lg:justify-center">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
             {/* Top Right Big Luminous Aurora Effect */}
             <div className="absolute -top-36 -right-24 size-[48rem] rounded-full bg-gradient-to-br from-[#087F8C]/18 via-[#10A6AE]/14 to-[#4EA89D]/12 blur-[130px]" />
@@ -117,11 +117,11 @@ function LandingPage() {
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/80 to-[#FAF9F6] pointer-events-none" />
           </div>
 
-          <div className="relative mx-auto grid max-w-7xl items-center gap-8 lg:gap-16 px-2 sm:px-6 pt-16 sm:pt-24 pb-8 sm:pb-24 lg:grid-cols-[0.92fr_1.08fr] lg:pt-36 lg:pb-28">
+          <div className="relative mx-auto grid max-w-7xl xl:max-w-[1440px] w-full items-center gap-8 lg:gap-12 xl:gap-16 px-4 sm:px-6 lg:px-8 xl:px-12 pt-20 sm:pt-24 pb-8 sm:pb-24 lg:grid-cols-[0.95fr_1.05fr] lg:py-0">
             {/* 1. HERO CENTERPIECE: The Beautifully Redesigned Chat & Voice Box */}
             {/* On mobile: First in DOM order, occupies hero viewport centered! On desktop: Column 2 (Right) */}
             <div
-              className="landing-rise order-1 lg:order-2 lg:col-start-2 lg:row-start-1 relative z-10 w-full max-w-[660px] mx-auto flex flex-col items-center justify-center min-h-[calc(100svh-4.25rem)] lg:min-h-0 py-2 sm:py-6 lg:py-0"
+              className="landing-rise order-1 lg:order-2 lg:col-start-2 lg:row-start-1 relative z-10 w-full max-w-[660px] lg:max-w-[620px] xl:max-w-[700px] mx-auto flex flex-col items-center justify-center min-h-[calc(100svh-4.25rem)] lg:min-h-0 py-2 sm:py-6 lg:py-0"
               style={{ animationDelay: "100ms" }}
             >
               <div aria-hidden="true" className="absolute -inset-4 sm:-inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-[#CFE8E3]/60 via-[#E8F5F2]/30 to-[#E5EBDD]/50 blur-3xl opacity-70" />
@@ -141,9 +141,9 @@ function LandingPage() {
             {/* On mobile: Appears below chatbox after scrolling down! On desktop: Column 1 (Left) */}
             <div
               id="platform-overview"
-              className="landing-rise order-2 lg:order-1 lg:col-start-1 lg:row-start-1 relative z-10 max-w-xl mx-auto lg:mx-0 text-center lg:text-left pt-14 sm:pt-16 lg:pt-0 scroll-mt-20"
+              className="landing-rise order-2 lg:order-1 lg:col-start-1 lg:row-start-1 relative z-10 max-w-xl xl:max-w-2xl mx-auto lg:mx-0 text-center lg:text-left pt-14 sm:pt-16 lg:pt-0 scroll-mt-20"
             >
-              <div className="mb-5 sm:mb-7 inline-flex items-center gap-2.5 rounded-full border border-[#087F8C]/20 bg-white/80 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-[#087F8C] shadow-sm backdrop-blur" style={{ animationDelay: "0ms" }}>
+              <div className="mb-4 sm:mb-6 inline-flex items-center gap-2.5 rounded-full border border-[#087F8C]/20 bg-white/80 px-3.5 py-2 text-[11px] xl:text-xs font-semibold tracking-wide text-[#087F8C] shadow-sm backdrop-blur" style={{ animationDelay: "0ms" }}>
                 <span className="relative flex size-2">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#087F8C]/45 motion-reduce:animate-none" />
                   <span className="relative inline-flex size-2 rounded-full bg-[#087F8C]" />
@@ -151,29 +151,29 @@ function LandingPage() {
                 VOICE AI, BUILT FOR INSURANCE
               </div>
 
-              <h1 className="text-balance-tight font-display text-[2.25rem] font-semibold leading-[1.08] tracking-[-0.05em] text-[#142B2D] sm:text-6xl lg:text-[4.2rem]" style={{ animationDelay: "120ms" }}>
+              <h1 className="text-balance-tight font-display text-[2.25rem] font-semibold leading-[1.08] tracking-[-0.05em] text-[#142B2D] sm:text-6xl lg:text-[3.8rem] xl:text-[4.6rem]" style={{ animationDelay: "120ms" }}>
                 Every call can move a claim <span className="text-[#087F8C]">forward.</span>
               </h1>
 
-              <p className="mt-4 sm:mt-6 max-w-lg mx-auto lg:mx-0 text-sm leading-6 text-[#536466] sm:text-lg sm:leading-8" style={{ animationDelay: "240ms" }}>
+              <p className="mt-4 sm:mt-6 max-w-lg xl:max-w-xl mx-auto lg:mx-0 text-sm leading-6 text-[#536466] sm:text-lg xl:text-xl sm:leading-8 xl:leading-9" style={{ animationDelay: "240ms" }}>
                 InsurCall helps insurance teams handle policy questions and capture claims details - then brings people in when a decision needs human review.
               </p>
 
               <div className="mt-6 sm:mt-8 flex flex-col gap-3 sm:flex-row justify-center lg:justify-start" style={{ animationDelay: "360ms" }}>
-                <Button asChild size="lg" className="h-12 rounded-xl bg-[#087F8C] px-6 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(8,127,140,0.65)] transition-all hover:-translate-y-0.5 hover:bg-[#076C77] hover:shadow-[0_12px_24px_-8px_rgba(8,127,140,0.55)] active:translate-y-0">
+                <Button asChild size="lg" className="h-12 xl:h-14 rounded-xl bg-[#087F8C] px-6 xl:px-8 text-sm xl:text-base font-semibold text-white shadow-[0_8px_20px_-8px_rgba(8,127,140,0.65)] transition-all hover:-translate-y-0.5 hover:bg-[#076C77] hover:shadow-[0_12px_24px_-8px_rgba(8,127,140,0.55)] active:translate-y-0">
                   <Link to={user ? "/voice" : "/auth"}>
-                    <PhoneCall className="mr-2 size-4" />
+                    <PhoneCall className="mr-2 size-4 xl:size-5" />
                     {user ? "Launch Voice Studio" : "Try Voice Calling"}
                   </Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="h-12 rounded-xl border-[#D8E1DE] bg-white/70 px-5 text-sm font-semibold text-[#243B3D] transition-all hover:-translate-y-0.5 hover:border-[#087F8C]/40 hover:bg-white">
-                  <a href="#claims-workflow">See how claims intake works <ArrowRight className="ml-2 size-4" /></a>
+                <Button asChild size="lg" variant="outline" className="h-12 xl:h-14 rounded-xl border-[#D8E1DE] bg-white/70 px-5 xl:px-7 text-sm xl:text-base font-semibold text-[#243B3D] transition-all hover:-translate-y-0.5 hover:border-[#087F8C]/40 hover:bg-white">
+                  <a href="#claims-workflow">See how claims intake works <ArrowRight className="ml-2 size-4 xl:size-5" /></a>
                 </Button>
               </div>
 
-              <div className="mt-8 sm:mt-9 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-3 border-t border-[#DCE4E0] pt-5 text-xs font-medium text-[#536466]" style={{ animationDelay: "480ms" }}>
-                <span className="inline-flex items-center gap-2"><ShieldCheck className="size-4 text-[#087F8C]" /> Policy answers use approved information when available</span>
-                <span className="inline-flex items-center gap-2"><UserCheck className="size-4 text-[#087F8C]" /> People review consequential actions</span>
+              <div className="mt-7 sm:mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-3 border-t border-[#DCE4E0] pt-5 text-xs xl:text-sm font-medium text-[#536466]" style={{ animationDelay: "480ms" }}>
+                <span className="inline-flex items-center gap-2"><ShieldCheck className="size-4 xl:size-5 text-[#087F8C]" /> Policy answers use approved information when available</span>
+                <span className="inline-flex items-center gap-2"><UserCheck className="size-4 xl:size-5 text-[#087F8C]" /> People review consequential actions</span>
               </div>
             </div>
           </div>

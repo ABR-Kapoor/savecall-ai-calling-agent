@@ -446,10 +446,10 @@ export function InsuranceHeroPanel() {
           )}
 
           {/* Main Conversation Stream */}
-          <div className="px-4 py-4 sm:p-6">
+          <div className="px-4 py-4 sm:p-6 xl:p-8">
             {/* Seamless Title inside Chatbox Canvas */}
-            <div className="pb-1.5">
-              <p className="text-xs sm:text-sm font-bold tracking-wider uppercase text-slate-900">
+            <div className="pb-1.5 xl:pb-2.5">
+              <p className="text-xs sm:text-sm xl:text-base font-bold tracking-wider uppercase text-slate-900">
                 Policy & Claims AI Concierge
               </p>
             </div>
@@ -458,11 +458,11 @@ export function InsuranceHeroPanel() {
               ref={threadRef}
               role="log"
               aria-label="Conversation"
-              className="max-h-[280px] min-h-[140px] sm:max-h-[340px] sm:min-h-[180px] space-y-3 overflow-y-auto overscroll-contain pr-1"
+              className="max-h-[280px] min-h-[140px] sm:max-h-[340px] sm:min-h-[180px] xl:max-h-[400px] xl:min-h-[220px] space-y-3 overflow-y-auto overscroll-contain pr-1"
             >
               {messages.length === 0 ? (
-                <div className="py-2 sm:py-3 text-left">
-                  <h4 className="text-xl sm:text-2xl font-bold text-[#111827] tracking-tight">
+                <div className="py-2 sm:py-3 xl:py-4 text-left">
+                  <h4 className="text-xl sm:text-2xl xl:text-3xl font-bold text-[#111827] tracking-tight">
                     What can I help with today?
                   </h4>
                 </div>
@@ -473,14 +473,14 @@ export function InsuranceHeroPanel() {
                     className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed ${
+                      className={`max-w-[88%] rounded-2xl px-3.5 py-2 xl:px-4 xl:py-2.5 text-xs sm:text-sm xl:text-base leading-relaxed ${
                         message.role === "user"
                           ? "bg-[#143B39] text-white shadow-xs"
                           : "border border-[#DFECE6] bg-[#F7FAF8] text-[#243D36]"
                       }`}
                     >
                       {message.role === "assistant" && (
-                        <div className="mb-1.5 flex items-center justify-between border-b border-[#E3EDE8] pb-1 text-[11px] font-medium text-[#4B7365]">
+                        <div className="mb-1.5 flex items-center justify-between border-b border-[#E3EDE8] pb-1 text-[11px] xl:text-xs font-medium text-[#4B7365]">
                           <span>InsurCall</span>
                           <button
                             type="button"
@@ -488,7 +488,7 @@ export function InsuranceHeroPanel() {
                             title="Listen"
                             className="p-0.5 text-[#52776A] hover:text-[#087F8C]"
                           >
-                            <Volume2 className="size-3.5" />
+                            <Volume2 className="size-3.5 xl:size-4" />
                           </button>
                         </div>
                       )}
@@ -498,7 +498,7 @@ export function InsuranceHeroPanel() {
                 ))
               )}
               {isLoading && (
-                <div className="flex items-center gap-2 text-xs sm:text-sm text-[#627770]">
+                <div className="flex items-center gap-2 text-xs sm:text-sm xl:text-base text-[#627770]">
                   <LoaderCircle className="size-4 animate-spin text-[#087F8C]" /> Checking information...
                 </div>
               )}
@@ -506,7 +506,7 @@ export function InsuranceHeroPanel() {
 
             {/* Quick Suggestion Chips - ChatGPT Style with Lucide Icons */}
             {messages.length === 0 && (
-              <div className="mt-3 grid grid-cols-2 gap-2" aria-label="Quick questions">
+              <div className="mt-3 xl:mt-4 grid grid-cols-2 gap-2 xl:gap-2.5" aria-label="Quick questions">
                 {suggestions.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -515,10 +515,10 @@ export function InsuranceHeroPanel() {
                       type="button"
                       disabled={isLoading}
                       onClick={() => void sendMessage(item.label, isCallActive)}
-                      className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white/95 hover:bg-slate-50/90 px-3 py-2 text-left text-[11px] sm:text-xs font-medium text-slate-800 transition-all hover:border-[#087F8C]/40 active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs group"
+                      className="flex items-center gap-2 xl:gap-2.5 rounded-xl border border-slate-200/90 bg-white/95 hover:bg-slate-50/90 px-3 py-2 xl:px-4 xl:py-3 text-left text-[11px] sm:text-xs xl:text-sm font-medium text-slate-800 transition-all hover:border-[#087F8C]/40 active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs group"
                     >
-                      <div className={`grid size-6 shrink-0 place-items-center rounded-lg border ${item.color}`}>
-                        <Icon className="size-3.5" />
+                      <div className={`grid size-6 xl:size-7 shrink-0 place-items-center rounded-lg border ${item.color}`}>
+                        <Icon className="size-3.5 xl:size-4" />
                       </div>
                       <span className="truncate group-hover:text-[#087F8C] transition-colors">{item.label}</span>
                     </button>
@@ -529,7 +529,7 @@ export function InsuranceHeroPanel() {
 
             {/* Message Input Bar - Sleek ChatGPT Rounded Full Pill */}
             <form
-              className="mt-3.5 flex items-center gap-2"
+              className="mt-3.5 xl:mt-5 flex items-center gap-2 xl:gap-2.5"
               onSubmit={(e) => {
                 e.preventDefault();
                 void sendMessage(draft, isCallActive);
@@ -547,16 +547,16 @@ export function InsuranceHeroPanel() {
                   maxLength={350}
                   placeholder={isCallActive ? "Type or speak..." : "Ask anything about policies or claims..."}
                   disabled={isLoading}
-                  className="h-11 sm:h-12 w-full rounded-full border border-slate-200 bg-slate-50/80 hover:bg-white focus:bg-white px-4 text-xs sm:text-sm text-[#111827] outline-none placeholder:text-slate-400 focus:border-[#087F8C] focus:ring-2 focus:ring-[#087F8C]/15 disabled:bg-slate-100 transition-all shadow-inner/10"
+                  className="h-11 sm:h-12 xl:h-14 w-full rounded-full border border-slate-200 bg-slate-50/80 hover:bg-white focus:bg-white px-4 xl:px-5 text-xs sm:text-sm xl:text-base text-[#111827] outline-none placeholder:text-slate-400 focus:border-[#087F8C] focus:ring-2 focus:ring-[#087F8C]/15 disabled:bg-slate-100 transition-all shadow-inner/10"
                 />
               </div>
               <button
                 type="submit"
                 disabled={!draft.trim() || isLoading}
                 aria-label="Send"
-                className="grid size-11 sm:size-12 shrink-0 place-items-center rounded-full bg-[#087F8C] hover:bg-[#076C77] text-white transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 shadow-2xs cursor-pointer"
+                className="grid size-11 sm:size-12 xl:size-14 shrink-0 place-items-center rounded-full bg-[#087F8C] hover:bg-[#076C77] text-white transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 shadow-2xs cursor-pointer"
               >
-                <Send className="size-4" />
+                <Send className="size-4 xl:size-5" />
               </button>
             </form>
             {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
