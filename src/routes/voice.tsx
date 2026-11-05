@@ -808,9 +808,12 @@ function ActivePhoneCallScreen({
     selectedVoiceIdRef.current = selectedVoiceId;
   }, [selectedVoiceId]);
 
-  // Track if agent is speaking to block recognition pickup
+  // Full-Duplex real-time state: two concurrent, decoupled pipelines
+  const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const agentSpeakingRef = useRef(false);
-  const speakCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agentSpeechStartTimeRef = useRef(0);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
 
@@ -823,10 +826,12 @@ function ActivePhoneCallScreen({
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
+  // Pipeline 2: Speech Output (Mouth) — asynchronous, non-blocking, interruptible
   const speakAssistantText = useCallback(
     (text: string, voiceOverride?: string) => {
       if (typeof window === "undefined" || isSpeakerMuted) {
-        setConnectionState("listening");
+        setIsAgentSpeaking(false);
+        agentSpeakingRef.current = false;
         return;
       }
 
@@ -845,18 +850,10 @@ function ActivePhoneCallScreen({
         try { window.speechSynthesis.cancel(); } catch {}
       }
 
-      // Stop any active speech recognition while agent speaks
-      agentSpeakingRef.current = true;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-
       const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
       if (!clean) {
         agentSpeakingRef.current = false;
-        setConnectionState("listening");
+        setIsAgentSpeaking(false);
         return;
       }
 
@@ -872,18 +869,16 @@ function ActivePhoneCallScreen({
         audioUrl,
         () => {
           agentSpeakingRef.current = true;
-          setConnectionState("speaking");
+          agentSpeechStartTimeRef.current = Date.now();
+          setIsAgentSpeaking(true);
         },
         () => {
-          if (speakCooldownRef.current) clearTimeout(speakCooldownRef.current);
-          speakCooldownRef.current = setTimeout(() => {
-            agentSpeakingRef.current = false;
-            setConnectionState("listening");
-          }, 800);
+          agentSpeakingRef.current = false;
+          setIsAgentSpeaking(false);
         }
       );
     },
-    [isSpeakerMuted, setConnectionState]
+    [isSpeakerMuted]
   );
 
   useEffect(() => {
@@ -896,10 +891,10 @@ function ActivePhoneCallScreen({
   useEffect(() => {
     if (roomConnectionState === "connected" && !hasSpokenGreetingRef.current) {
       hasSpokenGreetingRef.current = true;
+      setConnectionState("connected");
       // If LiveKit remote agent is in the room, it handles its own greeting over WebRTC
       const remoteCount = room?.remoteParticipants?.size || 0;
       if (remoteCount > 0) {
-        setConnectionState("listening");
         return;
       }
       const initialGreeting = tenantName
@@ -948,22 +943,20 @@ function ActivePhoneCallScreen({
     };
   }, []);
 
-  // Sync LiveKit agent state with our local connection state
-  // Only update if we're not in the middle of our own TTS cooldown
+  // Sync LiveKit agent state with full-duplex voice activity flags
   useEffect(() => {
-    if (agentSpeakingRef.current) return; // Our TTS is active, don't override
+    if (agentSpeakingRef.current) return; // Our local TTS is active, don't override
     if (agentState === "speaking") {
-      agentSpeakingRef.current = true;
-      setConnectionState("speaking");
+      setIsAgentSpeaking(true);
+      setIsThinking(false);
     } else if (agentState === "thinking") {
-      setConnectionState("processing");
+      setIsThinking(true);
+      setIsAgentSpeaking(false);
     } else if (agentState === "listening") {
-      // Only transition to listening if agent isn't in TTS cooldown
-      if (!agentSpeakingRef.current) {
-        setConnectionState("listening");
-      }
+      setIsAgentSpeaking(false);
+      setIsThinking(false);
     }
-  }, [agentState, setConnectionState]);
+  }, [agentState]);
 
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -1099,9 +1092,11 @@ function ActivePhoneCallScreen({
   const sendPrompt = useCallback(
     async (promptText: string) => {
       setSendError(null);
-      setConnectionState("processing");
+      setIsThinking(true);
       PhoneAudioFX.playBeep(587);
       PhoneAudioFX.stopNeuralAudio();
+      setIsAgentSpeaking(false);
+      agentSpeakingRef.current = false;
 
       // Stop any current audio playback immediately on user input
       if (activeAudioRef.current) {
@@ -1122,6 +1117,7 @@ function ActivePhoneCallScreen({
             ...previous,
             { id: `${Date.now()}-${Math.random()}`, role: "user", text: promptText, time: formatTimer(duration) },
           ]);
+          setIsThinking(false);
           return true;
         } catch (err) {
           console.warn("LiveKit data publish notice:", err);
@@ -1161,22 +1157,22 @@ function ActivePhoneCallScreen({
             ...(typeof data.modelType === "string" ? { modelType: data.modelType } : {}),
           },
         ]);
+        setIsThinking(false);
         speakAssistantText(reply);
         return true;
       } catch (err: any) {
         console.warn("Cloud text prompt notice:", err);
         setSendError(err?.message || "The cloud voice assistant is unavailable. Please retry.");
-        setConnectionState("listening");
+        setIsThinking(false);
         return false;
       }
     },
-    [duration, setConnectionState, callSessionId, speakAssistantText, room, messages]
+    [duration, callSessionId, speakAssistantText, room, messages]
   );
 
-  // Clean speech recognition:
-  // When LiveKit WebRTC agent is present, audio is 100% WebRTC — browser recognition is disabled!
-  // In fallback mode, recognition starts when listening and does NOT endlessly restart on silence.
+  // Pipeline 1: Always-On Continuous Ear Pipeline with Full-Duplex Instant Barge-In
   useEffect(() => {
+    // If LiveKit remote agent is in the room, it handles server-side WebRTC audio
     const remoteCount = room?.remoteParticipants?.size || 0;
     if (remoteCount > 0) {
       if (recognitionRef.current) {
@@ -1186,118 +1182,130 @@ function ActivePhoneCallScreen({
       return;
     }
 
-    if (
-      connectionState === "ended" ||
-      connectionState === "speaking" ||
-      connectionState === "processing" ||
-      connectionState === "connecting" ||
-      connectionState === "connected" ||
-      isMuted ||
-      agentSpeakingRef.current
-    ) {
+    if (connectionState === "ended" || isMuted) {
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch {}
         recognitionRef.current = null;
       }
+      setIsUserSpeaking(false);
       return;
     }
-
-    if (connectionState !== "listening") return;
 
     const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) return;
 
-    try {
-      const recognition = new SpeechRecognitionClass();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-IN";
-      recognition.maxAlternatives = 1;
+    let isDisposed = false;
+    let recognitionInstance: any = null;
 
-      recognition.onspeechstart = () => {
-        PhoneAudioFX.stopNeuralAudio();
-        if (activeAudioRef.current) {
-          try {
-            activeAudioRef.current.pause();
-            activeAudioRef.current.src = "";
-            activeAudioRef.current = null;
-          } catch {}
-          agentSpeakingRef.current = false;
-          if (speakCooldownRef.current) {
-            clearTimeout(speakCooldownRef.current);
-            speakCooldownRef.current = null;
+    const startRecognitionPipeline = () => {
+      if (isDisposed || isMuted || connectionState === "ended") return;
+      try {
+        const recognition = new SpeechRecognitionClass();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-IN";
+        recognition.maxAlternatives = 1;
+
+        recognition.onspeechstart = () => {
+          setIsUserSpeaking(true);
+          // FULL-DUPLEX BARGE-IN: If the agent is speaking and user speaks, silence agent immediately!
+          if (agentSpeakingRef.current && Date.now() - agentSpeechStartTimeRef.current > 350) {
+            PhoneAudioFX.stopNeuralAudio();
+            agentSpeakingRef.current = false;
+            setIsAgentSpeaking(false);
           }
-          setConnectionState("listening");
-        }
-        if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
-          window.speechSynthesis.cancel();
-          agentSpeakingRef.current = false;
-          if (speakCooldownRef.current) {
-            clearTimeout(speakCooldownRef.current);
-            speakCooldownRef.current = null;
+        };
+
+        recognition.onspeechend = () => {
+          setIsUserSpeaking(false);
+        };
+
+        recognition.onresult = (event: any) => {
+          // Interrupt agent immediately if user started speaking words
+          if (agentSpeakingRef.current) {
+            PhoneAudioFX.stopNeuralAudio();
+            agentSpeakingRef.current = false;
+            setIsAgentSpeaking(false);
           }
-          setConnectionState("listening");
-        }
-      };
 
-      recognition.onresult = (event: any) => {
-        if (agentSpeakingRef.current) return;
-
-        let finalChunk = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcript = event.results[i]?.[0]?.transcript || "";
-          if (event.results[i]?.isFinal) {
-            finalChunk += transcript;
-          }
-        }
-
-        if (finalChunk.trim()) {
-          if (speechDebounceRef.current) clearTimeout(speechDebounceRef.current);
-          speechDebounceRef.current = setTimeout(() => {
-            if (!agentSpeakingRef.current) {
-              sendPrompt(finalChunk.trim());
+          let finalChunk = "";
+          let interimChunk = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i]?.[0]?.transcript || "";
+            if (event.results[i]?.isFinal) {
+              finalChunk += transcript;
+            } else {
+              interimChunk += transcript;
             }
-          }, 600);
-        }
-      };
+          }
 
-      recognition.onerror = (e: any) => {
-        if (e.error !== "no-speech" && e.error !== "aborted") {
-          console.warn("Speech recognition notice:", e.error);
-        }
-      };
+          if (interimChunk.trim()) {
+            setIsUserSpeaking(true);
+          }
 
-      recognition.onend = () => {
-        recognitionRef.current = null;
-      };
+          if (finalChunk.trim()) {
+            setIsUserSpeaking(false);
+            if (speechDebounceRef.current) clearTimeout(speechDebounceRef.current);
+            speechDebounceRef.current = setTimeout(() => {
+              void sendPrompt(finalChunk.trim());
+            }, 450);
+          }
+        };
 
-      recognition.start();
-      recognitionRef.current = recognition;
+        recognition.onerror = (e: any) => {
+          if (e.error !== "no-speech" && e.error !== "aborted") {
+            console.warn("Speech recognition notice:", e.error);
+          }
+          if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+            setIsUserSpeaking(false);
+          }
+        };
 
-      return () => {
-        try { recognition.stop(); } catch {}
-        recognitionRef.current = null;
-      };
-    } catch (e) {
-      console.warn("Speech recognition setup notice:", e);
-      return;
-    }
-  }, [connectionState, isMuted, sendPrompt, setConnectionState, room]);
+        recognition.onend = () => {
+          setIsUserSpeaking(false);
+          // Continuous loop: Keep listening uninterrupted while call is active
+          if (!isDisposed && !isMuted && connectionState !== "ended") {
+            setTimeout(() => {
+              if (!isDisposed && !isMuted && connectionState !== "ended") {
+                startRecognitionPipeline();
+              }
+            }, 100);
+          }
+        };
+
+        recognition.start();
+        recognitionInstance = recognition;
+        recognitionRef.current = recognition;
+      } catch (err) {
+        console.warn("Speech recognition start notice:", err);
+      }
+    };
+
+    startRecognitionPipeline();
+
+    return () => {
+      isDisposed = true;
+      if (recognitionInstance) {
+        try { recognitionInstance.stop(); } catch {}
+      }
+      recognitionRef.current = null;
+    };
+  }, [connectionState, isMuted, sendPrompt, room]);
 
   const handleSendText = useCallback(
     (e?: React.FormEvent) => {
       if (e) e.preventDefault();
       const trimmed = textInput.trim();
-      if (!trimmed || connectionState === "processing") return;
+      if (!trimmed || isThinking) return;
       void sendPrompt(trimmed).then((sent) => {
         if (sent) setTextInput("");
       });
     },
-    [textInput, connectionState, sendPrompt]
+    [textInput, isThinking, sendPrompt]
   );
 
-  const isSpeaking = connectionState === "speaking";
+  const isSpeaking = isAgentSpeaking;
 
   return (
     <div className="flex-1 flex flex-col justify-between p-4 pt-11 pb-5 relative overflow-hidden bg-gradient-to-b from-[#F2F8F8] via-[#FAF9F6] to-[#FAF9F6] text-[#111827]">
@@ -1309,6 +1317,7 @@ function ActivePhoneCallScreen({
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
           <span>{formatTimer(duration)}</span>
+          <span className="text-slate-400 font-normal ml-0.5">• Duplex Line</span>
         </div>
 
         {/* Minimalist Voice Persona Selector */}
@@ -1370,31 +1379,46 @@ function ActivePhoneCallScreen({
           </p>
         </div>
 
-        {/* Minimal Speaking/Listening Status Pill */}
+        {/* Full-Duplex Real-Time Voice Activity Status */}
         <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-full px-2.5 py-0.5 shadow-2xs">
-          <span className={`text-[10px] font-semibold ${
-            connectionState === "speaking" ? "text-[#087F8C]" : "text-emerald-700"
-          }`}>
-            {connectionState === "speaking"
-              ? "Speaking..."
-              : connectionState === "processing"
+          <span
+            className={`text-[10px] font-semibold ${
+              isUserSpeaking
+                ? "text-emerald-700"
+                : isAgentSpeaking
+                ? "text-[#087F8C]"
+                : isThinking
+                ? "text-amber-700"
+                : "text-slate-600"
+            }`}
+          >
+            {isUserSpeaking
+              ? "You speaking..."
+              : isAgentSpeaking
+              ? "Agent speaking..."
+              : isThinking
               ? "Thinking..."
-              : "Listening..."}
+              : "Live Line • Listening..."}
           </span>
           <div className="flex items-center gap-0.5 h-3">
             {[0.7, 1.2, 0.9, 1.3, 0.8].map((mult, i) => {
-              const height =
-                connectionState === "speaking"
-                  ? i % 2 === 0 ? "11px" : "15px"
-                  : connectionState === "listening"
-                  ? `${Math.max(3, Math.min(14, 3 + Math.round((micVolume / 100) * 11 * mult)))}px`
-                  : "3px";
+              const height = isAgentSpeaking
+                ? i % 2 === 0
+                  ? "11px"
+                  : "15px"
+                : isUserSpeaking || micVolume > 10
+                ? `${Math.max(4, Math.min(14, 4 + Math.round((micVolume / 100) * 11 * mult)))}px`
+                : "3px";
               return (
                 <span
                   key={i}
                   style={{ height }}
                   className={`w-0.5 rounded-full transition-all duration-100 ${
-                    connectionState === "speaking" ? "bg-[#087F8C] animate-pulse" : "bg-emerald-500"
+                    isAgentSpeaking
+                      ? "bg-[#087F8C] animate-pulse"
+                      : isUserSpeaking || micVolume > 10
+                      ? "bg-emerald-500 animate-pulse"
+                      : "bg-slate-300"
                   }`}
                 />
               );
@@ -1449,12 +1473,12 @@ function ActivePhoneCallScreen({
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Type message..."
-              disabled={connectionState === "processing"}
+              disabled={isThinking}
               className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#087F8C]"
             />
             <button
               type="submit"
-              disabled={!textInput.trim() || connectionState === "processing"}
+              disabled={!textInput.trim() || isThinking}
               className="h-6 w-6 rounded-lg bg-[#087F8C] hover:bg-[#076C77] text-white flex items-center justify-center transition-all disabled:opacity-30 cursor-pointer shrink-0"
             >
               <Send className="h-3 w-3" />
@@ -1473,7 +1497,7 @@ function ActivePhoneCallScreen({
               if (sent) setTextInput("");
             });
           }}
-          disabled={connectionState === "processing"}
+          disabled={isThinking}
           className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-blue-200/90 bg-blue-50/70 hover:bg-blue-100/80 text-[10px] font-semibold text-blue-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
         >
           <span className="shrink-0 text-xs">📋</span>
@@ -1487,7 +1511,7 @@ function ActivePhoneCallScreen({
               if (sent) setTextInput("");
             });
           }}
-          disabled={connectionState === "processing"}
+          disabled={isThinking}
           className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-amber-200/90 bg-amber-50/70 hover:bg-amber-100/80 text-[10px] font-semibold text-amber-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
         >
           <span className="shrink-0 text-xs">🛡️</span>
@@ -1501,7 +1525,7 @@ function ActivePhoneCallScreen({
               if (sent) setTextInput("");
             });
           }}
-          disabled={connectionState === "processing"}
+          disabled={isThinking}
           className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-emerald-200/90 bg-emerald-50/70 hover:bg-emerald-100/80 text-[10px] font-semibold text-emerald-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
         >
           <span className="shrink-0 text-xs">👤</span>
@@ -1668,7 +1692,7 @@ function ActivePhoneCallScreen({
                   if (sent) setTextInput("");
                 });
               }}
-              disabled={connectionState === "processing"}
+              disabled={isThinking}
               className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-blue-200/90 bg-blue-50/70 hover:bg-blue-100/80 text-[10px] font-semibold text-blue-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
             >
               <span className="shrink-0 text-xs">📋</span>
@@ -1682,7 +1706,7 @@ function ActivePhoneCallScreen({
                   if (sent) setTextInput("");
                 });
               }}
-              disabled={connectionState === "processing"}
+              disabled={isThinking}
               className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-amber-200/90 bg-amber-50/70 hover:bg-amber-100/80 text-[10px] font-semibold text-amber-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
             >
               <span className="shrink-0 text-xs">🛡️</span>
@@ -1696,7 +1720,7 @@ function ActivePhoneCallScreen({
                   if (sent) setTextInput("");
                 });
               }}
-              disabled={connectionState === "processing"}
+              disabled={isThinking}
               className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-emerald-200/90 bg-emerald-50/70 hover:bg-emerald-100 text-[10px] font-semibold text-emerald-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
             >
               <span className="shrink-0 text-xs">👤</span>
@@ -1713,12 +1737,12 @@ function ActivePhoneCallScreen({
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Can't use microphone? Type here..."
-              disabled={connectionState === "processing"}
+              disabled={isThinking}
               className="flex-1 bg-[#FAF9F6] border border-[#E4E7EC] rounded-xl px-3 py-2 text-xs text-[#111827] placeholder-[#98A2B3] focus:outline-none focus:border-[#087F8C] transition-colors"
             />
             <Button
               type="submit"
-              disabled={!textInput.trim() || connectionState === "processing"}
+              disabled={!textInput.trim() || isThinking}
               size="sm"
               className="bg-[#087F8C] hover:bg-[#076C77] text-white rounded-xl px-3 h-8 shadow-xs cursor-pointer"
             >
