@@ -218,6 +218,32 @@ export const Route = createFileRoute("/api/voice/session")({
             ]);
           if (sessionError) throw new Error("Could not create the voice session record.");
 
+          // 6.5 Resolve AI4Bharat voice configuration for session
+          const isAnonymous = !auth || body.publicDemo;
+          const bCfg = (tenant?.branding_config || {}) as Record<string, any>;
+          const aCfg = (bCfg["agent_config"] || {}) as Record<string, any>;
+          const rawVoiceId = agentData?.voice || aCfg["voice_id"] || aCfg["voice_style"] || "ai4bharat-hi-female";
+          const rawGender = rawVoiceId.includes("male") && !rawVoiceId.includes("female") ? "male" : "female";
+          const rawLang = aCfg["language"] || (Array.isArray(agentData?.languages) ? agentData.languages[0] : (typeof agentData?.languages === "string" ? agentData.languages.split(",")[0] : "hi"));
+
+          const activeVoiceConfig = isAnonymous
+            ? {
+                provider: "ai4bharat",
+                model: "indic-tts",
+                language: "hi",
+                gender: "female",
+                voice_id: "ai4bharat-hi-female",
+                speed: 1.0,
+              }
+            : {
+                provider: "ai4bharat",
+                model: "indic-tts",
+                language: rawLang || "hi",
+                gender: rawGender,
+                voice_id: rawVoiceId,
+                speed: typeof aCfg["voice_speed"] === "number" ? aCfg["voice_speed"] : 1.0,
+              };
+
           // 7. Generate LiveKit Access Token
           const { AccessToken } = await import("livekit-server-sdk");
           const at = new AccessToken(apiKey, apiSecret, {
@@ -230,6 +256,7 @@ export const Route = createFileRoute("/api/voice/session")({
               agent_id: agentId,
               is_authenticated: customer.isVerified,
               rag_available: ragAvailable,
+              voice_config: activeVoiceConfig,
             }),
           });
 
@@ -261,6 +288,7 @@ export const Route = createFileRoute("/api/voice/session")({
                 customer_id: customer.id,
                 public_demo: !auth,
                 rag_available: ragAvailable,
+                voice_config: activeVoiceConfig,
               }),
             });
 
@@ -280,8 +308,6 @@ export const Route = createFileRoute("/api/voice/session")({
             return json({ error: "The LiveKit Cloud voice agent could not be started. Please retry." }, 502);
           }
 
-          const isAnonymous = !auth || body.publicDemo;
-
           return json({
             token,
             roomName,
@@ -292,6 +318,7 @@ export const Route = createFileRoute("/api/voice/session")({
             ragAvailable: isAnonymous ? false : ragAvailable,
             isGeneralModel: isAnonymous ? true : !ragAvailable,
             cloudAI: getCloudAIStatus(),
+            voiceConfig: activeVoiceConfig,
             customer: {
               id: customer.id,
               name: isAnonymous ? "Guest Caller" : customer.name,

@@ -40,6 +40,7 @@ import { Route as ApiAgentToolsRouteImport } from './routes/api/agent/tools'
 import { Route as ApiVoiceChatRouteImport } from './routes/api/voice/chat'
 import { Route as ApiVoiceEndRouteImport } from './routes/api/voice/end'
 import { Route as ApiVoiceSessionRouteImport } from './routes/api/voice/session'
+import { Route as ApiVoiceTtsRouteImport } from './routes/api/voice/tts'
 import { Route as ApiWebhooksClerkRouteImport } from './routes/api/webhooks/clerk'
 import { Route as ApiWebhooksMetaWhatsappRouteImport } from './routes/api/webhooks/meta-whatsapp'
 import { Route as ApiWebhooksTelephonyRouteImport } from './routes/api/webhooks/telephony'
@@ -200,6 +201,11 @@ const ApiVoiceSessionRoute = ApiVoiceSessionRouteImport.update({
   path: '/api/voice/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVoiceTtsRoute = ApiVoiceTtsRouteImport.update({
+  id: '/api/voice/tts',
+  path: '/api/voice/tts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksClerkRoute = ApiWebhooksClerkRouteImport.update({
   id: '/api/webhooks/clerk',
   path: '/api/webhooks/clerk',
@@ -252,6 +258,7 @@ export interface FileRoutesByFullPath {
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
+  '/api/voice/tts': typeof ApiVoiceTtsRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
   '/api/webhooks/meta-whatsapp': typeof ApiWebhooksMetaWhatsappRoute
   '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
@@ -288,6 +295,7 @@ export interface FileRoutesByTo {
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
+  '/api/voice/tts': typeof ApiVoiceTtsRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
   '/api/webhooks/meta-whatsapp': typeof ApiWebhooksMetaWhatsappRoute
   '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
@@ -326,6 +334,7 @@ export interface FileRoutesById {
   '/api/voice/chat': typeof ApiVoiceChatRoute
   '/api/voice/end': typeof ApiVoiceEndRoute
   '/api/voice/session': typeof ApiVoiceSessionRoute
+  '/api/voice/tts': typeof ApiVoiceTtsRoute
   '/api/webhooks/clerk': typeof ApiWebhooksClerkRoute
   '/api/webhooks/meta-whatsapp': typeof ApiWebhooksMetaWhatsappRoute
   '/api/webhooks/telephony': typeof ApiWebhooksTelephonyRoute
@@ -364,6 +373,7 @@ export interface FileRouteTypes {
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
+    | '/api/voice/tts'
     | '/api/webhooks/clerk'
     | '/api/webhooks/meta-whatsapp'
     | '/api/webhooks/telephony'
@@ -400,6 +410,7 @@ export interface FileRouteTypes {
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
+    | '/api/voice/tts'
     | '/api/webhooks/clerk'
     | '/api/webhooks/meta-whatsapp'
     | '/api/webhooks/telephony'
@@ -437,6 +448,7 @@ export interface FileRouteTypes {
     | '/api/voice/chat'
     | '/api/voice/end'
     | '/api/voice/session'
+    | '/api/voice/tts'
     | '/api/webhooks/clerk'
     | '/api/webhooks/meta-whatsapp'
     | '/api/webhooks/telephony'
@@ -463,6 +475,7 @@ export interface RootRouteChildren {
   ApiVoiceChatRoute: typeof ApiVoiceChatRoute
   ApiVoiceEndRoute: typeof ApiVoiceEndRoute
   ApiVoiceSessionRoute: typeof ApiVoiceSessionRoute
+  ApiVoiceTtsRoute: typeof ApiVoiceTtsRoute
   ApiWebhooksClerkRoute: typeof ApiWebhooksClerkRoute
   ApiWebhooksMetaWhatsappRoute: typeof ApiWebhooksMetaWhatsappRoute
   ApiWebhooksTelephonyRoute: typeof ApiWebhooksTelephonyRoute
@@ -688,6 +701,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVoiceSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/voice/tts': {
+      id: '/api/voice/tts'
+      path: '/api/voice/tts'
+      fullPath: '/api/voice/tts'
+      preLoaderRoute: typeof ApiVoiceTtsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/clerk': {
       id: '/api/webhooks/clerk'
       path: '/api/webhooks/clerk'
@@ -772,6 +792,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiVoiceChatRoute: ApiVoiceChatRoute,
   ApiVoiceEndRoute: ApiVoiceEndRoute,
   ApiVoiceSessionRoute: ApiVoiceSessionRoute,
+  ApiVoiceTtsRoute: ApiVoiceTtsRoute,
   ApiWebhooksClerkRoute: ApiWebhooksClerkRoute,
   ApiWebhooksMetaWhatsappRoute: ApiWebhooksMetaWhatsappRoute,
   ApiWebhooksTelephonyRoute: ApiWebhooksTelephonyRoute,
@@ -781,8 +802,8 @@ export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
+import type { getRouter } from '../../../missed-call-maven/src/router.tsx'
+import type { startInstance } from '../../../missed-call-maven/src/start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true

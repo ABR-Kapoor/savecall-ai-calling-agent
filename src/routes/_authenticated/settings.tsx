@@ -668,6 +668,29 @@ function SettingsPage() {
                   </div>
                 </div>
 
+                {/* AI4Bharat Indic-TTS Voice Calling Engine Info */}
+                <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Headphones className="size-4 text-[#087F8C]" />
+                      <span className="text-xs font-bold text-slate-900">
+                        AI Voice Calling Engine
+                      </span>
+                      <Badge variant="outline" className="text-[10px] bg-white border-teal-200 text-teal-800 font-semibold">
+                        Active Voice: {((tenant?.branding_config as any)?.agent_config?.voice_id) || "Swara (Hindi Female)"}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      High-fidelity Indian conversational voices (Hindi, Indian English, Hinglish, Marathi, Tamil, Telugu) with instant sample testing.
+                    </p>
+                  </div>
+                  <Link to="/agent">
+                    <Button variant="outline" size="sm" className="text-xs gap-1.5 border-teal-200 bg-white text-[#087F8C] hover:bg-teal-50 shrink-0">
+                      Configure Voice in Studio <ArrowRight className="size-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+
                 <div className="pt-3 flex items-center justify-between border-t border-slate-100">
                   <span className="text-xs text-slate-500">
                     For full prompt instructions and guardrail testing, visit the Agent Studio.

@@ -28,7 +28,13 @@ import {
   FileCheck,
   Layers,
   HelpCircle,
+  Volume2,
+  Play,
+  Square,
+  Headphones,
 } from "lucide-react";
+
+import { AI4BHARAT_VOICE_CATALOG, getVoiceById } from "@/lib/voice/catalog";
 
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -189,9 +195,45 @@ function AgentStudioPage() {
     never_alter_beneficiary: true,
     never_quote_unapproved: true,
     never_collect_credentials: true,
+    // AI4Bharat Calling Voice Model
+    voice: "ai4bharat-hi-female",
+    voiceSpeed: 1.0,
     // Configuration version
     version: "v1.0.0",
   });
+
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleVoicePreview = (voiceId: string, speed = 1.0) => {
+    if (isPlayingPreview && previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+      setIsPlayingPreview(false);
+      return;
+    }
+
+    const voice = getVoiceById(voiceId);
+    const audioUrl = `/api/voice/tts?text=${encodeURIComponent(voice.sampleText)}&voiceId=${voiceId}&speed=${speed}`;
+    const audio = new Audio(audioUrl);
+    previewAudioRef.current = audio;
+
+    audio.onplay = () => setIsPlayingPreview(true);
+    audio.onended = () => {
+      setIsPlayingPreview(false);
+      previewAudioRef.current = null;
+    };
+    audio.onerror = () => {
+      toast.error("Could not play voice preview. Please check network connection.");
+      setIsPlayingPreview(false);
+      previewAudioRef.current = null;
+    };
+
+    audio.play().catch(() => {
+      toast.error("Audio playback requires user interaction.");
+      setIsPlayingPreview(false);
+    });
+  };
 
   useEffect(() => {
     const a = agentQuery.data;
@@ -211,6 +253,8 @@ function AgentStudioPage() {
     const rawHours = typeof callCfg["working_hours"] === "string" ? callCfg["working_hours"] : "";
     const rawHelpline = typeof bCfg["emergency_helpline"] === "string" ? bCfg["emergency_helpline"] : "";
     const rawInstructions = typeof aCfg["instructions"] === "string" ? aCfg["instructions"] : "";
+    const rawVoice = a?.voice || (typeof aCfg["voice_id"] === "string" ? aCfg["voice_id"] : "") || (typeof aCfg["voice_style"] === "string" ? aCfg["voice_style"] : "ai4bharat-hi-female");
+    const rawVoiceSpeed = typeof aCfg["voice_speed"] === "number" ? aCfg["voice_speed"] : 1.0;
 
     setForm((prev) => ({
       ...prev,
@@ -225,6 +269,8 @@ function AgentStudioPage() {
       operatingHours: rawHours || prev.operatingHours,
       emergencyHelpline: rawHelpline || prev.emergencyHelpline,
       customInstructions: rawInstructions || prev.customInstructions,
+      voice: rawVoice,
+      voiceSpeed: rawVoiceSpeed,
       can_book: a?.can_book ?? prev.can_book,
       can_capture_leads: a?.can_capture_leads ?? prev.can_capture_leads,
       can_transfer: a?.can_transfer ?? prev.can_transfer,
@@ -244,6 +290,7 @@ function AgentStudioPage() {
       if (form.name.trim()) agentUpdates["name"] = form.name.trim();
       if (form.greeting.trim()) agentUpdates["greeting"] = form.greeting.trim();
       if (form.tone) agentUpdates["tone"] = form.tone;
+      if (form.voice) agentUpdates["voice"] = form.voice;
 
       const { error } = agentQuery.data?.id
         ? await supabase.database.from("ai_agents").update(agentUpdates).eq("id", agentQuery.data.id)
@@ -255,6 +302,7 @@ function AgentStudioPage() {
               tone: form.tone || "Professional",
               role: form.role.trim() || "AI Receptionist & Support Specialist",
               deployment_mode: form.deployment_mode || "assist",
+              voice: form.voice || "ai4bharat-hi-female",
             },
           ]);
 
@@ -281,6 +329,8 @@ function AgentStudioPage() {
             greeting: form.greeting.trim(),
             tone: form.tone,
             languages: form.languages,
+            voice_id: form.voice,
+            voice_speed: form.voiceSpeed,
             instructions: form.customInstructions.trim(),
             last_trained_at: new Date().toISOString(),
           },
@@ -568,6 +618,113 @@ ${form.escalationContact ? `- If verified evidence is absent or confidence is be
                     className="text-xs bg-white border-slate-200"
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* AI4Bharat Indic-TTS Voice Model Card */}
+            <Card className="border border-slate-200 bg-white shadow-xs rounded-2xl">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Headphones className="size-4 text-[#087F8C]" />
+                    <CardTitle className="text-sm font-bold text-slate-900">
+                      AI Voice Model & Speech Synthesis
+                    </CardTitle>
+                  </div>
+                  <Badge variant="outline" className="border-teal-200 text-teal-800 bg-teal-50 text-[10px] font-semibold">
+                    Natural Indian Voice
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs text-slate-500">
+                  Select the natural Indian voice persona used when calling policyholders, answering FNOL claims hotlines, or calling via web phone and WhatsApp.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-700">Voice Persona & Language</Label>
+                    <Select
+                      value={form.voice}
+                      onValueChange={(voice) => setForm({ ...form, voice })}
+                    >
+                      <SelectTrigger className="text-xs bg-white border-slate-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AI4BHARAT_VOICE_CATALOG.map((v) => (
+                          <SelectItem key={v.id} value={v.id} className="text-xs">
+                            {v.name} • {v.accent}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-700">Speaking Pace & Speed ({form.voiceSpeed}x)</Label>
+                    <div className="flex items-center gap-2 pt-1">
+                      {[0.8, 0.9, 1.0, 1.1, 1.2].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setForm({ ...form, voiceSpeed: s })}
+                          className={`flex-1 py-1 text-[11px] font-medium rounded-lg border transition-all ${
+                            form.voiceSpeed === s
+                              ? "border-[#087F8C] bg-[#E6F6F7] text-[#087F8C] font-bold"
+                              : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                          }`}
+                        >
+                          {s}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Voice Card Details & Audio Preview */}
+                {(() => {
+                  const currentVoice = getVoiceById(form.voice);
+                  return (
+                    <div className="p-3.5 rounded-xl border border-teal-100 bg-teal-50/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-900">{currentVoice.name}</span>
+                          <Badge variant="outline" className="text-[9.5px] border-slate-200 bg-white text-slate-600">
+                            {currentVoice.gender.toUpperCase()}
+                          </Badge>
+                          <Badge variant="outline" className="text-[9.5px] border-slate-200 bg-white text-slate-600">
+                            {currentVoice.language}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-slate-600 italic">
+                          "{currentVoice.sampleText}"
+                        </p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleVoicePreview(currentVoice.id, form.voiceSpeed)}
+                        className={`text-xs gap-1.5 font-medium shrink-0 transition-all ${
+                          isPlayingPreview
+                            ? "bg-teal-600 text-white border-teal-600 hover:bg-teal-700"
+                            : "bg-white border-teal-200 text-[#087F8C] hover:bg-teal-50"
+                        }`}
+                      >
+                        {isPlayingPreview ? (
+                          <>
+                            <Square className="size-3.5 fill-current" /> Stop Sample
+                          </>
+                        ) : (
+                          <>
+                            <Play className="size-3.5 fill-current" /> Hear Voice Sample
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
 

@@ -75,6 +75,7 @@ export function InsuranceHeroPanel() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const isAiSpeakingRef = useRef(false);
   const isCallActiveRef = useRef(false);
   const isMicMutedRef = useRef(false);
@@ -111,44 +112,89 @@ export function InsuranceHeroPanel() {
     return `${mins < 10 ? "0" : ""}${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
-  // Natural human speech synthesis playback
+  // Natural AI4Bharat speech synthesis playback with zero-drop browser fallback
   const speakText = useCallback((text: string, onDone?: () => void) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    // 1. Cancel any active playback
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.src = "";
+      activeAudioRef.current = null;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
+    if (!clean) {
       if (onDone) onDone();
       return;
     }
 
+    const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise|shukriya|dhanyavaad|batao/i.test(clean);
+    const langCode = isHindi ? "hi" : "en-IN";
+    const voiceId = isHindi ? "ai4bharat-hi-female" : "ai4bharat-en-female";
+
+    // Fallback to browser SpeechSynthesis if API fails
+    const fallbackToBrowser = () => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        setIsAiSpeaking(false);
+        if (onDone) onDone();
+        return;
+      }
+      try {
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.rate = 1.02;
+        utterance.pitch = 1.0;
+        utterance.lang = isHindi ? "hi-IN" : "en-IN";
+        utterance.onstart = () => {
+          setIsAiSpeaking(true);
+          setIsInterrupted(false);
+        };
+        utterance.onend = () => {
+          setIsAiSpeaking(false);
+          setIsInterrupted(false);
+          if (onDone) onDone();
+        };
+        utterance.onerror = () => {
+          setIsAiSpeaking(false);
+          if (onDone) onDone();
+        };
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        setIsAiSpeaking(false);
+        if (onDone) onDone();
+      }
+    };
+
     try {
-      window.speechSynthesis.cancel();
-      const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.rate = 1.02;
-      utterance.pitch = 1.0;
+      const audioUrl = `/api/voice/tts?text=${encodeURIComponent(clean)}&language=${langCode}&gender=female&voiceId=${voiceId}&speed=1.0`;
+      const audio = new Audio(audioUrl);
+      activeAudioRef.current = audio;
 
-      const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise/i.test(text);
-      utterance.lang = isHindi ? "hi-IN" : "en-IN";
-
-      utterance.onstart = () => {
+      audio.onplay = () => {
         setIsAiSpeaking(true);
         setIsInterrupted(false);
       };
 
-      utterance.onend = () => {
+      audio.onended = () => {
         setIsAiSpeaking(false);
         setIsInterrupted(false);
+        activeAudioRef.current = null;
         if (onDone) onDone();
       };
 
-      utterance.onerror = () => {
-        setIsAiSpeaking(false);
-        if (onDone) onDone();
+      audio.onerror = () => {
+        console.warn("AI4Bharat audio playback notice: falling back to local speech synthesis");
+        activeAudioRef.current = null;
+        fallbackToBrowser();
       };
 
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn("Speech playback notice:", e);
-      setIsAiSpeaking(false);
-      if (onDone) onDone();
+      audio.play().catch((playErr) => {
+        console.warn("Audio autoplay notice:", playErr);
+        fallbackToBrowser();
+      });
+    } catch {
+      fallbackToBrowser();
     }
   }, []);
 
@@ -203,13 +249,20 @@ export function InsuranceHeroPanel() {
 
   // Immediate barge-in interruption handler
   const handleBargeInInterruption = useCallback(() => {
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+        activeAudioRef.current = null;
+      } catch {}
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       if (window.speechSynthesis.speaking || isAiSpeakingRef.current) {
         window.speechSynthesis.cancel();
-        setIsAiSpeaking(false);
-        setIsInterrupted(true);
       }
     }
+    setIsAiSpeaking(false);
+    setIsInterrupted(true);
   }, []);
 
   // Start Voice Call
@@ -358,6 +411,16 @@ export function InsuranceHeroPanel() {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
+    }
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.src = "";
+        activeAudioRef.current = null;
+      } catch {}
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
     setIsCallActive(false);
     setIsAiSpeaking(false);

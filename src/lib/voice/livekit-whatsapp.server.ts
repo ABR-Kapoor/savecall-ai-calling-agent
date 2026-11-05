@@ -15,6 +15,7 @@ import {
   DisconnectWhatsAppCallRequest_DisconnectReason,
 } from "@livekit/protocol";
 import { insforgeServer } from "@/lib/insforge/client.server";
+import { getTenantVoiceConfig } from "@/lib/voice/config.server";
 
 export interface WhatsAppCallingConfig {
   livekitUrl: string;
@@ -316,7 +317,8 @@ export async function acceptInboundWhatsAppCall(
     callSessionId = newSession.id;
   }
 
-  // 2. Prepare participant metadata for the AI agent
+  // 2. Prepare participant metadata for the AI agent with tenant's AI4Bharat voice
+  const tenantVoiceConfig = await getTenantVoiceConfig(params.tenantId);
   const participantMetadata = JSON.stringify({
     voice_session_id: callSessionId,
     tenant_id: params.tenantId,
@@ -325,6 +327,7 @@ export async function acceptInboundWhatsAppCall(
     customer_number: params.callerWaId,
     channel: "whatsapp",
     meta_call_id: params.metaCallId,
+    voice_config: tenantVoiceConfig,
   });
 
   // 3. Build SessionDescription protobuf message from Meta's SDP offer
@@ -468,6 +471,7 @@ export async function dialOutboundWhatsAppCall(
   }
 
   const callSessionId = newSession.id;
+  const tenantVoiceConfig = await getTenantVoiceConfig(params.tenantId);
 
   const participantMetadata = JSON.stringify({
     voice_session_id: callSessionId,
@@ -477,6 +481,7 @@ export async function dialOutboundWhatsAppCall(
     customer_number: cleanTo,
     channel: "whatsapp",
     direction: "outbound",
+    voice_config: tenantVoiceConfig,
   });
 
   const connector = getLiveKitConnectorClient();

@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { VOICE_CATALOG, getVoiceById, getDefaultVoice } from "@/lib/voice/catalog";
 
 export const Route = createFileRoute("/voice")({
   head: () => ({
@@ -77,8 +78,9 @@ type TranscriptMessage = {
 class PhoneAudioFX {
   private static ctx: AudioContext | null = null;
   private static ringInterval: ReturnType<typeof setInterval> | null = null;
+  private static currentSource: AudioBufferSourceNode | null = null;
 
-  private static getContext(): AudioContext | null {
+  public static getContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
     if (!this.ctx) {
       const AudioCtx =
@@ -90,6 +92,57 @@ class PhoneAudioFX {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
+  }
+
+  static stopNeuralAudio() {
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop();
+        this.currentSource.disconnect();
+      } catch {}
+      this.currentSource = null;
+    }
+  }
+
+  static async playNeuralAudio(
+    audioUrl: string,
+    onStart?: () => void,
+    onEnd?: () => void
+  ): Promise<void> {
+    try {
+      this.stopNeuralAudio();
+      const ctx = this.getContext();
+      if (!ctx) throw new Error("AudioContext not supported");
+      if (ctx.state === "suspended") {
+        await ctx.resume().catch(() => {});
+      }
+
+      const res = await fetch(audioUrl);
+      if (!res.ok) {
+        throw new Error(`TTS audio download failed with HTTP ${res.status}`);
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      this.currentSource = source;
+
+      if (onStart) onStart();
+
+      source.onended = () => {
+        if (this.currentSource === source) {
+          this.currentSource = null;
+        }
+        if (onEnd) onEnd();
+      };
+
+      source.start(0);
+    } catch (err) {
+      console.warn("[Neural Audio Engine Notice]:", err);
+      if (onEnd) onEnd();
+    }
   }
 
   static playDialTone() {
@@ -202,26 +255,22 @@ class PhoneAudioFX {
   }
 
   static speakText(text: string, onEnd?: () => void) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    if (typeof window === "undefined") {
       if (onEnd) onEnd();
       return;
     }
-    window.speechSynthesis.cancel();
     const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
+    if (!clean) {
+      if (onEnd) onEnd();
+      return;
+    }
 
     const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise/i.test(text);
-    utterance.lang = isHindi ? "hi-IN" : "en-IN";
+    const langCode = isHindi ? "hi" : "en-IN";
+    const voiceId = isHindi ? "ai4bharat-hi-female" : "ai4bharat-hinglish-female";
+    const audioUrl = `/api/voice/tts?text=${encodeURIComponent(clean)}&language=${langCode}&gender=female&voiceId=${voiceId}&speed=1.0`;
 
-    utterance.onend = () => {
-      if (onEnd) onEnd();
-    };
-    utterance.onerror = () => {
-      if (onEnd) onEnd();
-    };
-    window.speechSynthesis.speak(utterance);
+    void this.playNeuralAudio(audioUrl, undefined, onEnd);
   }
 }
 
@@ -256,6 +305,14 @@ function VoiceCallPage() {
     async (skipMic = false) => {
       setError(null);
       setCallEndedStats(null);
+
+      // Pre-unlock HTML5 audio context on user gesture
+      if (typeof window !== "undefined") {
+        try {
+          const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+          silentAudio.play().catch(() => {});
+        } catch {}
+      }
 
       let mediaStream: MediaStream | null = null;
 
@@ -297,20 +354,40 @@ function VoiceCallPage() {
       PhoneAudioFX.playDialTone();
 
       try {
-        const sessionAbort = new AbortController();
-        const sessionTimeout = setTimeout(() => sessionAbort.abort(), 12000);
+        let res: Response;
+        try {
+          const sessionAbort = new AbortController();
+          const sessionTimeout = setTimeout(() => sessionAbort.abort(), 25000);
 
-        const res = await fetch("/api/voice/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clerkUserId: user?.id,
-            publicDemo: !user?.id,
-          }),
-          signal: sessionAbort.signal,
-        });
+          res = await fetch("/api/voice/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clerkUserId: user?.id,
+              publicDemo: !user?.id,
+            }),
+            signal: sessionAbort.signal,
+          });
 
-        clearTimeout(sessionTimeout);
+          clearTimeout(sessionTimeout);
+        } catch (fetchErr: any) {
+          console.warn("Initial session fetch paused, retrying...", fetchErr?.message);
+          await new Promise((r) => setTimeout(r, 1200));
+          const retryAbort = new AbortController();
+          const retryTimeout = setTimeout(() => retryAbort.abort(), 25000);
+
+          res = await fetch("/api/voice/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clerkUserId: user?.id,
+              publicDemo: !user?.id,
+            }),
+            signal: retryAbort.signal,
+          });
+
+          clearTimeout(retryTimeout);
+        }
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -397,7 +474,7 @@ function VoiceCallPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#FAF9F6] p-2 sm:p-4 text-[#111827] antialiased overflow-hidden selection:bg-[#087F8C]/20">
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center bg-[#FAF9F6] p-3 sm:p-6 text-[#111827] antialiased overflow-y-auto selection:bg-[#087F8C]/20">
       {/* Subtle Warm Theme Background Lighting */}
       <div className="absolute top-1/4 -left-32 h-[420px] w-[420px] rounded-full bg-[#087F8C]/5 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-1/4 -right-32 h-[420px] w-[420px] rounded-full bg-[#10A6AE]/5 blur-[120px] pointer-events-none" />
@@ -416,7 +493,7 @@ function VoiceCallPage() {
       </div>
 
       {/* SMARTPHONE DEVICE CONTAINER (FOLLOWS CURRENT THEME) */}
-      <div className="w-full max-w-[390px] h-[780px] max-h-[92vh] relative z-20 flex flex-col rounded-[48px] border-[5px] border-[#CBD5E1] bg-white shadow-[0_28px_65px_-12px_rgba(8,127,140,0.18)] ring-1 ring-slate-200/90 overflow-hidden text-[#111827]">
+      <div className="w-full max-w-[380px] h-[760px] max-h-[92vh] mx-auto relative z-20 flex flex-col rounded-[46px] border-[5px] border-[#CBD5E1] bg-white shadow-[0_24px_60px_-10px_rgba(8,127,140,0.2)] ring-1 ring-slate-200 overflow-hidden text-[#111827] shrink-0">
         {/* Phone Dynamic Island Top Notch */}
         <div className="absolute top-2.5 inset-x-0 flex items-center justify-center z-40 pointer-events-none">
           <div className="flex items-center justify-between w-28 h-6 bg-black rounded-full px-2.5 shadow-xs">
@@ -725,6 +802,12 @@ function ActivePhoneCallScreen({
   const [textInput, setTextInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [micVolume, setMicVolume] = useState(0);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("ai4bharat-hi-female");
+  const selectedVoiceIdRef = useRef(selectedVoiceId);
+  useEffect(() => {
+    selectedVoiceIdRef.current = selectedVoiceId;
+  }, [selectedVoiceId]);
+
   // Track if agent is speaking to block recognition pickup
   const agentSpeakingRef = useRef(false);
   const speakCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -737,52 +820,68 @@ function ActivePhoneCallScreen({
   const recognitionRef = useRef<any>(null);
   const speechDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpokenGreetingRef = useRef(false);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const speakAssistantText = useCallback(
-    (text: string) => {
-      if (typeof window === "undefined" || !("speechSynthesis" in window) || isSpeakerMuted) {
+    (text: string, voiceOverride?: string) => {
+      if (typeof window === "undefined" || isSpeakerMuted) {
         setConnectionState("listening");
         return;
       }
-      // Stop any active recognition before speaking to prevent echo loop
+
+      // Stop any prior playback immediately
+      PhoneAudioFX.stopNeuralAudio();
+      if (activeAudioRef.current) {
+        try {
+          activeAudioRef.current.pause();
+          activeAudioRef.current.src = "";
+          activeAudioRef.current = null;
+        } catch {}
+      }
+
+      // Silence any rogue browser speech
+      if ("speechSynthesis" in window) {
+        try { window.speechSynthesis.cancel(); } catch {}
+      }
+
+      // Stop any active speech recognition while agent speaks
       agentSpeakingRef.current = true;
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
+        try {
+          recognitionRef.current.stop();
+        } catch {}
       }
-      try {
-        window.speechSynthesis.cancel();
-        const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
-        const utterance = new SpeechSynthesisUtterance(clean);
-        utterance.rate = 1.02;
-        utterance.pitch = 1.0;
-        const isHindi = /[\u0900-\u097F]|namaste|kya|hai|mera|kaise/i.test(text);
-        utterance.lang = isHindi ? "hi-IN" : "en-IN";
-        utterance.onstart = () => {
+
+      const clean = text.replace(/[*_#`~>]/g, "").replace(/\n+/g, " ").trim();
+      if (!clean) {
+        agentSpeakingRef.current = false;
+        setConnectionState("listening");
+        return;
+      }
+
+      const currentVoiceId = voiceOverride || selectedVoiceIdRef.current || "ai4bharat-hi-female";
+      const activeVoice = getVoiceById(currentVoiceId) || getDefaultVoice();
+      const langCode = activeVoice.languageCode;
+      const voiceId = activeVoice.id;
+      const voiceGender = activeVoice.gender;
+
+      const audioUrl = `/api/voice/tts?text=${encodeURIComponent(clean)}&language=${langCode}&gender=${voiceGender}&voiceId=${voiceId}&speed=1.0`;
+
+      void PhoneAudioFX.playNeuralAudio(
+        audioUrl,
+        () => {
           agentSpeakingRef.current = true;
           setConnectionState("speaking");
-        };
-        utterance.onend = () => {
-          // Add cooldown before allowing speech recognition to restart
-          // This prevents echo pickup of the last syllable
-          if (speakCooldownRef.current) clearTimeout(speakCooldownRef.current);
-          speakCooldownRef.current = setTimeout(() => {
-            agentSpeakingRef.current = false;
-            setConnectionState("listening");
-          }, 1200);
-        };
-        utterance.onerror = () => {
+        },
+        () => {
           if (speakCooldownRef.current) clearTimeout(speakCooldownRef.current);
           speakCooldownRef.current = setTimeout(() => {
             agentSpeakingRef.current = false;
             setConnectionState("listening");
           }, 800);
-        };
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.warn("Speech playback notice:", e);
-        agentSpeakingRef.current = false;
-        setConnectionState("listening");
-      }
+        }
+      );
     },
     [isSpeakerMuted, setConnectionState]
   );
@@ -804,8 +903,8 @@ function ActivePhoneCallScreen({
         return;
       }
       const initialGreeting = tenantName
-        ? `Namaste! Welcome to ${tenantName}. I am ${agentName || "InsurCall Agent"}, your assistant. How can I assist you with your insurance or claim today?`
-        : `Hello! Welcome to InsurCall. I am your InsurCall AI Assistant. How can I assist you with your insurance questions or claims today?`;
+        ? `Namaste! Welcome to ${tenantName}. I am your AI insurance concierge. How may I assist you with your policy or claims today?`
+        : `Namaste! Welcome to InsurCall. I am your AI insurance concierge. How may I assist you with your policy or claims today?`;
       setMessages([
         {
           id: `greeting-${Date.now()}`,
@@ -822,6 +921,13 @@ function ActivePhoneCallScreen({
   useEffect(() => {
     return () => {
       agentSpeakingRef.current = false;
+      if (activeAudioRef.current) {
+        try {
+          activeAudioRef.current.pause();
+          activeAudioRef.current.src = "";
+          activeAudioRef.current = null;
+        } catch {}
+      }
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
@@ -995,6 +1101,16 @@ function ActivePhoneCallScreen({
       setSendError(null);
       setConnectionState("processing");
       PhoneAudioFX.playBeep(587);
+      PhoneAudioFX.stopNeuralAudio();
+
+      // Stop any current audio playback immediately on user input
+      if (activeAudioRef.current) {
+        try {
+          activeAudioRef.current.pause();
+          activeAudioRef.current.src = "";
+          activeAudioRef.current = null;
+        } catch {}
+      }
 
       // 1. If LiveKit WebRTC agent is connected in the room, send via WebRTC DataChannel!
       const remoteCount = room?.remoteParticipants?.size || 0;
@@ -1100,7 +1216,20 @@ function ActivePhoneCallScreen({
       recognition.maxAlternatives = 1;
 
       recognition.onspeechstart = () => {
-        if (agentSpeakingRef.current) return;
+        PhoneAudioFX.stopNeuralAudio();
+        if (activeAudioRef.current) {
+          try {
+            activeAudioRef.current.pause();
+            activeAudioRef.current.src = "";
+            activeAudioRef.current = null;
+          } catch {}
+          agentSpeakingRef.current = false;
+          if (speakCooldownRef.current) {
+            clearTimeout(speakCooldownRef.current);
+            speakCooldownRef.current = null;
+          }
+          setConnectionState("listening");
+        }
         if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
           window.speechSynthesis.cancel();
           agentSpeakingRef.current = false;
@@ -1172,120 +1301,100 @@ function ActivePhoneCallScreen({
 
   return (
     <div className="flex-1 flex flex-col justify-between p-4 pt-11 pb-5 relative overflow-hidden bg-gradient-to-b from-[#F2F8F8] via-[#FAF9F6] to-[#FAF9F6] text-[#111827]">
-      {/* 1. Top Status Bar */}
-      <div className="flex items-center justify-between text-[11px] text-[#344054] px-1 pt-0.5 border-b border-[#E4E7EC] pb-2 font-medium">
-        <div className="flex items-center gap-1.5 font-mono text-[#087F8C] font-semibold">
-          <Clock className="h-3 w-3" />
+      {/* 1. Minimal In-Call Header */}
+      <div className="flex items-center justify-between text-xs pt-2 pb-1 px-2 z-10 shrink-0">
+        <div className="flex items-center gap-1.5 font-mono text-[#087F8C] font-semibold text-[11px]">
+          <span className="relative flex h-2 w-2 mr-0.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
           <span>{formatTimer(duration)}</span>
         </div>
 
-        <span className="text-[10px] text-[#667085] font-medium" role="status" aria-live="polite">
-          {roomConnectionState === "connected"
-            ? "Voice Line connected"
-            : roomConnectionState === "connecting"
-              ? "Connecting to Voice Line"
-              : "Voice Line disconnected"}
-        </span>
+        {/* Minimalist Voice Persona Selector */}
+        <div className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-full px-2.5 py-0.5 transition-all">
+          <Volume2 className="w-3 h-3 text-[#087F8C] shrink-0" />
+          <select
+            value={selectedVoiceId}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setSelectedVoiceId(newId);
+              selectedVoiceIdRef.current = newId;
+              const v = getVoiceById(newId) || getDefaultVoice();
+              speakAssistantText(v.sampleText, newId);
+            }}
+            className="bg-transparent text-[10px] font-semibold text-slate-800 focus:outline-none cursor-pointer"
+          >
+            {VOICE_CATALOG.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* 2. Caller Profile & Voice Aura */}
-      <div className="flex flex-col items-center text-center my-auto space-y-2 py-1">
-        <div className="relative flex items-center justify-center my-1.5">
+      {/* 2. Minimal Center Emblem & Identity */}
+      <div className="flex flex-col items-center justify-center text-center my-auto px-4 space-y-2 shrink-0">
+        <div className="relative flex items-center justify-center my-1">
           {isSpeaking && (
             <>
-              <div className="absolute h-28 w-28 rounded-full border border-[#087F8C]/40 animate-ping duration-1000" />
-              <div className="absolute h-24 w-24 rounded-full border-2 border-[#10A6AE]/50 animate-pulse" />
+              <div className="absolute h-28 w-28 rounded-full border border-[#087F8C]/30 animate-ping duration-1000" />
+              <div className="absolute h-24 w-24 rounded-full border-2 border-[#10A6AE]/40 animate-pulse" />
             </>
           )}
 
           <div
-            className={`relative flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 shadow-md p-3.5 ${
+            className={`relative flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 p-3.5 ${
               isSpeaking
-                ? "bg-white border-2 border-[#087F8C] shadow-[0_0_30px_rgba(8,127,140,0.35)] scale-105"
-                : "bg-white border-2 border-[#087F8C]/30 shadow-xs"
+                ? "bg-white border-2 border-[#087F8C] shadow-[0_0_30px_rgba(8,127,140,0.3)] scale-105"
+                : "bg-white border border-slate-200 shadow-xs"
             }`}
           >
             <img
               src="/01_logo_only_transparent.png"
-              alt="InsurCall Assistant Emblem"
+              alt="InsurCall Emblem"
               className={`h-full w-full object-contain transition-transform ${
-                isSpeaking ? "scale-110" : "opacity-90"
+                isSpeaking ? "scale-110" : "opacity-95"
               }`}
             />
           </div>
         </div>
 
         <div>
-          <h2 className="text-base font-bold text-[#111827] tracking-tight">
-            {tenantName ? (agentName || "InsurCall Agent") : "InsurCall Agent"}
+          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+            {tenantName ? (agentName || "InsurCall Concierge") : "InsurCall AI Concierge"}
           </h2>
-          <p className="text-[11px] text-[#667085] pt-0.5">
-            {tenantName ? `${tenantName}${customerNumber ? ` • ${customerNumber}` : ""}` : "InsurCall Public Demo"}
+          <p className="text-[11px] text-slate-500 font-medium">
+            24/7 Policy & Claims Voice Desk
           </p>
-          <div className="mt-1 flex items-center justify-center gap-1.5 text-[10px]">
-            {ragAvailable && tenantName ? (
-              <span className="inline-flex items-center gap-1 text-[#087F8C] font-semibold bg-[#E6F6F7] px-2.5 py-0.5 rounded-full border border-[#087F8C]/30">
-                <ShieldCheck className="h-3 w-3 text-[#087F8C]" /> Approved knowledge connected
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-[#1D5E4A] font-semibold bg-[#EAF5EF] px-2.5 py-0.5 rounded-full border border-[#B6DEC9]">
-                <Sparkles className="h-3 w-3 text-[#2E8B4E]" /> Autonomous Voice Concierge · LiveKit WebRTC
-              </span>
-            )}
-          </div>
         </div>
 
-        {/* Speaking Status Badge & Real Audio Reactive Equalizer */}
-        <div className="flex items-center gap-2 pt-0.5">
-          <Badge
-            variant="outline"
-            className={`text-[10px] py-0.5 px-2.5 transition-all font-semibold ${
-              connectionState === "speaking"
-                ? "border-[#087F8C]/40 text-[#087F8C] bg-[#E6F6F7]"
-                : connectionState === "processing"
-                ? "border-amber-300 text-amber-800 bg-amber-50"
-                : connectionState === "listening"
-                ? "border-emerald-300 text-emerald-800 bg-emerald-50"
-                : connectionState === "connected"
-                ? "border-[#087F8C]/30 text-[#087F8C] bg-[#E6F6F7]"
-                : connectionState === "reconnecting"
-                ? "border-rose-300 text-rose-800 bg-rose-50"
-                : "border-[#E4E7EC] text-[#667085] bg-white"
-            }`}
-          >
+        {/* Minimal Speaking/Listening Status Pill */}
+        <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-full px-2.5 py-0.5 shadow-2xs">
+          <span className={`text-[10px] font-semibold ${
+            connectionState === "speaking" ? "text-[#087F8C]" : "text-emerald-700"
+          }`}>
             {connectionState === "speaking"
               ? "Speaking..."
               : connectionState === "processing"
               ? "Thinking..."
-              : connectionState === "listening"
-              ? "Listening..."
-              : connectionState === "connected"
-              ? "Ready..."
-              : connectionState === "reconnecting"
-              ? "Reconnecting..."
-              : "Connecting..."}
-          </Badge>
-
-          <div className="flex items-center gap-1 h-4 px-1">
+              : "Listening..."}
+          </span>
+          <div className="flex items-center gap-0.5 h-3">
             {[0.7, 1.2, 0.9, 1.3, 0.8].map((mult, i) => {
               const height =
                 connectionState === "speaking"
-                  ? i % 2 === 0
-                    ? "14px"
-                    : "18px"
+                  ? i % 2 === 0 ? "11px" : "15px"
                   : connectionState === "listening"
-                  ? `${Math.max(4, Math.min(18, 4 + Math.round((micVolume / 100) * 14 * mult)))}px`
-                  : "4px";
+                  ? `${Math.max(3, Math.min(14, 3 + Math.round((micVolume / 100) * 11 * mult)))}px`
+                  : "3px";
               return (
                 <span
                   key={i}
                   style={{ height }}
                   className={`w-0.5 rounded-full transition-all duration-100 ${
-                    connectionState === "speaking"
-                      ? "bg-[#087F8C] animate-pulse"
-                      : micVolume > 10
-                      ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]"
-                      : "bg-slate-300"
+                    connectionState === "speaking" ? "bg-[#087F8C] animate-pulse" : "bg-emerald-500"
                   }`}
                 />
               );
@@ -1294,95 +1403,59 @@ function ActivePhoneCallScreen({
         </div>
       </div>
 
-      {/* 3. Live Captions & Inline Text Chat (Light Theme) */}
+      {/* 3. Floating Live Captions Bubble (Zero Overflow, No Horizontal Scrollbars) */}
       {showTranscript && (
-        <div className="my-2 rounded-2xl border border-[#E4E7EC] bg-white/95 shadow-xs p-2.5 flex flex-col justify-between h-36 shrink-0 relative transition-all">
-          <div className="flex items-center justify-between pb-1 border-b border-[#E4E7EC]/70 mb-1">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#344054]">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-              </span>
-              <span>LIVE CAPTIONS</span>
+        <div className="mx-2 my-1 rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-md shadow-xs p-2.5 transition-all flex flex-col justify-between max-h-32 shrink-0">
+          <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider">Live Captions</span>
             </div>
-
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsTranscriptExpanded(true)}
-                title="Expand Transcript"
-                className="text-[#667085] hover:text-[#111827] p-1 rounded-md hover:bg-slate-100 text-[10px] flex items-center gap-0.5 transition-colors cursor-pointer"
+                type="button"
+                onClick={() => {
+                  PhoneAudioFX.playBeep(520);
+                  setIsTranscriptExpanded(true);
+                }}
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-[#087F8C] transition-colors cursor-pointer"
+                title="Expand full chatbox"
               >
-                <Maximize2 className="h-3 w-3" />
-                <span className="text-[9px]">Full</span>
+                <Maximize2 className="h-2.5 w-2.5" />
+                <span>Full</span>
               </button>
               <button
+                type="button"
                 onClick={() => setShowTranscript(false)}
-                title="Hide Captions"
-                className="text-[#667085] hover:text-[#111827] p-1 rounded-md hover:bg-slate-100 text-[10px] transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                title="Hide captions"
               >
                 <X className="h-3 w-3" />
               </button>
             </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 text-[11px] leading-tight select-text scrollbar-thin">
-            {messages.slice(-3).map((m) => (
-              <div
-                key={m.id}
-                className={`flex flex-col items-start gap-0.5 ${
-                  m.role === "user" ? "text-emerald-900" : "text-[#111827]"
-                }`}
-              >
-                <div className="flex items-start gap-1.5 w-full">
-                  <span
-                    className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                      m.role === "user"
-                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                        : "bg-[#E6F6F7] text-[#087F8C] border border-[#087F8C]/30"
-                    }`}
-                  >
-                    {m.role === "user" ? "You" : "AI"}
-                  </span>
-                  <p className="line-clamp-2 text-[11px] leading-snug flex-1">{m.text}</p>
-                </div>
-                {m.citations && m.citations.length > 0 ? (
-                  <span className="text-[9px] text-teal-700 bg-teal-50 border border-teal-200/80 rounded px-1.5 py-0.2 ml-7">
-                    Grounded in: {m.citations[0]?.sourceName}
-                  </span>
-                ) : m.role === "agent" ? (
-                  <span className="text-[9px] text-[#1D5E4A] bg-[#EAF5EF] border border-[#B6DEC9] rounded px-1.5 py-0.2 ml-7">
-                    ✨ Carrier Voice Concierge
-                  </span>
-                ) : null}
-                {m.escalated && (
-                  <span className="text-[9px] text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.2 ml-7 font-semibold">
-                    Escalated to human supervisor
-                  </span>
-                )}
+          <div className="overflow-y-auto space-y-1 text-[11px] leading-tight max-h-16 scrollbar-none pr-0.5">
+            {messages.slice(-2).map((m) => (
+              <div key={m.id} className={m.role === "user" ? "text-emerald-800" : "text-slate-900"}>
+                <span className="font-bold text-[10px] mr-1">{m.role === "user" ? "You:" : "AI:"}</span>
+                <span>{m.text}</span>
               </div>
             ))}
             <div ref={transcriptEndRef} />
           </div>
-
-          {sendError && <p role="alert" className="text-[10px] leading-relaxed text-rose-700">{sendError}</p>}
-
-          <form
-            onSubmit={handleSendText}
-            className="mt-1 flex items-center gap-1.5 pt-1.5 border-t border-[#E4E7EC]"
-          >
+          <form onSubmit={handleSendText} className="mt-1 flex items-center gap-1.5 pt-1 border-t border-slate-100">
             <input
               type="text"
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Can't speak? Type message..."
+              placeholder="Type message..."
               disabled={connectionState === "processing"}
-              className="flex-1 min-w-0 bg-[#FAF9F6] border border-[#E4E7EC] rounded-lg px-2.5 py-1 text-[11px] text-[#111827] placeholder-[#98A2B3] focus:outline-none focus:border-[#087F8C] transition-colors"
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#087F8C]"
             />
             <button
               type="submit"
               disabled={!textInput.trim() || connectionState === "processing"}
-              title="Send message"
-              className="h-6 w-6 shrink-0 rounded-lg bg-[#087F8C] hover:bg-[#076C77] disabled:opacity-30 disabled:hover:bg-[#087F8C] text-white flex items-center justify-center transition-all active:scale-95 shadow-xs cursor-pointer"
+              className="h-6 w-6 rounded-lg bg-[#087F8C] hover:bg-[#076C77] text-white flex items-center justify-center transition-all disabled:opacity-30 cursor-pointer shrink-0"
             >
               <Send className="h-3 w-3" />
             </button>
@@ -1390,155 +1463,140 @@ function ActivePhoneCallScreen({
         </div>
       )}
 
-      {/* Quick Topic Chips with Distinct Colors */}
-      <div className="py-1 flex items-center justify-between gap-1.5 overflow-x-auto no-scrollbar">
+      {/* 3.1 Quick Click-To-Fill Inquiry Chips (Clean Non-Scrollable Grid) */}
+      <div className="grid grid-cols-3 gap-1.5 px-3 py-1 shrink-0 w-full">
         <button
-          onClick={() => sendPrompt("Check my policy details")}
-          className="text-[10px] whitespace-nowrap bg-blue-50/90 hover:bg-blue-100 border border-blue-200/90 text-blue-900 hover:border-blue-400 px-3 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer font-semibold"
-        >
-          📋 Policy Status
-        </button>
-        <button
-          onClick={() => sendPrompt("What is the status of my claim?")}
-          className="text-[10px] whitespace-nowrap bg-amber-50/90 hover:bg-amber-100 border border-amber-200/90 text-amber-900 hover:border-amber-400 px-3 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer font-semibold"
-        >
-          🛡️ Claim Update
-        </button>
-        <button
-          onClick={() => sendPrompt("I want to update my policy nominee")}
-          className="text-[10px] whitespace-nowrap bg-emerald-50/90 hover:bg-emerald-100 border border-emerald-200/90 text-emerald-900 hover:border-emerald-400 px-3 py-1 rounded-full transition-all active:scale-95 shadow-2xs cursor-pointer font-semibold"
-        >
-          👤 Change Nominee
-        </button>
-      </div>
-
-      {/* 4. In-Call Keypad / Controls (Light Theme) */}
-      <div className="pt-2 pb-1 grid grid-cols-3 gap-y-3.5 gap-x-4 place-items-center">
-        {/* Mute */}
-        <button
-          onClick={toggleMute}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
-        >
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
-              isMuted
-                ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/30 scale-105"
-                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
-            }`}
-          >
-            {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-          </div>
-          <span className="text-[10px] font-medium text-[#344054]">
-            {isMuted ? "Unmute" : "Mute"}
-          </span>
-        </button>
-
-        {/* Keypad */}
-        <button
+          type="button"
           onClick={() => {
             PhoneAudioFX.playBeep(520);
-            setShowKeypad(!showKeypad);
-          }}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
-        >
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
-              showKeypad
-                ? "bg-[#087F8C] text-white shadow-md shadow-[#087F8C]/30"
-                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
-            }`}
-          >
-            <Grid className="h-5 w-5" />
-          </div>
-          <span className="text-[10px] font-medium text-[#344054]">Keypad</span>
-        </button>
-
-        {/* Speaker */}
-        <button
-          onClick={toggleSpeaker}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
-        >
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
-              isSpeakerMuted
-                ? "bg-rose-50 text-rose-700 border border-rose-200"
-                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
-            }`}
-          >
-            {isSpeakerMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-          </div>
-          <span className="text-[10px] font-medium text-[#344054]">
-            {isSpeakerMuted ? "Speaker Off" : "Speaker"}
-          </span>
-        </button>
-
-        {/* Captions / Show Button with Distinct Color */}
-        <button
-          onClick={() => {
-            PhoneAudioFX.playBeep(600);
-            setShowTranscript(!showTranscript);
-          }}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
-        >
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
-              showTranscript
-                ? "bg-[#E6F6F7] border-2 border-[#087F8C] text-[#087F8C] shadow-sm shadow-[#087F8C]/20"
-                : "bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 shadow-2xs"
-            }`}
-          >
-            <MessageSquare className="h-5 w-5" />
-          </div>
-          <span className={`text-[10px] font-semibold ${showTranscript ? "text-[#087F8C]" : "text-amber-800"}`}>
-            {showTranscript ? "Captions" : "Show Text"}
-          </span>
-        </button>
-
-        {/* Details */}
-        <button
-          onClick={() => {
-            PhoneAudioFX.playBeep(450);
-            setShowDetails(!showDetails);
-          }}
-          className="flex flex-col items-center gap-1 group active:scale-95 transition-transform cursor-pointer"
-        >
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-full transition-all ${
-              showDetails
-                ? "bg-[#087F8C] text-white shadow-md shadow-[#087F8C]/30"
-                : "bg-white border border-[#E4E7EC] text-[#344054] hover:bg-[#FAF9F6] shadow-2xs"
-            }`}
-          >
-            <UserCheck className="h-5 w-5" />
-          </div>
-          <span className="text-[10px] font-medium text-[#344054]">Details</span>
-        </button>
-
-        {/* Verified Safe */}
-        <div className="flex flex-col items-center gap-1">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 shadow-2xs">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-          <span className="text-[10px] font-semibold text-emerald-700">Verified Safe</span>
-        </div>
-      </div>
-
-      {/* 5. End Call Button */}
-      <div className="pt-2 flex flex-col items-center">
-        <button
-          onClick={() => {
-            onEnd({
-              duration,
-              turns: messages.filter((m) => m.role === "user").length,
+            void sendPrompt("Check my policy details and coverage status").then((sent) => {
+              if (sent) setTextInput("");
             });
           }}
-          className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30 active:scale-95 transition-all cursor-pointer"
+          disabled={connectionState === "processing"}
+          className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-blue-200/90 bg-blue-50/70 hover:bg-blue-100/80 text-[10px] font-semibold text-blue-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
         >
-          <PhoneOff className="h-6 w-6 relative z-10 transition-transform group-hover:rotate-12" />
+          <span className="shrink-0 text-xs">📋</span>
+          <span className="truncate">Policy Status</span>
         </button>
-        <span className="text-[10px] font-medium text-[#667085] mt-1">End Call</span>
+        <button
+          type="button"
+          onClick={() => {
+            PhoneAudioFX.playBeep(520);
+            void sendPrompt("What is the status of my claim?").then((sent) => {
+              if (sent) setTextInput("");
+            });
+          }}
+          disabled={connectionState === "processing"}
+          className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-amber-200/90 bg-amber-50/70 hover:bg-amber-100/80 text-[10px] font-semibold text-amber-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+        >
+          <span className="shrink-0 text-xs">🛡️</span>
+          <span className="truncate">Claim Update</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            PhoneAudioFX.playBeep(520);
+            void sendPrompt("I want to update my policy nominee").then((sent) => {
+              if (sent) setTextInput("");
+            });
+          }}
+          disabled={connectionState === "processing"}
+          className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-emerald-200/90 bg-emerald-50/70 hover:bg-emerald-100/80 text-[10px] font-semibold text-emerald-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+        >
+          <span className="shrink-0 text-xs">👤</span>
+          <span className="truncate">Change Nominee</span>
+        </button>
       </div>
 
+      {/* 4. Minimalist Dialer Controls (Clean 3x2 Grid with Prominent End Call) */}
+      <div className="pb-4 pt-1 px-4 shrink-0">
+        <div className="grid grid-cols-3 gap-y-3 gap-x-4 place-items-center">
+          {/* Mute */}
+          <button
+            onClick={toggleMute}
+            className="flex flex-col items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+          >
+            <div className={`flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+              isMuted ? "bg-amber-400 text-slate-900 shadow-sm" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}>
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </div>
+            <span className="text-[10px] font-medium text-slate-600">{isMuted ? "Unmute" : "Mute"}</span>
+          </button>
+
+          {/* Keypad */}
+          <button
+            onClick={() => { PhoneAudioFX.playBeep(520); setShowKeypad(!showKeypad); }}
+            className="flex flex-col items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+          >
+            <div className={`flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+              showKeypad ? "bg-[#087F8C] text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}>
+              <Grid className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-medium text-slate-600">Keypad</span>
+          </button>
+
+          {/* Speaker */}
+          <button
+            onClick={toggleSpeaker}
+            className="flex flex-col items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+          >
+            <div className={`flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+              isSpeakerMuted ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}>
+              {isSpeakerMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+            </div>
+            <span className="text-[10px] font-medium text-slate-600">Speaker</span>
+          </button>
+
+          {/* Captions */}
+          <button
+            onClick={() => { PhoneAudioFX.playBeep(600); setShowTranscript(!showTranscript); }}
+            className="flex flex-col items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+          >
+            <div className={`flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+              showTranscript ? "bg-[#087F8C]/15 text-[#087F8C]" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}>
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-medium text-slate-600">{showTranscript ? "Hide Text" : "Captions"}</span>
+          </button>
+
+          {/* End Call Button (Prominent Center) */}
+          <button
+            onClick={() => {
+              PhoneAudioFX.stopNeuralAudio();
+              onEnd({
+                duration,
+                turns: messages.filter((m) => m.role === "user").length,
+              });
+            }}
+            className="flex flex-col items-center gap-1 active:scale-90 transition-transform cursor-pointer"
+            aria-label="End call"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30">
+              <PhoneOff className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-semibold text-red-600">End</span>
+          </button>
+
+          {/* Details */}
+          <button
+            onClick={() => { PhoneAudioFX.playBeep(450); setShowDetails(!showDetails); }}
+            className="flex flex-col items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+          >
+            <div className={`flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+              showDetails ? "bg-[#087F8C] text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}>
+              <UserCheck className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-medium text-slate-600">Details</span>
+          </button>
+        </div>
+      </div>
+      
       {/* Full Transcript Modal */}
       {isTranscriptExpanded && (
         <div className="absolute inset-x-2 inset-y-12 z-50 rounded-3xl border border-[#E4E7EC] bg-white/98 backdrop-blur-2xl p-4 shadow-2xl flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150">
@@ -1600,9 +1658,55 @@ function ActivePhoneCallScreen({
 
           {sendError && <p role="alert" className="text-xs leading-relaxed text-rose-700">{sendError}</p>}
 
+          {/* Quick Inquiry Chips */}
+          <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-[#E4E7EC] mb-2 w-full shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                PhoneAudioFX.playBeep(520);
+                void sendPrompt("Check my policy details and coverage status").then((sent) => {
+                  if (sent) setTextInput("");
+                });
+              }}
+              disabled={connectionState === "processing"}
+              className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-blue-200/90 bg-blue-50/70 hover:bg-blue-100/80 text-[10px] font-semibold text-blue-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+            >
+              <span className="shrink-0 text-xs">📋</span>
+              <span className="truncate">Policy Status</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                PhoneAudioFX.playBeep(520);
+                void sendPrompt("What is the status of my claim?").then((sent) => {
+                  if (sent) setTextInput("");
+                });
+              }}
+              disabled={connectionState === "processing"}
+              className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-amber-200/90 bg-amber-50/70 hover:bg-amber-100/80 text-[10px] font-semibold text-amber-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+            >
+              <span className="shrink-0 text-xs">🛡️</span>
+              <span className="truncate">Claim Update</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                PhoneAudioFX.playBeep(520);
+                void sendPrompt("I want to update my policy nominee").then((sent) => {
+                  if (sent) setTextInput("");
+                });
+              }}
+              disabled={connectionState === "processing"}
+              className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-full border border-emerald-200/90 bg-emerald-50/70 hover:bg-emerald-100 text-[10px] font-semibold text-emerald-900 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+            >
+              <span className="shrink-0 text-xs">👤</span>
+              <span className="truncate">Change Nominee</span>
+            </button>
+          </div>
+
           <form
             onSubmit={handleSendText}
-            className="flex items-center gap-2 mb-3 pt-2 border-t border-[#E4E7EC]"
+            className="flex items-center gap-2 mb-3 pt-1"
           >
             <input
               type="text"

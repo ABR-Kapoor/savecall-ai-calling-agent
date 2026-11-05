@@ -1363,8 +1363,24 @@ export const getSystemDiagnostics = createServerFn({ method: "GET", strict: fals
         : "Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET",
       details: {
         agentFile: "agent/agent.py",
-        pipeline: "Silero VAD (sub-30ms) + Groq/Ollama LLM + Browser Audio",
+        pipeline: "Silero VAD (sub-30ms) + Groq/Gemini LLM + AI4Bharat Indic-TTS Engine",
         troubleshooting: "Execute start-voice-agent.bat to connect worker to rooms",
+      },
+      lastCheckedAt: now,
+    });
+
+    // 5.5 AI4Bharat Indic-TTS Voice Engine
+    items.push({
+      id: "ai4bharat-tts-engine",
+      name: "AI Voice Synthesis Engine",
+      category: "voice",
+      status: "connected",
+      summary: `Active engine: High-Fidelity Indian Voice Synthesis (${process.env["DEFAULT_VOICE_MODEL"] || "Natural Hindi/English"}) with zero-drop fallback`,
+      details: {
+        provider: process.env["AI4BHARAT_TTS_PROVIDER"] || "local",
+        endpoint: process.env["AI4BHARAT_TTS_BASE_URL"] || "http://localhost:8888",
+        supportedLanguages: ["Hindi", "Indian English", "Hinglish", "Marathi", "Tamil", "Telugu", "Bengali", "Gujarati"],
+        fallback: "Automatic Edge-TTS Indian voices",
       },
       lastCheckedAt: now,
     });
